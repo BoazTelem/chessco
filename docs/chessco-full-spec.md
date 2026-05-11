@@ -51,7 +51,7 @@ Chessco is a chess preparation and sparring platform built around three integrat
 2. **Opponent preparation** — generate per-opponent battle plans showing their opening repertoire, recurring mistakes, and exploitable lines compared against the user's own play style.
 3. **Paid sparring marketplace** — let users publish a starting position and pay a fixed fee per game to have a verified human opponent practice it with them. The opponent is paid for **playing the game to completion**, regardless of the result.
 
-The product is positioned as a *preparation tool for serious chess players* — competitive online players, tournament players, club players, and coaches — not as casual entertainment. Lichess and chess.com cover casual play; Chessco is the layer on top for people who treat their next game seriously enough to prepare for it.
+The product is positioned as a _preparation tool for serious chess players_ — competitive online players, tournament players, club players, and coaches — not as casual entertainment. Lichess and chess.com cover casual play; Chessco is the layer on top for people who treat their next game seriously enough to prepare for it.
 
 **Business model.** Subscriptions for the prep features (Feature 1 + Feature 2), plus per-transaction fees on the sparring marketplace (Feature 3). Target take rate on the marketplace: 10–15% on the transaction. Subscription tier(s) and exact marketplace pricing are open decisions (see §27).
 
@@ -71,17 +71,17 @@ Every feature should reinforce this loop. The home page tells this story. The da
 
 ### Free vs. paid surface (initial proposal — open for revision)
 
-| Surface | Free | Subscription | Per-transaction |
-|---|---|---|---|
-| Account linking, own-game import, own-repertoire view | ✓ | | |
-| Search a public player (basic profile) | ✓ | | |
-| Identification engine ("who is this player") | Limited | ✓ | |
-| Full opponent prep report | Preview | ✓ | |
-| Practice against opponent-style bot (Maia fine-tune) | | ✓ | |
-| Publish a position challenge | | ✓ | + per-game fee |
-| Accept a position challenge | ✓ (verified accounts only) | | Earn payout |
+| Surface                                               | Free                       | Subscription | Per-transaction |
+| ----------------------------------------------------- | -------------------------- | ------------ | --------------- |
+| Account linking, own-game import, own-repertoire view | ✓                          |              |                 |
+| Search a public player (basic profile)                | ✓                          |              |                 |
+| Identification engine ("who is this player")          | Limited                    | ✓            |                 |
+| Full opponent prep report                             | Preview                    | ✓            |                 |
+| Practice against opponent-style bot (Maia fine-tune)  |                            | ✓            |                 |
+| Publish a position challenge                          |                            | ✓            | + per-game fee  |
+| Accept a position challenge                           | ✓ (verified accounts only) |              | Earn payout     |
 
-Subscription gates the *intelligence*; the marketplace is gated by *verification*. Free users can earn payouts (which incentivizes verification) but cannot publish challenges (which limits abuse).
+Subscription gates the _intelligence_; the marketplace is gated by _verification_. Free users can earn payouts (which incentivizes verification) but cannot publish challenges (which limits abuse).
 
 ### Service topology
 
@@ -169,6 +169,7 @@ This is enforced at IP-geolocation level at the marketplace surface only. Free p
 ### Required legal review before marketplace launch
 
 A written legal opinion is required confirming:
+
 1. Completion-based payout structure does not constitute gambling in target jurisdictions.
 2. No license is required to operate the sparring marketplace.
 3. KYC / AML obligations are met via Stripe Connect Express.
@@ -180,6 +181,7 @@ A written legal opinion is required confirming:
 ## 4. Tech Stack
 
 ### Frontend
+
 - **Framework:** Next.js 15 (App Router), TypeScript strict mode
 - **Styling:** Tailwind CSS, shadcn/ui (Radix primitives), CSS variables for theming
 - **State:** TanStack Query (server state), Zustand (client/game state), React Hook Form + Zod (forms)
@@ -191,6 +193,7 @@ A written legal opinion is required confirming:
 - **Engine in browser:** Stockfish WASM
 
 ### Backend
+
 - **Database:** Supabase Postgres (with `pgvector` extension enabled from day one)
 - **Auth:** Supabase Auth (email/password, magic link, Google OAuth, Apple)
 - **Storage:** Supabase Storage (PGN files, avatars, prep reports as PDF)
@@ -207,6 +210,7 @@ A written legal opinion is required confirming:
 - **Search:** Postgres trigram + pgvector for player search; consider Typesense later if needed
 
 ### DevOps / repository
+
 - Single monorepo with Turborepo or pnpm workspaces
 - Apps: `web` (Next.js), `gameserver` (Node WebSocket), `workers` (Inngest functions)
 - Shared packages: `db` (Drizzle ORM schema + migrations), `types`, `ui`, `chess-core` (PGN/FEN/engine helpers), `analytics`
@@ -648,14 +652,14 @@ Take partial information about an opponent and return a ranked list of candidate
 
 ### Ingestion pipeline
 
-| Source | Method | Frequency | Notes |
-|---|---|---|---|
-| Lichess monthly DB dumps | Download + parse | Monthly | Filter to rated games ≥ 1500 in last 24 months; reduce volume |
-| Lichess user API | API call on demand | Per-query | Cache 7 days |
-| Chess.com PubAPI player archives | API call on demand | Per-query | Read-only; cache 7 days |
-| FIDE ratings list | XML download | Monthly | OTB titled players, ratings, federation |
-| Chess-Results | Manual / occasional scrape | Per-tournament | Respect robots.txt, low volume |
-| User uploads | Direct upload | On demand | PGN parser; up to 1000 games per upload |
+| Source                           | Method                     | Frequency      | Notes                                                         |
+| -------------------------------- | -------------------------- | -------------- | ------------------------------------------------------------- |
+| Lichess monthly DB dumps         | Download + parse           | Monthly        | Filter to rated games ≥ 1500 in last 24 months; reduce volume |
+| Lichess user API                 | API call on demand         | Per-query      | Cache 7 days                                                  |
+| Chess.com PubAPI player archives | API call on demand         | Per-query      | Read-only; cache 7 days                                       |
+| FIDE ratings list                | XML download               | Monthly        | OTB titled players, ratings, federation                       |
+| Chess-Results                    | Manual / occasional scrape | Per-tournament | Respect robots.txt, low volume                                |
+| User uploads                     | Direct upload              | On demand      | PGN parser; up to 1000 games per upload                       |
 
 **Rate limit handling:** Lichess explicitly prefers serial requests with backoff on 429. Implement a token-bucket rate limiter in the Inngest workers with conservative defaults (60 requests/min for Lichess, 30/min for chess.com). Cache aggressively.
 
@@ -701,7 +705,7 @@ Store as `style_features.features` jsonb, plus pre-compute the float vector for 
 ### Privacy & ethics (mandatory defaults)
 
 - **Default identification scope:** Only profiles that have explicitly opted in to being discoverable, plus public figures (FIDE-titled players, public streamers, players with verified social media).
-- **Anonymous accounts are off-limits** by default. A user can opt in to "make my anonymous accounts discoverable" if they want — it's a privacy *choice*, not the default.
+- **Anonymous accounts are off-limits** by default. A user can opt in to "make my anonymous accounts discoverable" if they want — it's a privacy _choice_, not the default.
 - **Doxxing prevention:** Search results never display physical addresses, real-time location, or any data not voluntarily public on the source platform.
 - **Right to delist:** Any player can request removal of their player record at no cost. Verified ownership via email-on-file or platform OAuth.
 - **No identification of suspected cheaters by third parties.** "Help me find out who this engine user is" is an explicit no.
@@ -709,12 +713,14 @@ Store as `style_features.features` jsonb, plus pre-compute the float vector for 
 ### UX (player search & profile)
 
 **Search page (`/scout`):**
+
 - Single command-bar input at top, accepting any of the inputs above
 - Filter chips below: country, rating range, platform, title, time class
 - Results render as cards with: name, country flag, peak rating, tags ("Najdorf player", "fast bullet", "endgame strong"), linked external accounts, "Build prep report" CTA
 - Empty state: explainer + sample queries
 
 **Player profile page (`/p/[player_id]`):**
+
 - Header: name, photo (if public), country, title, peak ratings across platforms
 - Tabs: Overview, Openings, Mistakes, Recent games, Style fingerprint
 - Overview: 6-card grid — preferred openings, strongest time class, win-rate trend, opening surprise factor, endgame strength, time management style
@@ -778,13 +784,14 @@ Walk forward from each detected leak and produce 2–4 concrete recommended move
 **Step 4 — Select practice positions.**
 
 From the top leaks, pick 5–10 positions the user should drill. Annotate with:
+
 - Why this position matters
 - Recommended plan from the position
 - Optional: a Maia-trained bot variant for sparring against this exact opponent's style
 
 **Step 5 — AI narrative layer.**
 
-Pass the structured findings to Claude with a strict prompt. The LLM's job is *summarization and tone*, not chess analysis. The engine's numbers are ground truth; the LLM explains them in coach-speak.
+Pass the structured findings to Claude with a strict prompt. The LLM's job is _summarization and tone_, not chess analysis. The engine's numbers are ground truth; the LLM explains them in coach-speak.
 
 Sample prompt skeleton:
 
@@ -837,6 +844,7 @@ Let a user publish a chess starting position and pay a fixed sparring fee to hav
 ### Challenge creation (`/challenges/new`)
 
 **Inputs:**
+
 - Starting position: FEN editor (drag pieces, paste FEN, or import from a game) — board with engine eval shown live
 - Optional context: 1–3 lead-in moves shown to opponent post-game
 - Side: which color the creator plays (or "either")
@@ -848,6 +856,7 @@ Let a user publish a chess starting position and pay a fixed sparring fee to hav
 - Notes for opponent (visible only post-game)
 
 **Validations:**
+
 - Position must be legal (not impossible, not already checkmate/stalemate)
 - Engine eval must not be > +5 or < −5 in either side's favor (avoid lost-position challenges that nobody will accept)
 - Creator must have sufficient wallet balance for all games (challenge × games)
@@ -904,25 +913,28 @@ If refund request filed during window:
 ### Abandonment handling
 
 If the opponent disconnects mid-game:
+
 - 60-second grace period; clock continues to tick against them
 - If they return: game continues
 - If they don't return: game ends, status `abandoned`, **opponent forfeits payout**, full refund to creator
 - Their trust score takes a hit
 
 If the creator disconnects mid-game:
+
 - Same grace period
 - If they don't return: game ends, status `creator_abandoned`, **opponent still gets paid** (they completed their commitment)
 - Creator's trust score takes a hit
 
-This asymmetry is important: the opponent's payment is for *being available and playing the game*. If the creator wastes their time by disconnecting, the opponent has still delivered.
+This asymmetry is important: the opponent's payment is for _being available and playing the game_. If the creator wastes their time by disconnecting, the opponent has still delivered.
 
 ### Game start position rule
 
-The opponent must play the *exact published position* with normal chess rules from that point onward. They cannot "deviate" because the position is the starting state. They must make legal moves. If a server-side bug somehow allows an illegal state, the match is aborted and refunded.
+The opponent must play the _exact published position_ with normal chess rules from that point onward. They cannot "deviate" because the position is the starting state. They must make legal moves. If a server-side bug somehow allows an illegal state, the match is aborted and refunded.
 
 ### Multi-game challenges
 
 When `games_requested > 1`:
+
 - Each game is a separate match row
 - Each game settles independently
 - The challenge stays `open` (with `games_completed` incrementing) until all games complete
@@ -937,6 +949,7 @@ When `games_requested > 1`:
 **Algorithm:** Glicko-2 (Lichess uses this; well-documented; robust with sparse data).
 
 **Parameters (initial):**
+
 - Default rating: 1500
 - Default RD (rating deviation): 350
 - Default volatility: 0.06
@@ -956,6 +969,7 @@ When a user connects a Lichess or chess.com account, use their external rating a
 Only **completed paid games** affect skill rating. Abandoned games, refunded games, and disputed games do not.
 
 For each completed match:
+
 1. Compute Glicko-2 update for both players
 2. Write to `rating_history` with before/after values
 3. Update `ratings.skill_rating`
@@ -974,13 +988,13 @@ If `skill_rd > 100`, display rating with a `?` suffix to indicate uncertainty.
 
 ### Tiers
 
-| Tier | Range | What it unlocks |
-|---|---|---|
-| New | 50 (default) | Browse only, cannot publish challenges, can accept low-fee challenges only ($1 max) |
-| Bronze | 50–64 | Accept challenges up to $2, publish challenges up to $1 |
-| Silver | 65–79 | Accept any, publish up to $5 |
-| Gold | 80–94 | Publish up to $20 |
-| Platinum | 95–100 | Publish up to $100, eligible for tournament features |
+| Tier     | Range        | What it unlocks                                                                     |
+| -------- | ------------ | ----------------------------------------------------------------------------------- |
+| New      | 50 (default) | Browse only, cannot publish challenges, can accept low-fee challenges only ($1 max) |
+| Bronze   | 50–64        | Accept challenges up to $2, publish challenges up to $1                             |
+| Silver   | 65–79        | Accept any, publish up to $5                                                        |
+| Gold     | 80–94        | Publish up to $20                                                                   |
+| Platinum | 95–100       | Publish up to $100, eligible for tournament features                                |
 
 ### Components & weights
 
@@ -1023,16 +1037,17 @@ Exact weights are tunable; values above are starting points.
 
 ### Valid reason codes (categorical, not free-text)
 
-| Code | Description | Auto-resolution |
-|---|---|---|
-| `opponent_abandoned` | Opponent disconnected and didn't return within grace period | Auto-approve (system already triggered refund) |
-| `opponent_didnt_play_position` | Game state diverged from published FEN at start | Auto-approve if telemetry confirms; else manual |
-| `engine_assistance_suspected` | Move accuracy abnormally high | Manual review, anti-cheat queue |
-| `harassment` | Chat abuse or threats | Manual review |
-| `technical_failure` | Platform crashed, lost connection through no fault of own | Manual review with logs |
-| `other` | Free-text required | Manual review |
+| Code                           | Description                                                 | Auto-resolution                                 |
+| ------------------------------ | ----------------------------------------------------------- | ----------------------------------------------- |
+| `opponent_abandoned`           | Opponent disconnected and didn't return within grace period | Auto-approve (system already triggered refund)  |
+| `opponent_didnt_play_position` | Game state diverged from published FEN at start             | Auto-approve if telemetry confirms; else manual |
+| `engine_assistance_suspected`  | Move accuracy abnormally high                               | Manual review, anti-cheat queue                 |
+| `harassment`                   | Chat abuse or threats                                       | Manual review                                   |
+| `technical_failure`            | Platform crashed, lost connection through no fault of own   | Manual review with logs                         |
+| `other`                        | Free-text required                                          | Manual review                                   |
 
 **Invalid reason codes** (rejected at UI level):
+
 - "I lost"
 - "Opponent played too well"
 - "I didn't enjoy it"
@@ -1061,6 +1076,7 @@ Run when refund request is created:
 ### Manual review queue
 
 Admin dashboard route. Each ticket shows:
+
 - Match context (FEN, PGN, time control, both players' trust tiers and history)
 - Reason code + detail
 - Telemetry log
@@ -1068,6 +1084,7 @@ Admin dashboard route. Each ticket shows:
 - Action buttons: Approve, Deny, Request more info, Escalate
 
 SLA targets:
+
 - Auto-resolution: < 60 seconds
 - Manual review for engine cases: 24–72 hours (because anti-cheat workflow is involved)
 - Manual review for everything else: 48 hours
@@ -1075,6 +1092,7 @@ SLA targets:
 ### Refund execution
 
 When approved:
+
 1. Reverse `match_escrow` ledger entries
 2. Credit refund to user wallet
 3. If `engine_assistance_suspected` approved: opponent's payout is reversed even after settlement (this is why ledger entries have `reversible_until`); apply confirmed fairplay flag to opponent
@@ -1095,6 +1113,7 @@ The hardest part of the marketplace, treated as a co-equal product surface, not 
 ### Detection stack
 
 **Live (during paid games):**
+
 - Tab visibility tracking (`visibilitychange` events sent over WebSocket)
 - Window blur/focus events
 - Mouse movement entropy
@@ -1103,15 +1122,18 @@ The hardest part of the marketplace, treated as a co-equal product surface, not 
 - Move time variance vs. position complexity (engine workers compute "complexity" score per position; we compare against player's move times)
 
 **Post-game (automated):**
+
 - **Engine correlation:** Run their moves through Stockfish at multiple depths (12, 18, 25). Compute "engine match rate" — % of moves that match the engine's top choice. Compare against the rating-appropriate baseline (a 1500 should match top engine choice in ~40% of moves; if they match in 85%, that's a flag).
 - **Centipawn loss profile:** Their average cp loss should match their rating distribution. Outliers flag.
 - **Move time vs. complexity:** Did they think for 0.5s on the only-correct hard move and 30s on the obvious recapture? Inverted thinking patterns are a flag.
 
 **Behavioral over time:**
+
 - New-account fast-rise: account ≤ 30 days old climbing rating quickly while accepting paid games → flag for sandbagging review
 - Rating-platform discrepancy: external Lichess rating 1500, Chessco paid-game performance 2200 → flag
 
 **Manual signals:**
+
 - Player report (button in game room and post-game): "I think my opponent was cheating"
 - All reports route to the queue; reporting users get trust+1 if their report is confirmed, no change if dismissed (avoid penalizing good-faith reports)
 
@@ -1119,12 +1141,12 @@ The hardest part of the marketplace, treated as a co-equal product surface, not 
 
 Severity-tiered:
 
-| Signal level | Action |
-|---|---|
-| 1 (single weak signal) | Log only |
-| 2–3 (one strong or two weak) | Background review, no user-visible action |
-| 4–5 (multiple strong) | Paid-play suspended pending review, payouts withheld |
-| 6+ or confirmed | Permanent paid-play ban, all withheld payouts forfeited (returned to creators as refunds), trust → 0, optional public ban list entry |
+| Signal level                 | Action                                                                                                                               |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| 1 (single weak signal)       | Log only                                                                                                                             |
+| 2–3 (one strong or two weak) | Background review, no user-visible action                                                                                            |
+| 4–5 (multiple strong)        | Paid-play suspended pending review, payouts withheld                                                                                 |
+| 6+ or confirmed              | Permanent paid-play ban, all withheld payouts forfeited (returned to creators as refunds), trust → 0, optional public ban list entry |
 
 ### KYC gate
 
@@ -1176,6 +1198,7 @@ Both creator and opponent must have ≥ 1 verified external account (Lichess, ch
 ### Escrow during a match
 
 When a match is created:
+
 - Debit user wallet → `escrow` account (full fee)
 - On settlement: split escrow → platform_revenue (fee portion) + opponent wallet (payout portion)
 
@@ -1187,18 +1210,19 @@ Configurable at the matches table level (snapshotted at match creation, not chan
 
 ### Withdrawal hold periods
 
-| Trust tier | Hold from earning to withdrawable |
-|---|---|
-| New / Bronze | T+5 days |
-| Silver | T+3 days |
-| Gold | T+1 day |
-| Platinum | T+0 (immediate) |
+| Trust tier   | Hold from earning to withdrawable |
+| ------------ | --------------------------------- |
+| New / Bronze | T+5 days                          |
+| Silver       | T+3 days                          |
+| Gold         | T+1 day                           |
+| Platinum     | T+0 (immediate)                   |
 
 This delay covers the refund review window plus dispute buffer.
 
 ### Dispute handling (Stripe chargebacks)
 
 When a Stripe chargeback fires on a deposit:
+
 1. Webhook `charge.dispute.created` received
 2. Lock user account from new matches
 3. Compute affected escrow / payouts and freeze any not yet withdrawn
@@ -1219,6 +1243,7 @@ When a Stripe chargeback fires on a deposit:
 ### Why separate from Vercel
 
 Vercel functions are stateless and short-lived. Live chess games need:
+
 - Long-lived WebSocket connections (5min–2hr+)
 - Server-authoritative clocks (ticking down on the server, not the client)
 - Sub-200ms move latency
@@ -1307,15 +1332,15 @@ Server → Client:
 
 ### Where Claude is used
 
-| Surface | Model | Purpose | Caching |
-|---|---|---|---|
-| Player identification evidence | Haiku | "Why we think this is the same player" prose | Per-result, 24h |
-| Prep report executive summary | Opus / Sonnet | Coach-style game plan | Per-report, 30 days |
-| Prep report risk paragraphs | Sonnet | "Lines to avoid against this opponent" | Per-report |
-| Style fingerprint description | Haiku | 1-paragraph stylistic description | Per-player, 7 days |
-| Blog content drafts | Sonnet | First-draft generation (human edits) | n/a |
-| Knowledge base FAQ matcher | Haiku | Match user question to KB article | n/a |
-| In-app help chat | Haiku | Conversational support for non-billing questions | n/a |
+| Surface                        | Model         | Purpose                                          | Caching             |
+| ------------------------------ | ------------- | ------------------------------------------------ | ------------------- |
+| Player identification evidence | Haiku         | "Why we think this is the same player" prose     | Per-result, 24h     |
+| Prep report executive summary  | Opus / Sonnet | Coach-style game plan                            | Per-report, 30 days |
+| Prep report risk paragraphs    | Sonnet        | "Lines to avoid against this opponent"           | Per-report          |
+| Style fingerprint description  | Haiku         | 1-paragraph stylistic description                | Per-player, 7 days  |
+| Blog content drafts            | Sonnet        | First-draft generation (human edits)             | n/a                 |
+| Knowledge base FAQ matcher     | Haiku         | Match user question to KB article                | n/a                 |
+| In-app help chat               | Haiku         | Conversational support for non-billing questions | n/a                 |
 
 ### What Claude is **never** used for
 
@@ -1330,7 +1355,8 @@ Server → Client:
 ### Prompt discipline
 
 Every Claude call has:
-- System prompt declaring it as a *coach*, *writer*, or *summarizer* — never an analyst
+
+- System prompt declaring it as a _coach_, _writer_, or _summarizer_ — never an analyst
 - Explicit instruction not to invent moves, evaluations, or facts
 - Structured input (JSON of computed findings) as the source of truth
 - Output schema specified (JSON for structured outputs, markdown for prose)
@@ -1351,11 +1377,13 @@ Maintain a `prompts/` directory in the monorepo. Every prompt versioned (`prep_s
 Routes (Next.js App Router):
 
 ### Authentication
+
 - `/login` — email + magic link, Google OAuth, Apple OAuth
 - `/signup` — email + password, country, date of birth, marketing consent
 - `/onboarding` — multi-step wizard (link external accounts, complete profile, choose subscription)
 
 ### Core app
+
 - `/dashboard` — landing post-login: active prep reports, open challenges, recent games, wallet balance, suggested actions
 - `/scout` — player search
 - `/p/[player_id]` — player profile
@@ -1376,6 +1404,7 @@ Routes (Next.js App Router):
 - `/account/fairplay` — own fairplay record (transparency)
 
 ### Admin (separate subdomain `admin.chessco.io`)
+
 - `/admin` — overview dashboard
 - `/admin/users` — user list, search, ban actions
 - `/admin/matches` — match search, force-settle, force-refund
@@ -1429,8 +1458,8 @@ Same Next.js app, different root layout. Public routes under `/`.
 ### Home page structure
 
 1. **Hero** — Headline + sub + CTA + video/animation of the prep loop
-   - Headline candidate: *Prepare for your next chess opponent like a grandmaster does.*
-   - Sub: *Scout any player, find their leaks, and practice the exact positions that win the game.*
+   - Headline candidate: _Prepare for your next chess opponent like a grandmaster does._
+   - Sub: _Scout any player, find their leaks, and practice the exact positions that win the game._
    - CTA: Start free / Watch demo (90s)
 2. **The loop** — 5-step animated diagram of Scout → Find → Practice → Pay → Improve
 3. **Feature 1 callout** — Player identification, with sample search animation
@@ -1486,20 +1515,21 @@ Same Next.js app, different root layout. Public routes under `/`.
 
 ### Categories
 
-| Category | Examples |
-|---|---|
-| Opening prep guides | "How to play against the Caro-Kann Advance Variation" |
-| Player profiles | "Magnus Carlsen's white repertoire: what we can learn" (titled players only, public data) |
-| Tournament prep | "How to prepare for a weekend open: a 5-day plan" |
-| Concept explainers | "What is opening theory, and how much should you study?" |
-| Tools & how-tos | "How to find someone's chess.com account from their name" |
-| Mistake patterns | "Why amateurs lose with the King's Indian (and how to fix it)" |
-| Time controls | "Blitz vs rapid prep: what changes" |
-| Case studies | "How I used Chessco to win my club championship" (user stories) |
+| Category            | Examples                                                                                  |
+| ------------------- | ----------------------------------------------------------------------------------------- |
+| Opening prep guides | "How to play against the Caro-Kann Advance Variation"                                     |
+| Player profiles     | "Magnus Carlsen's white repertoire: what we can learn" (titled players only, public data) |
+| Tournament prep     | "How to prepare for a weekend open: a 5-day plan"                                         |
+| Concept explainers  | "What is opening theory, and how much should you study?"                                  |
+| Tools & how-tos     | "How to find someone's chess.com account from their name"                                 |
+| Mistake patterns    | "Why amateurs lose with the King's Indian (and how to fix it)"                            |
+| Time controls       | "Blitz vs rapid prep: what changes"                                                       |
+| Case studies        | "How I used Chessco to win my club championship" (user stories)                           |
 
 ### SEO targets
 
 Initial 50 keyword targets focused on:
+
 - "How to prepare for [opponent / tournament / opening]"
 - "[opening name] for [color]"
 - "Chess.com vs Lichess [comparison]"
@@ -1530,6 +1560,7 @@ Initial 50 keyword targets focused on:
 ### Categories & seed articles
 
 **Getting started**
+
 - What is Chessco?
 - How to create an account
 - How to link your Lichess account
@@ -1537,18 +1568,21 @@ Initial 50 keyword targets focused on:
 - Understanding your dashboard
 
 **Player discovery**
+
 - How to search for a chess player
 - What makes our matching confident?
 - Why can't I find an anonymous player?
 - How to opt in / opt out of being discoverable
 
 **Preparation reports**
+
 - How to build your first prep report
 - Understanding the opening tree
 - Exporting a prep report to PDF
 - Refreshing a stale report
 
 **Sparring marketplace**
+
 - How sparring works
 - How fees are calculated
 - How to publish a position challenge
@@ -1557,23 +1591,27 @@ Initial 50 keyword targets focused on:
 - Why is my payout delayed?
 
 **Wallet & payments**
+
 - Adding funds to your wallet
 - Withdrawing your earnings
 - Understanding KYC requirements
 - Why was my deposit declined?
 
 **Refunds**
+
 - When can I request a refund?
 - How long do refunds take?
 - What happens if my refund is denied?
 
 **Fair play**
+
 - Our fair-play policy in plain English
 - How we detect cheating
 - What happens if I'm flagged
 - How to report a player
 
 **Account & privacy**
+
 - Changing your password
 - Deleting your account
 - Downloading your data (GDPR)
@@ -1597,6 +1635,7 @@ All drafted by Boaz initially (you have experience here — GDPR DPA v4, Informa
 #### Terms of Use (`/legal/terms`)
 
 Sections:
+
 1. Acceptance and changes
 2. Eligibility (18+ for paid features, jurisdiction restrictions)
 3. Account registration and security
@@ -1616,6 +1655,7 @@ Sections:
 #### Privacy Policy (`/legal/privacy`)
 
 GDPR + CCPA compliant. Sections:
+
 1. Data collected (account, gameplay, payment, analytics, fairplay telemetry)
 2. How we use data (service provision, fraud prevention, AI training — opt-in only)
 3. Legal bases (contract, legitimate interest, consent)
@@ -1634,6 +1674,7 @@ Plain-English version of §11. Lists valid refund reasons, ineligible reasons, r
 #### Fair Play Policy (`/legal/fair-play`)
 
 Plain-English version of §12. Covers:
+
 - No engine assistance during games
 - No collusion / arranged outcomes
 - No multi-accounting
@@ -1644,6 +1685,7 @@ Plain-English version of §12. Covers:
 #### Acceptable Use Policy (`/legal/acceptable-use`)
 
 What users can't do beyond cheating:
+
 - Harassment, hate speech, threats
 - Impersonation
 - Spam / scraping
@@ -1672,23 +1714,23 @@ Downloadable PDF for B2B users (coaches, schools, organizations that put student
 
 ### Transactional emails (Resend)
 
-| Trigger | Template |
-|---|---|
-| Account signup | Welcome + verification |
-| Email change | Verification |
-| Password reset | Reset link |
-| Match accepted | "Your challenge has been accepted, game starts in N seconds" |
-| Match completed | Result + earnings (opponent) / spend (creator) |
-| Refund filed | Confirmation + timeline |
-| Refund resolved | Decision + rationale |
-| Fairplay flag | Initial notice with appeal info |
-| KYC required | "Complete KYC to withdraw" |
-| Deposit succeeded | Receipt |
-| Withdrawal initiated | Confirmation + ETA |
-| Withdrawal completed | Confirmation |
-| Subscription renewed | Receipt |
-| Subscription expiring | 7-day, 1-day reminders |
-| Prep report ready | "Your report on [opponent] is ready" |
+| Trigger               | Template                                                     |
+| --------------------- | ------------------------------------------------------------ |
+| Account signup        | Welcome + verification                                       |
+| Email change          | Verification                                                 |
+| Password reset        | Reset link                                                   |
+| Match accepted        | "Your challenge has been accepted, game starts in N seconds" |
+| Match completed       | Result + earnings (opponent) / spend (creator)               |
+| Refund filed          | Confirmation + timeline                                      |
+| Refund resolved       | Decision + rationale                                         |
+| Fairplay flag         | Initial notice with appeal info                              |
+| KYC required          | "Complete KYC to withdraw"                                   |
+| Deposit succeeded     | Receipt                                                      |
+| Withdrawal initiated  | Confirmation + ETA                                           |
+| Withdrawal completed  | Confirmation                                                 |
+| Subscription renewed  | Receipt                                                      |
+| Subscription expiring | 7-day, 1-day reminders                                       |
+| Prep report ready     | "Your report on [opponent] is ready"                         |
 
 ### Lifecycle emails (Loops or Customer.io)
 
@@ -1716,6 +1758,7 @@ Downloadable PDF for B2B users (coaches, schools, organizations that put student
 Role-gated. Required surfaces:
 
 **Overview**
+
 - Active users (DAU/WAU/MAU)
 - Live matches now
 - Open challenges
@@ -1724,32 +1767,38 @@ Role-gated. Required surfaces:
 - Today's revenue, payouts, refunds
 
 **User management**
+
 - Search by handle / email / id
 - View profile, ratings, trust score, match history, wallet, fairplay history
 - Actions: warn, suspend paid play, ban, force-KYC, manually adjust balance (with reason + audit log)
 
 **Match management**
+
 - Search by match id, user, status
 - View full game state, telemetry, PGN
 - Actions: force-settle, force-refund, abort, override fairplay flag
 
 **Refund queue**
+
 - Pending refunds with all evidence
 - Filter by reason code, age
 - Bulk actions for auto-approvable patterns
 
 **Fairplay queue**
+
 - Pending flags sorted by severity
 - Review interface with engine correlation analysis, telemetry replay, game replay
 - Decision: confirm / dismiss with notes
 
 **Finance**
+
 - Ledger viewer with filters
 - Daily reconciliation report (escrow balance vs sum of pending_cents)
 - Stripe sync status
 - Manual transactions (with audit log)
 
 **Content**
+
 - Blog post draft / publish
 - KB article draft / publish
 - Legal page versioning
@@ -1772,12 +1821,14 @@ Maintain `/ops/runbooks/` in the repo as MDX:
 ## 23. Monitoring & Analytics
 
 ### Error tracking
+
 - Sentry on web, gameserver, workers
 - Source maps uploaded on build
 - Performance tracing on critical paths (game start, match settlement, prep report generation)
 - Alerts: error rate spike, error rate per release, p95 latency degradation
 
 ### Product analytics
+
 - PostHog: event tracking, funnels, feature flags, session replay (sampled)
 - Key events:
   - `signup_completed`
@@ -1792,11 +1843,13 @@ Maintain `/ops/runbooks/` in the repo as MDX:
   - `subscription_started`
 
 ### Business analytics
+
 - Daily ETL from Postgres to a small analytics DB (could just be a separate Supabase project with read-replica)
 - Metabase or Hex for dashboards
 - Track: MRR, ARPU, conversion funnel, match volume, take rate, refund rate, fairplay rate, churn
 
 ### Infrastructure monitoring
+
 - BetterStack for uptime checks (every 60s on critical routes)
 - Vercel native metrics
 - Fly.io metrics (game server CPU, memory, websocket connection count)
@@ -1804,6 +1857,7 @@ Maintain `/ops/runbooks/` in the repo as MDX:
 - Supabase observability for DB
 
 ### Alerts to Slack
+
 - Error rate > threshold
 - Game server CPU > 80%
 - Pending refund queue > N items
@@ -1816,22 +1870,26 @@ Maintain `/ops/runbooks/` in the repo as MDX:
 ## 24. Security & Compliance
 
 ### Authentication
+
 - Supabase Auth with email + OAuth (Google, Apple)
 - 2FA optional for users, **mandatory for admins**
 - Session timeout: 30 days idle
 - Recently authenticated requirement for: changing email, requesting withdrawal, deleting account
 
 ### Authorization
+
 - Supabase Row-Level Security on every table
 - Users can only read/modify their own rows except for the explicitly public surfaces (player profiles, challenge lobby)
 - Admin queries via dedicated service role, audit-logged
 
 ### Secrets
+
 - All API keys in Vercel env (production), GitHub Secrets (CI), .env.local (dev)
 - Rotate: monthly for sensitive (Stripe, Anthropic), quarterly for others
 - No secrets in source code, ever
 
 ### Data retention
+
 - Active accounts: data retained while account is active
 - Closed accounts: anonymized after 30 days (handle replaced, email scrubbed, but games kept for opponent integrity)
 - Fairplay logs: kept for 2 years for repeat-offender detection
@@ -1839,21 +1897,25 @@ Maintain `/ops/runbooks/` in the repo as MDX:
 - Audit logs: kept for 2 years minimum
 
 ### GDPR compliance
+
 - Data subject requests handled via `/account` (download my data, delete my account)
 - 30-day response SLA
 - Subprocessor list maintained on `/legal/subprocessors`
 - DPA available for B2B
 
 ### Penetration testing
+
 - Annual third-party pen test (budget for $5–10k)
 - Bug bounty program later (HackerOne) once volume justifies
 
 ### Backups
+
 - Supabase automatic daily backups, retained 7 days on starter plan; upgrade for longer retention before launch
 - Manual monthly export to encrypted offsite storage (S3 with versioning)
 - Quarterly restore drills
 
 ### Incident response
+
 - Documented runbook
 - Single point of contact rotating on-call
 - Communication template for user-facing incidents
@@ -1970,19 +2032,19 @@ Soft launch to Israel + EU only. US delayed pending state-by-state legal review.
 
 ## 26. Risk Register
 
-| Risk | Probability | Impact | Mitigation |
-|---|---|---|---|
-| Gambling regulation in target market | Medium | Severe | Completion-based payout structure; legal review per jurisdiction; geo-block where unclear |
-| Engine cheating destroys trust | High | Severe | Multi-layer anti-cheat from launch; hold periods; KYC; linked-account requirement |
-| Lichess / chess.com API access changes | Low | Medium | Cache aggressively; user uploads as fallback; monthly DB dumps as backbone |
-| Stripe rejects platform classification | Medium | Severe | Use established services MCC; Stripe contact Mitch involved early; have backup processor (Adyen, Checkout.com) |
-| Player identification doxxing complaint | Medium | High | Default opt-in only; aggressive delist; explicit ethical policy |
-| AI hallucination in prep reports | Medium | Medium | LLM never generates chess content directly; strict prompt discipline; evals |
-| Game server outage during paid match | Low | Medium | Multi-instance; auto-resume from Redis; full refund on technical failure |
-| Sandbagging | High | Medium | External rating prior; rating-band stretching limits; review queue |
-| Withdrawal fraud (stolen card → deposit → match → withdraw) | Medium | High | Hold periods; trust-tier withdrawal caps; KYC gates; Stripe Radar |
-| Low marketplace liquidity (no opponents) | Medium | High | Seed with paid sparring partners (FM/IM contractors); subsidize early payouts |
-| Customer support overload | High | Low (each) | Aggressive KB; auto-resolution for refunds; in-app help chat with Haiku |
+| Risk                                                        | Probability | Impact     | Mitigation                                                                                                     |
+| ----------------------------------------------------------- | ----------- | ---------- | -------------------------------------------------------------------------------------------------------------- |
+| Gambling regulation in target market                        | Medium      | Severe     | Completion-based payout structure; legal review per jurisdiction; geo-block where unclear                      |
+| Engine cheating destroys trust                              | High        | Severe     | Multi-layer anti-cheat from launch; hold periods; KYC; linked-account requirement                              |
+| Lichess / chess.com API access changes                      | Low         | Medium     | Cache aggressively; user uploads as fallback; monthly DB dumps as backbone                                     |
+| Stripe rejects platform classification                      | Medium      | Severe     | Use established services MCC; Stripe contact Mitch involved early; have backup processor (Adyen, Checkout.com) |
+| Player identification doxxing complaint                     | Medium      | High       | Default opt-in only; aggressive delist; explicit ethical policy                                                |
+| AI hallucination in prep reports                            | Medium      | Medium     | LLM never generates chess content directly; strict prompt discipline; evals                                    |
+| Game server outage during paid match                        | Low         | Medium     | Multi-instance; auto-resume from Redis; full refund on technical failure                                       |
+| Sandbagging                                                 | High        | Medium     | External rating prior; rating-band stretching limits; review queue                                             |
+| Withdrawal fraud (stolen card → deposit → match → withdraw) | Medium      | High       | Hold periods; trust-tier withdrawal caps; KYC gates; Stripe Radar                                              |
+| Low marketplace liquidity (no opponents)                    | Medium      | High       | Seed with paid sparring partners (FM/IM contractors); subsidize early payouts                                  |
+| Customer support overload                                   | High        | Low (each) | Aggressive KB; auto-resolution for refunds; in-app help chat with Haiku                                        |
 
 ---
 
@@ -2061,6 +2123,7 @@ Week 5–6: Profile pages, basic UI shell.
 ### Estimated build cost
 
 Phases 0–4 to revenue-generating MVP:
+
 - ~32–40 weeks of engineering at 1–2 FT engineers
 - ~$80–120k in engineering cost (depending on location)
 - ~$5–10k legal (initial + Phase 4 sign-off)

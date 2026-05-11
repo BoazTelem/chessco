@@ -1,0 +1,26 @@
+{
+  "name": "chessco",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Chessco — Scout. Prepare. Win. — chess preparation and sparring platform",
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json,yaml,yml,css}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,md,json,yaml,yml,css}\"",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "turbo": "^2.3.3",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}
