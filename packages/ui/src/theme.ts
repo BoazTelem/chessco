@@ -2,10 +2,29 @@ export const brand = {
   name: 'Chessco',
   domain: 'chessco.org',
   slogan: 'Scout. Prepare. Win.',
+  /**
+   * Marketplace surfaces (challenge lobby, /challenges/new, /game/*, /account/wallet)
+   * must avoid result-conditional framing per spec §3 & §17. The word "Win" cannot
+   * appear within two viewport-screens of any fee or payout amount on these surfaces.
+   * Use `marketplaceSubTagline` there instead of `slogan`.
+   */
+  marketplaceSubTagline: 'Practice the positions that matter.',
   description:
-    'Scout any chess opponent, find their leaks, and practice the exact positions that win the game.',
+    "Find your next opponent's online games. Build a battle plan. Practice the exact positions that matter.",
   loop: ['Scout', 'Find', 'Practice', 'Pay', 'Improve'] as const,
 } as const;
+
+/**
+ * Surface classification — which tagline to render where.
+ *
+ * `master`: prep-focused surfaces (home, /scout, /reports, /p/*, /dashboard, blog).
+ * `marketplace`: any surface where match fees / payouts / paid play are visible.
+ */
+export type BrandSurface = 'master' | 'marketplace';
+
+export function taglineFor(surface: BrandSurface): string {
+  return surface === 'marketplace' ? brand.marketplaceSubTagline : brand.slogan;
+}
 
 /**
  * Design tokens for the Chessco brand.

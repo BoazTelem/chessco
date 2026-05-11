@@ -1,11 +1,15 @@
 # Chessco — Full System Specification
 
-**Working name:** Chessco (final name TBD — validate availability, trademark, and `.com` before brand work)
-**Version:** 1.0 (Plan Mode — pre-development)
+**Name:** Chessco
+**Domain:** chessco.org (`.com` to acquire if available; see §27)
+**Slogan:** Scout. Prepare. Win.
+**Version:** 1.1 (Plan Mode — pre-development)
 **Document type:** Developer handover specification
 **Author:** Boaz Telem
 **Status:** Draft for review
 **Last updated:** 2026-05-11
+
+> **Branding note for marketplace surfaces:** The slogan "Scout. Prepare. Win." anchors the master brand and is appropriate for the prep features (Feature 1 and Feature 2). On marketplace surfaces (Feature 3 — paid sparring), copy must avoid result-conditional framing per §3. Use the marketplace sub-tagline _"Practice the positions that matter"_ (or equivalent) instead of "Win" wherever fees and payouts are visible on the same surface.
 
 ---
 
@@ -108,7 +112,7 @@ Subscription gates the _intelligence_; the marketplace is gated by _verification
               │   (PGN ingest,     │         │   (matchmaking queue,│
               │   Stockfish batch, │         │   game state cache,  │
               │   embedding build, │         │   rate limits,       │
-              │   AI reports)     │         │   presence)          │
+              │   AI reports)      │         │   presence)          │
               └──────┬──────┬──────┘         └──────────────────────┘
                      │      │
                      ▼      ▼
@@ -270,6 +274,65 @@ verification_tokens
   expires_at timestamptz
 ```
 
+### Federations & official rating lists
+
+These tables hold the **canonical real-world identity anchors** — official OTB rating lists from FIDE and national federations. Per the architectural shift documented in §6, identification is name-anchored against these tables first, then matched to online accounts.
+
+```sql
+federations
+  id text PK                       -- 'FIDE' | 'USCF' | 'ECF' | 'DSB' | 'FSI' | ...
+  name text                        -- 'International Chess Federation'
+  country text                     -- nullable for FIDE (international)
+  rating_list_url text             -- source URL for ingestion
+  rating_list_format text          -- 'xml' | 'csv' | 'json' | 'html'
+  sync_cadence text                -- 'monthly' | 'quarterly' | 'manual'
+  last_synced_at timestamptz
+  active boolean
+
+federation_players               -- one row per (federation × person)
+  id uuid PK
+  federation_id text FK → federations
+  federation_player_id text      -- the player's id in that federation (FIDE ID, USCF ID, etc.)
+  name text                      -- "Telem, Boaz" (federation's canonical form)
+  name_normalized text           -- "boaz telem" (lowercased, accent-stripped, for fuzzy match)
+  country text                   -- ISO 3166-1 alpha-2; player's federation country
+  birth_year int                 -- if public
+  gender char(1)
+  title text                     -- 'GM' | 'IM' | 'FM' | 'CM' | 'WGM' | etc., nullable
+  rating_standard int            -- nullable
+  rating_rapid int
+  rating_blitz int
+  rating_quick int               -- USCF-specific
+  player_id uuid FK → players    -- nullable; set when resolved to canonical player
+  last_updated_at timestamptz
+  raw jsonb                      -- original record for diffing
+  UNIQUE (federation_id, federation_player_id)
+  INDEX (name_normalized)        -- trigram index
+  INDEX (country, rating_standard)
+  INDEX (player_id)
+
+federation_rating_snapshots    -- monthly history of ratings (for trend analysis)
+  id bigserial PK
+  federation_player_id uuid FK → federation_players
+  snapshot_date date
+  rating_standard int
+  rating_rapid int
+  rating_blitz int
+  title text
+  UNIQUE (federation_player_id, snapshot_date)
+  INDEX (federation_player_id, snapshot_date DESC)
+```
+
+**Trigram index for name search:**
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX federation_players_name_trgm_idx
+  ON federation_players USING gin (name_normalized gin_trgm_ops);
+```
+
+This enables fast fuzzy lookup like `WHERE name_normalized % 'boaz telem'` returning hits even with typos or formatting variation.
+
 ### Players, games, positions
 
 Note: **players** is the canonical "person" concept. A profile is a registered user. A player may exist without a profile (e.g. a famous GM whose games we have ingested but who hasn't signed up).
@@ -352,6 +415,8 @@ moves
   INDEX (fen_before_id)
 ```
 
+**Partitioning note.** The `games` and `moves` tables will dominate storage. Plan to partition `games` by `played_at` month (monthly partitions) from day one — see §6 "Storage realism." Drizzle supports declarative partitioning via raw SQL migrations.
+
 ### Per-player aggregates (the analytical backbone)
 
 ```sql
@@ -389,6 +454,34 @@ style_features                  -- engineered feature vector per player
   features jsonb                -- 200-500 named features
   computed_at timestamptz
   games_window int              -- how many recent games this is based on
+```
+
+### Identification queries & candidates
+
+Persist identification results so users can revisit, refine, and audit:
+
+```sql
+identification_queries
+  id uuid PK
+  requested_by uuid FK → profiles
+  query_payload jsonb            -- name, country, FIDE ID, rating range, PGN sample, etc.
+  status text                    -- 'pending' | 'ready' | 'failed'
+  created_at, completed_at
+
+identification_candidates
+  id bigserial PK
+  query_id uuid FK → identification_queries
+  rank int                       -- 1..5
+  federation_player_id uuid FK → federation_players  -- nullable if anonymous-only result
+  player_id uuid FK → players    -- nullable
+  confidence_label text          -- 'high' | 'medium' | 'low'
+  combined_score numeric
+  anchor_score numeric           -- Stage 1
+  handle_score numeric           -- Stage 2
+  style_score numeric            -- Stage 3
+  evidence jsonb                 -- structured findings + LLM-generated evidence prose
+  created_at
+  INDEX (query_id, rank)
 ```
 
 ### Reports
@@ -623,6 +716,7 @@ admin_users
 - `player_position_stats(player_id, games_count DESC)` for "most common positions"
 - `challenges` partial index `WHERE status = 'open'` for the lobby feed
 - pgvector HNSW index on `players.embedding`
+- pg_trgm GIN index on `federation_players.name_normalized` (declared above)
 
 ---
 
@@ -652,28 +746,83 @@ Take partial information about an opponent and return a ranked list of candidate
 
 ### Ingestion pipeline
 
-| Source                           | Method                     | Frequency      | Notes                                                         |
-| -------------------------------- | -------------------------- | -------------- | ------------------------------------------------------------- |
-| Lichess monthly DB dumps         | Download + parse           | Monthly        | Filter to rated games ≥ 1500 in last 24 months; reduce volume |
-| Lichess user API                 | API call on demand         | Per-query      | Cache 7 days                                                  |
-| Chess.com PubAPI player archives | API call on demand         | Per-query      | Read-only; cache 7 days                                       |
-| FIDE ratings list                | XML download               | Monthly        | OTB titled players, ratings, federation                       |
-| Chess-Results                    | Manual / occasional scrape | Per-tournament | Respect robots.txt, low volume                                |
-| User uploads                     | Direct upload              | On demand      | PGN parser; up to 1000 games per upload                       |
+**Priority order — build in this sequence:**
+
+| #   | Source                               | Method                | Frequency      | Notes                                                                                      |
+| --- | ------------------------------------ | --------------------- | -------------- | ------------------------------------------------------------------------------------------ |
+| 1   | **FIDE ratings list**                | XML download          | Monthly        | ~400k rated players globally; the canonical identity anchor for all OTB-titled play        |
+| 2   | **USCF top lists & member lookup**   | HTML + manual         | Monthly        | US-specific anchor; ratings list is public, full member directory is paywalled             |
+| 3   | **Lichess monthly DB dumps**         | zstd-compressed PGN   | Monthly        | Filter to rated games ≥ 1500 in last 24 months; parse with `pgn-extract` or `python-chess` |
+| 4   | **Chess.com PubAPI player archives** | API call on demand    | Per-query      | Read-only; cache 7 days per player                                                         |
+| 5   | **Lichess user API**                 | API call on demand    | Per-query      | OAuth for the user's own account; public endpoints for others; respect rate limits         |
+| 6   | **Additional national federations**  | Per-federation parser | Monthly        | ECF (UK), DSB (DE), FSI (IT), FFE (FR), etc. — add as launch markets expand                |
+| 7   | **Chess-Results**                    | Manual / sparingly    | Per-tournament | OTB tournament cross-tables; respect robots.txt                                            |
+| 8   | **User uploads**                     | Direct upload         | On demand      | PGN parser, up to 1000 games per upload                                                    |
+
+**Why this order matters.** Steps 1–3 build the canonical identity-and-games corpus. Step 4 is lazy: chess.com cannot be bulk-ingested (their PubAPI is read-only, no bulk endpoint), so we fetch per-player on demand and cache. Steps 5+ are incremental.
 
 **Rate limit handling:** Lichess explicitly prefers serial requests with backoff on 429. Implement a token-bucket rate limiter in the Inngest workers with conservative defaults (60 requests/min for Lichess, 30/min for chess.com). Cache aggressively.
 
-**Storage strategy:** Don't store every game from every player globally. Tier:
+**Storage tiering:** Don't store every game from every player globally. Tier:
 
 - **Tier A (hot, fully analyzed):** Players who are subjects of active prep reports, plus their recent 200 games each, with engine analysis on every move.
 - **Tier B (warm, partial analysis):** Players in our database from prior queries, last 100 games each, opening + cp loss only.
 - **Tier C (cold, indexed only):** Lichess monthly dump games at scale, used for stylometry training and lookup; no per-game engine analysis.
 
-### Identification engine
+**Storage realism:** Filtered Lichess (rated ≥ 1500, last 24 months) is roughly 150–200M games, ~400–600GB normalized in Postgres with FEN interning. Plan to partition `games` by `played_at` month from day one. If this exceeds Supabase's tier limits, split the games corpus to a dedicated Postgres (RDS or Cloud SQL) and keep Supabase for app data.
 
-Two-stage:
+### Identification engine (name-anchored, three-stage)
 
-**Stage 1 — Engineered features.** Compute 200–500 named features per player from their game corpus:
+The architecture is **name-anchored against official rating lists**, not style-anchored. Style is a verifier, not a searcher. (Architectural note: this approach was validated by SnoopChess's product, which proves the name-anchored approach works at scale — see Appendix C.)
+
+**Stage 1 — Resolve identity anchor.**
+
+Parse the query to extract: name, country, federation, FIDE/USCF ID, rating range, title. Query `federation_players` using trigram fuzzy match on `name_normalized`, filtered by country/federation/rating where provided. Return top 5–20 candidate federation records, each with confidence based on:
+
+- Exact ID match (federation_player_id provided) → 1.0
+- Trigram similarity score on normalized name
+- Country / federation match (boosts)
+- Rating-range match (boosts)
+
+If the user provided no real-world identity (e.g. only a username, only a PGN, only an opening), skip Stage 1 and go straight to Stage 3 using anonymous candidates from external accounts.
+
+**Stage 2 — Find candidate online accounts per anchor.**
+
+For each Stage 1 candidate, generate hypotheses for online accounts:
+
+- Query `external_accounts` for handles where `handle ~ name_parts` (e.g. "Telem" → "telembx", "btelem", "boazt", etc.) using trigram on handle
+- Query `external_accounts` by country match
+- Query by rating-band match (their online blitz/rapid should be within ±300 of their FIDE standard)
+- Optional: live-fetch chess.com / Lichess for handles matching the name pattern, if not in our cache
+
+Output per anchor: up to 10 candidate handles across platforms.
+
+**Stage 3 — Stylometric verification & ranking.**
+
+For each candidate (anchor × handle) pair:
+
+1. Pull the candidate's recent games (from cache or live fetch)
+2. Compute engineered features (opening repertoire, average cp loss, time management curve, tactical patterns)
+3. If the user supplied a sample PGN, compute features for it; otherwise use only the candidate's own features
+4. Compute embedding via the trained encoder; compare against:
+   - The user's sample PGN embedding (if provided), OR
+   - Other candidate handles for the same anchor (sibling-account consistency check)
+5. Score each (anchor, handle) by:
+   - Stage 1 anchor confidence × Stage 2 handle plausibility × Stage 3 stylistic consistency
+   - Activity recency (heavy weight on last 90 days)
+   - Cross-platform consistency (handles on Lichess and chess.com that match each other earn a boost)
+6. Return top 5 with confidence labels (`high` / `medium` / `low`) and evidence text generated by Claude from the structured findings
+
+**Confidence thresholds (initial):**
+
+- `high`: combined score > 0.80, top result > 2× second result
+- `medium`: combined score > 0.60
+- `low`: combined score > 0.40
+- Below 0.40 → return no results rather than guess
+
+**Engineered features and learned embedding (technical detail).**
+
+Engineered features per player corpus (200–500 named features):
 
 - Opening repertoire histogram (top 30 ECO codes by frequency, separated by color)
 - Average centipawn loss by phase (opening 1–15, middlegame 16–40, endgame 41+)
@@ -686,48 +835,39 @@ Two-stage:
 - Resign behavior (resigns when losing by how much, on average)
 - Draw offer frequency
 
-Store as `style_features.features` jsonb, plus pre-compute the float vector for fast comparison.
+Stored as `style_features.features` jsonb plus the float vector for fast comparison.
 
-**Stage 2 — Learned embedding.** Train a small transformer encoder that ingests a sequence of game-level feature vectors and outputs a 384-dim embedding. Training objective: contrastive loss — embeddings of two random game batches from the same player should be close (cosine), batches from different players should be far. Store as `players.embedding` via pgvector.
-
-**Matching pipeline:**
-
-1. Apply hard filters from query (rating ±200, country if specified, platform if specified, title if specified)
-2. Compute candidate set (usually 100–10,000 players after filters)
-3. Vector search the embedding for top-K (K=50) by cosine similarity
-4. Re-rank top-K by structured matching against engineered features (opening overlap, time-control overlap)
-5. Compute confidence label based on:
-   - Top score vs. second-place score (large gap → high confidence)
-   - Absolute top score (cosine ≥ 0.85 → high)
-   - Hard filter strictness (more filters matched → higher confidence)
-6. Generate LLM evidence text for top 5
+Learned embedding: a small transformer encoder ingests a sequence of game-level feature vectors and outputs a 384-dim embedding. Training objective: contrastive loss — embeddings of two random game batches from the same player should be close (cosine), batches from different players should be far. Store as `players.embedding` via pgvector.
 
 ### Privacy & ethics (mandatory defaults)
 
-- **Default identification scope:** Only profiles that have explicitly opted in to being discoverable, plus public figures (FIDE-titled players, public streamers, players with verified social media).
-- **Anonymous accounts are off-limits** by default. A user can opt in to "make my anonymous accounts discoverable" if they want — it's a privacy _choice_, not the default.
-- **Doxxing prevention:** Search results never display physical addresses, real-time location, or any data not voluntarily public on the source platform.
-- **Right to delist:** Any player can request removal of their player record at no cost. Verified ownership via email-on-file or platform OAuth.
+- **Default identification scope:** Public OTB-rated players (FIDE, USCF, national federation members) are inherently public — their name, country, and rating are voluntarily published by the federation. Linking them to their own publicly-played Lichess/chess.com accounts is permitted by default.
+- **Anonymous online accounts are off-limits** by default. A user can opt in to "make my anonymous accounts discoverable" if they want — it's a privacy _choice_, not the default.
+- **Doxxing prevention:** Search results never display physical addresses, real-time location, contact info, or any data not voluntarily public on the source platform or rating list.
+- **Right to delist:** Any player can request removal of their player record at no cost. Verified ownership via email-on-file or platform OAuth. Federation rating data can be hidden from search even if technically public, on request.
 - **No identification of suspected cheaters by third parties.** "Help me find out who this engine user is" is an explicit no.
+- **No reverse-lookup tools.** We do not offer "given this Lichess handle, find their real identity" — only the forward direction (given real identity, find their online play). The reverse direction would invite stalking; we don't build it.
 
 ### UX (player search & profile)
 
 **Search page (`/scout`):**
 
 - Single command-bar input at top, accepting any of the inputs above
-- Filter chips below: country, rating range, platform, title, time class
-- Results render as cards with: name, country flag, peak rating, tags ("Najdorf player", "fast bullet", "endgame strong"), linked external accounts, "Build prep report" CTA
+- Filter chips below: country, rating range, federation, title, time class
+- Results render as cards with: name, country flag, peak rating, federation badge (FIDE/USCF/etc.), tags ("Najdorf player", "fast bullet", "endgame strong"), linked external accounts, "Build prep report" CTA
 - Empty state: explainer + sample queries
+- Federation browse mode: `/scout/federation/{id}` shows ranked lists by federation (mirroring what SnoopChess exposes; useful for SEO and discovery)
 
 **Player profile page (`/p/[player_id]`):**
 
-- Header: name, photo (if public), country, title, peak ratings across platforms
-- Tabs: Overview, Openings, Mistakes, Recent games, Style fingerprint
+- Header: name, photo (if public), country, title, peak ratings across platforms, federation IDs
+- Tabs: Overview, Openings, Mistakes, Recent games, Style fingerprint, Ratings history
 - Overview: 6-card grid — preferred openings, strongest time class, win-rate trend, opening surprise factor, endgame strength, time management style
 - Openings: sunburst of repertoire by color
 - Mistakes: heatmap of common blunder positions, with most frequent ones clickable
 - Recent games: paginated list with engine-eval mini-graphs
 - Style fingerprint: prose summary (LLM) + radar chart on 8 axes
+- Ratings history: chart of standard/rapid/blitz across federations and online platforms over time
 - Sticky CTA: "Prepare to play against this player"
 
 ---
@@ -1260,7 +1400,7 @@ Vercel cannot do this; serverless functions time out. The game server is a dedic
 
 ### WebSocket protocol
 
-Connection URL: `wss://gameserver.chessco.io/match/{match_id}?token={jwt}`
+Connection URL: `wss://gameserver.chessco.org/match/{match_id}?token={jwt}`
 
 JWT carries `profile_id` and `match_id`; signed by web app, verified by game server. Includes short expiry.
 
@@ -1403,7 +1543,7 @@ Routes (Next.js App Router):
 - `/account/kyc` — Stripe onboarding redirect
 - `/account/fairplay` — own fairplay record (transparency)
 
-### Admin (separate subdomain `admin.chessco.io`)
+### Admin (separate subdomain `admin.chessco.org`)
 
 - `/admin` — overview dashboard
 - `/admin/users` — user list, search, ban actions
@@ -1411,6 +1551,7 @@ Routes (Next.js App Router):
 - `/admin/refunds` — refund queue
 - `/admin/fairplay` — fairplay flag queue
 - `/admin/finance` — ledger viewer, daily reconciliation, payout overrides
+- `/admin/ingestion` — ingestion worker dashboards (FIDE, USCF, Lichess dumps)
 - `/admin/content` — KB and blog CMS (or use a headless CMS — see §19, §20)
 
 ### Component design
@@ -1457,19 +1598,28 @@ Same Next.js app, different root layout. Public routes under `/`.
 
 ### Home page structure
 
-1. **Hero** — Headline + sub + CTA + video/animation of the prep loop
-   - Headline candidate: _Prepare for your next chess opponent like a grandmaster does._
-   - Sub: _Scout any player, find their leaks, and practice the exact positions that win the game._
+1. **Hero** — Slogan + sub + CTA + video/animation of the prep loop
+   - Slogan (lockup with logo): **Scout. Prepare. Win.**
+   - Sub: _Find your next opponent's online games. Build a battle plan. Practice the exact positions that matter._
    - CTA: Start free / Watch demo (90s)
 2. **The loop** — 5-step animated diagram of Scout → Find → Practice → Pay → Improve
 3. **Feature 1 callout** — Player identification, with sample search animation
 4. **Feature 2 callout** — Opponent prep report, with sample sunburst opening tree
-5. **Feature 3 callout** — Sparring marketplace, with sample challenge cards
+5. **Feature 3 callout** — Sparring marketplace, with sample challenge cards (use marketplace sub-tagline here, not "Win")
 6. **Social proof** — testimonials, titled-player endorsements (when available), press
 7. **Pricing teaser** — three pricing tiers, link to full pricing
 8. **FAQ** — 6 most common questions
 9. **Final CTA**
 10. **Footer** — sitemap, legal, social, language switcher
+
+### Copywriting rules (mandatory)
+
+These rules extend the forbidden vocabulary in §3:
+
+- **"Scout. Prepare. Win." is the master tagline.** Use on prep-focused surfaces: home, scout, prep reports, blog, app dashboard. Lock it up with the logo.
+- **Marketplace surfaces use a different sub-tagline.** Any page where match fees, payouts, or the act of playing for fees is visible (challenge lobby, create-challenge, game room, wallet) must use _"Practice the positions that matter"_ or equivalent. The word "Win" must not appear within two viewport-screens of any fee amount or payout amount. This protects the legal framing from §3.
+- **The opponent is never "competing for" the fee.** They are "playing to complete the session." Copy must reflect this.
+- **No outcome-conditional language** anywhere marketplace fees appear: avoid "earn by winning," "profit from your games," "compete for cash." Use "earn by completing sessions," "get paid to play prep positions," "sparring fees."
 
 ### Brand voice
 
@@ -1515,16 +1665,16 @@ Same Next.js app, different root layout. Public routes under `/`.
 
 ### Categories
 
-| Category            | Examples                                                                                  |
-| ------------------- | ----------------------------------------------------------------------------------------- |
-| Opening prep guides | "How to play against the Caro-Kann Advance Variation"                                     |
-| Player profiles     | "Magnus Carlsen's white repertoire: what we can learn" (titled players only, public data) |
-| Tournament prep     | "How to prepare for a weekend open: a 5-day plan"                                         |
-| Concept explainers  | "What is opening theory, and how much should you study?"                                  |
-| Tools & how-tos     | "How to find someone's chess.com account from their name"                                 |
-| Mistake patterns    | "Why amateurs lose with the King's Indian (and how to fix it)"                            |
-| Time controls       | "Blitz vs rapid prep: what changes"                                                       |
-| Case studies        | "How I used Chessco to win my club championship" (user stories)                           |
+| Category            | Examples                                                                             |
+| ------------------- | ------------------------------------------------------------------------------------ |
+| Opening prep guides | "How to play against the Caro-Kann Advance Variation"                                |
+| Player profiles     | "Magnus Carlsen's white repertoire: what we can learn" (titled players only, public) |
+| Tournament prep     | "How to prepare for a weekend open: a 5-day plan"                                    |
+| Concept explainers  | "What is opening theory, and how much should you study?"                             |
+| Tools & how-tos     | "How to find someone's chess.com account from their name"                            |
+| Mistake patterns    | "Why amateurs lose with the King's Indian (and how to fix it)"                       |
+| Time controls       | "Blitz vs rapid prep: what changes"                                                  |
+| Case studies        | "How I used Chessco to win my club championship" (user stories)                      |
 
 ### SEO targets
 
@@ -1753,7 +1903,7 @@ Downloadable PDF for B2B users (coaches, schools, organizations that put student
 
 ## 22. Admin & Operations
 
-### Admin dashboard (`admin.chessco.io`)
+### Admin dashboard (`admin.chessco.org`)
 
 Role-gated. Required surfaces:
 
@@ -1797,6 +1947,12 @@ Role-gated. Required surfaces:
 - Stripe sync status
 - Manual transactions (with audit log)
 
+**Ingestion**
+
+- FIDE / USCF / Lichess dump run history with metrics
+- Manual-trigger buttons
+- Per-federation health (last successful run, error rates)
+
 **Content**
 
 - Blog post draft / publish
@@ -1807,6 +1963,7 @@ Role-gated. Required surfaces:
 
 Maintain `/ops/runbooks/` in the repo as MDX:
 
+- `fide-ingestion.md`
 - `engine-cheating-investigation.md`
 - `payment-dispute.md`
 - `account-takeover.md`
@@ -1864,6 +2021,7 @@ Maintain `/ops/runbooks/` in the repo as MDX:
 - Daily reconciliation mismatch
 - Stripe webhook failure
 - Inngest workflow failure
+- FIDE ingestion failure or unexpected delta
 
 ---
 
@@ -1879,7 +2037,7 @@ Maintain `/ops/runbooks/` in the repo as MDX:
 ### Authorization
 
 - Supabase Row-Level Security on every table
-- Users can only read/modify their own rows except for the explicitly public surfaces (player profiles, challenge lobby)
+- Users can only read/modify their own rows except for the explicitly public surfaces (player profiles, challenge lobby, federation player records)
 - Admin queries via dedicated service role, audit-logged
 
 ### Secrets
@@ -1926,26 +2084,34 @@ Maintain `/ops/runbooks/` in the repo as MDX:
 
 Estimated timelines assume a small team (1–2 full-stack engineers + 1 part-time designer + Boaz as PM).
 
-### Phase 0 — Foundation (4–6 weeks)
+### Phase 0 — Foundation (5–7 weeks)
 
-**Goal:** A user can sign up, link external accounts, and see their own games.
+**Goal:** A user can sign up, link external accounts, see their own games, and search the federation player database.
 
 - Monorepo setup, CI, environments
-- Supabase project, full schema migrations
+- Supabase project, full schema migrations including `federations` and `federation_players`
 - Auth + onboarding
 - Lichess OAuth + chess.com bio-token verification
-- PGN import worker (own games)
+- **FIDE ratings list ingestion worker** (the canonical identity anchor — see separate `fide-ingestion-spec.md`)
+- USCF top-ratings list ingestion (if scope allows; can slip to Phase 1)
+- Federation player search (`/scout` MVP — name + country fuzzy match against `federation_players`)
+- PGN import worker for the user's own games (Lichess + chess.com)
 - Basic profile page with own game list
 - Marketing home page (placeholder)
 
-**Out of scope:** any prep, any marketplace, any payments
+**Out of scope:** prep reports, online-account matching, marketplace, payments.
 
-### Phase 1 — Opponent prep MVP (6–8 weeks)
+**Why FIDE first.** The federation list is the anchor for everything in Feature 1. It's small (~400k records), well-structured, free, and unblocks all subsequent identification work. Without it, the system has no way to ground "real-world player" → "online account" matches.
 
-**Goal:** A user can request a prep report against a public player and read it.
+### Phase 1 — Identification + opponent prep MVP (8–10 weeks)
 
-- Player ingestion pipeline (Lichess monthly dumps, chess.com on-demand)
+**Goal:** A user can find a public player and request a prep report against them.
+
+- **Lichess monthly DB dump ingestion** (filtered to rated games ≥ 1500, last 24 months)
+- Chess.com PubAPI on-demand player fetch + cache
 - Position interning + per-player stats aggregation
+- Online-account matching pipeline (Stage 2 of §6 — fuzzy handle search + rating-band filter)
+- Stylometric verification (engineered features only; embedding training deferred to Phase 2)
 - Stockfish workers + batch analysis
 - Opening tree construction
 - Leak detection algorithm
@@ -1955,19 +2121,20 @@ Estimated timelines assume a small team (1–2 full-stack engineers + 1 part-tim
 - Prep report viewer UI
 - Subscription gate (Stripe Billing — simpler than Connect)
 
-**Phase 1 ships as a paid product.** Validate willingness to pay before building the marketplace.
+**Phase 1 ships as a paid product.** This is the wedge: discovery + prep together, in one tool, against verified OTB players. Validate willingness to pay before building the marketplace.
 
-### Phase 2 — Player identification (8–10 weeks)
+### Phase 2 — Identification depth (6–8 weeks)
 
-**Goal:** A user can find an opponent's accounts from partial info.
+**Goal:** Identification works against partially anonymous online accounts, not just OTB-anchored players. Style fingerprint becomes a verifier and an explorer.
 
-- Style features computation
-- Embedding model training pipeline (offline)
-- Vector index in pgvector
-- Identification UX (search page)
-- Evidence panel generation
-- Privacy / opt-in controls
+- Learned embedding model training pipeline (offline)
+- Vector index in pgvector (HNSW)
+- Stylometric verification integrated into the Stage 3 ranking
+- "Find unrated lookalikes" — given an anchor, find similar online accounts that may belong to the same person
+- Style fingerprint UX polish (radar chart, prose summary, sample-game upload to compare)
+- Privacy / opt-in controls (formalize §6 privacy defaults in product UI)
 - Player profile page polish
+- Federation browse mode (`/scout/federation/{id}` ranked lists — also valuable for SEO)
 
 ### Phase 3 — Marketplace MVP (no real money) (8–10 weeks)
 
@@ -2045,6 +2212,7 @@ Soft launch to Israel + EU only. US delayed pending state-by-state legal review.
 | Withdrawal fraud (stolen card → deposit → match → withdraw) | Medium      | High       | Hold periods; trust-tier withdrawal caps; KYC gates; Stripe Radar                                              |
 | Low marketplace liquidity (no opponents)                    | Medium      | High       | Seed with paid sparring partners (FM/IM contractors); subsidize early payouts                                  |
 | Customer support overload                                   | High        | Low (each) | Aggressive KB; auto-resolution for refunds; in-app help chat with Haiku                                        |
+| Storage scale (games corpus) exceeds Supabase tier          | Medium      | Medium     | Partition `games` by month from day one; plan to split corpus to dedicated Postgres if needed                  |
 
 ---
 
@@ -2052,7 +2220,7 @@ Soft launch to Israel + EU only. US delayed pending state-by-state legal review.
 
 Decisions Boaz needs to make before or during development:
 
-1. **Final name + domain** — Chessco is placeholder. Validate name, trademark, .com availability.
+1. **Trademark + .com acquisition** — Name (Chessco), primary domain (chessco.org), and slogan (Scout. Prepare. Win.) are locked. Still open: trademark search and registration in launch jurisdictions (IL, EU, UK, US); whether to acquire chessco.com if available (premium domain — likely worth it if price reasonable).
 2. **Entity structure** — separate company (like Slokoto spinout), Foto Master subsidiary, or solo founder? Affects cap table, tax, employee equity.
 3. **Co-founders** — solo or recruit a CTO / chess product expert?
 4. **Funding** — bootstrap from Foto Master cashflow, raise pre-seed, or SAFE round (like Slokoto's $2.5M)?
@@ -2109,9 +2277,9 @@ chessco/
 
 ### Initial sprint priorities
 
-Week 1–2: Auth, DB schema, monorepo, deploy pipeline.
+Week 1–2: Auth, DB schema (incl. federation tables), monorepo, deploy pipeline.
 Week 3–4: External account linking, own-game import.
-Week 5–6: Profile pages, basic UI shell.
+Week 5–6: FIDE ingestion, federation `/scout` MVP, profile pages, basic UI shell.
 
 ### Key technical decisions to lock early
 
@@ -2161,21 +2329,60 @@ Phase 5–6 add another 14–18 weeks.
 - shadcn/ui: https://ui.shadcn.com
 - Supabase docs: https://supabase.com/docs
 - Stripe Connect docs: https://stripe.com/docs/connect
+- FIDE downloads: https://ratings.fide.com/download.phtml
 
-### C. Comparable products (competitive context)
+### C. Competitive landscape
 
-- **Lichess** — free, huge user base, basic analysis, no per-opponent prep
-- **Chess.com** — paid, large user base, "Insights" feature gives self-analysis but no opponent prep
-- **ChessBase** — desktop software, expensive (~$300+), comprehensive prep, mostly for masters
-- **Aimchess** — closest to Feature 2 conceptually, but self-improvement focused, not opponent prep
-- **ChessTempo** — tactics focused
-- **Decode Chess** — explainer-focused for amateurs
+#### Direct competitor: SnoopChess
 
-**Chessco differentiator:** the integrated loop. Nothing on the market does scout-prep-practice as one flow, and nothing has the paid-sparring marketplace.
+**URL:** snoopchess.com
+**Positioning:** "Out-Prepare your Chess Opponent" — chess preparation software focused on player discovery.
+**Stack tells:** Java backend (`.jsp` extensions on all routes); ratings tables structured per-federation; JS-rendered frontend.
+**Scope of product:**
+
+- Player discovery only (our Feature 1)
+- Input: real name, country, FIDE/USCF rating, federation
+- Output: matched Lichess and chess.com accounts + basic opening analysis
+- Marketing claims: "billions of games and millions of accounts" indexed from Lichess and chess.com; federations covered include FIDE, USCF, and many national bodies
+- Federation ranking pages exposed publicly (also valuable for SEO)
+- Freemium with login wall
+
+**What SnoopChess validates for Chessco:**
+
+- Name-anchored matching against official federation rating lists is the correct architectural approach — this is why our spec changed in v1.1 (see §6)
+- Federation-by-federation indexing is the right organizing principle for the player database
+- Per-federation public ranking pages drive SEO and discovery (we should mirror this — see Phase 2)
+- The market for chess preparation software exists and is willing to pay
+
+**What SnoopChess does NOT do (Chessco's wedge):**
+
+- No comparison against the user's own repertoire
+- No prep report / battle plan / recommended lines (our Feature 2)
+- No practice mode against opponent-style bots
+- No marketplace / paid sparring (our Feature 3)
+- No live games of any kind
+- Discovery is one-way (real identity → online accounts only; no reverse, which is also our policy)
+
+**Strategic implication:** Do not try to out-corpus SnoopChess on raw game count. Match them on federation coverage and matching accuracy, then race past them on Feature 2 (prep reports) and Feature 3 (marketplace). The user value is not "I found their chess.com profile" — chess.com itself shows the profile once you have the handle. The value is "I now have a plan to play them tomorrow, and I can practice the exact positions tonight."
+
+#### Adjacent / non-overlapping products
+
+- **Lichess** — free, huge user base, basic analysis tools (Lichess Studies, opening explorer). No per-opponent prep. The open chess platform.
+- **Chess.com** — paid, large user base. "Insights" feature gives self-analysis. No opponent prep. Coaching marketplace exists but is unrelated to ours.
+- **ChessBase** — desktop software (~$300+) with the deepest professional prep tooling. Mega Database license required for opponent games. Aimed at masters and serious tournament players. Powerful but not web-native, not consumer-priced, not collaborative.
+- **Aimchess** — closest to Feature 2 conceptually, but self-improvement focused (analyses your own games to find your weaknesses), not opponent prep.
+- **ChessTempo** — tactics training focused. No prep workflow.
+- **Decode Chess** — engine-explanation focused for amateurs. Not prep.
+- **Listudy / Chessbook / Chessable** — opening repertoire study tools. Build/memorize your own repertoire. Not opponent-specific.
+
+#### Chessco's strategic position
+
+Chessco is the **only product** that combines: federation-anchored player discovery (SnoopChess-grade) + per-opponent prep reports (ChessBase-grade, but web-native and consumer-priced) + sparring marketplace (no comparable product exists). The integrated loop — Scout → Prepare → Win — is the differentiator. No single competitor covers more than one of the three.
 
 ### D. Document changelog
 
 - v1.0 (2026-05-11): Initial draft for developer handover.
+- v1.1 (2026-05-11): Locked name (Chessco), domain (chessco.org), slogan (Scout. Prepare. Win.). Added federations + federation_players + federation_rating_snapshots tables to §5. Restructured §6 Feature 1 around name-anchored identification (three-stage: identity anchor → candidate handles → stylometric verification), informed by SnoopChess's product. Updated §17 with copywriting rules separating master tagline from marketplace surfaces. Reordered roadmap: Phase 0 now includes FIDE ingestion; Phase 1 ships identification + prep together; Phase 2 is identification depth (embeddings, anonymous-account discovery). Expanded Appendix C with full competitive landscape including SnoopChess profile.
 
 ---
 
