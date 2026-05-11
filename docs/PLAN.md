@@ -18,6 +18,14 @@ This plan executes the build from zero to revenue, mapped to spec v1.1. The arch
 
 ---
 
+## Current Status (2026-05-11)
+
+- ✅ **Phase 0 Week 1 — Monorepo scaffold complete.** Next.js 15 + 6 shared packages, brand tokens, dark-mode default, GitHub Actions CI (build/typecheck/lint/format all green). Three commits on `main`: plan, spec v1.1, scaffold.
+- 🔄 **Provisioning external services — in progress.** Vercel + Supabase (prod + staging) are being set up. See [`SETUP.md`](SETUP.md) for the actionable checklist. Sentry and PostHog deferred to Phase 0 Week 7 polish.
+- ⏭ **Next code work — Phase 0 Week 2 — Drizzle schema.** Cannot land in prod until Supabase projects exist and credentials are in Vercel. Schema can be drafted locally in parallel; final migration applied to `chessco-staging` first, then `chessco-prod`.
+
+---
+
 ## Locked Decisions
 
 | Decision                | Value                                                               | Why                                                                                                                                                                                     |

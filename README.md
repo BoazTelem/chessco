@@ -18,7 +18,9 @@ Three integrated capabilities, built on a single product loop (`Scout → Find �
 ## Documentation
 
 - [docs/PLAN.md](docs/PLAN.md) — 7-phase build plan (week-by-week, with exit criteria)
-- [docs/chessco-full-spec.md](docs/chessco-full-spec.md) — full system specification (29 sections, source of truth)
+- [docs/chessco-full-spec.md](docs/chessco-full-spec.md) — full system specification v1.1 (29 sections, source of truth)
+- [docs/SETUP.md](docs/SETUP.md) — Vercel + Supabase + observability provisioning checklist
+- [docs/fide-ingestion-spec.md](docs/fide-ingestion-spec.md) — FIDE ratings ingestion worker (Phase 0 Week 5)
 
 ## Stack
 
