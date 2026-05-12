@@ -9,7 +9,7 @@ export default async function HomePage() {
   return (
     <main className="container mx-auto flex min-h-screen flex-col items-center justify-center px-4 py-16">
       <div className="flex max-w-3xl flex-col items-center gap-8 text-center">
-        <div className="flex flex-col items-center gap-3">
+        <div className="flex flex-col items-center gap-5">
           <ChesscoMark variant="float" className="h-[200px] w-[200px] md:h-[240px] md:w-[240px]" />
           <p className="font-display pl-3 text-2xl font-medium uppercase tracking-[0.3em] text-accent md:text-3xl">
             {brand.name}
