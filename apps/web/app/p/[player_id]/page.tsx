@@ -5,6 +5,7 @@ import { getUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { ChesscoMark } from '@/lib/logo';
 import { CountryBadge, FederationBadge, TitleBadge } from '../../scout/result-card';
+import { SampleGameForm } from '../../scout/sample-game-form';
 import { IdentifyButton } from './identify-button';
 
 export const metadata = {
@@ -140,15 +141,46 @@ export default async function PlayerProfilePage({
 
         <section className="mt-10">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-            Find online
+            Find their online accounts
           </h2>
-          <div className="mt-3 rounded-lg border border-border bg-card p-5">
-            <p className="text-sm text-muted-foreground">
-              Match {player.name.split(',')[0] ?? player.name} to their Lichess and chess.com
-              accounts using fuzzy name search + country + rating-band on our online-handle corpus.
-            </p>
-            <div className="mt-4">
-              <IdentifyButton federationPlayerId={player.id} />
+          <div className="mt-3 space-y-5 rounded-lg border border-border bg-card p-5">
+            {/* Method 1: quick name search */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Quick name search
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Match {player.name.split(',')[0] ?? player.name} to their Lichess and chess.com
+                accounts via fuzzy name + country + rating-band on our online-handle corpus. Fastest
+                path — works without sample games.
+              </p>
+              <div className="mt-3">
+                <IdentifyButton federationPlayerId={player.id} />
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="flex items-center gap-3">
+              <span className="h-px flex-1 bg-border" />
+              <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                or
+              </span>
+              <span className="h-px flex-1 bg-border" />
+            </div>
+
+            {/* Method 2: AI matching by sample game */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-accent">
+                AI matching by sample game
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Have games of {player.name.split(',')[0] ?? player.name}? Paste them below for
+                precise identification by play pattern — the AI Scout finds their accounts even when
+                their handle looks nothing like their name. Works best with 10+ games.
+              </p>
+              <div className="mt-3">
+                <SampleGameForm federationPlayerId={player.id} subjectLabel={player.name} />
+              </div>
             </div>
           </div>
         </section>

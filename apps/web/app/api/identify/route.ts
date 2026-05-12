@@ -62,8 +62,10 @@ export async function POST(req: Request): Promise<NextResponse> {
   const supabase = createAdminClient();
 
   // -- Stage 3 branch: sample-game stylometric matching ---------------------
+  // When a federation_player_id is also given, the result is anchored to
+  // that FIDE row so the match page shows the player's name as the subject.
   if (body.sample_pgn) {
-    return handleSamplePgn(supabase, body.sample_pgn);
+    return handleSamplePgn(supabase, body.sample_pgn, body.federation_player_id ?? null);
   }
 
   // ---- Resolve federation_player if id provided -----------------------
@@ -165,6 +167,7 @@ export async function POST(req: Request): Promise<NextResponse> {
 async function handleSamplePgn(
   supabase: ReturnType<typeof createAdminClient>,
   sample_pgn: string,
+  federationPlayerId: string | null,
 ): Promise<NextResponse> {
   const games = parsePgnToGameRows(sample_pgn);
   if (games.length === 0) {
@@ -174,11 +177,38 @@ async function handleSamplePgn(
     );
   }
 
+  // If we have an anchor, look up the federation player so the match
+  // page header reads "Online accounts for Gelfand, Boris" instead of
+  // "(unknown subject)".
+  let anchorPlayer: FederationPlayerLite | null = null;
+  if (federationPlayerId) {
+    const { data, error } = await supabase
+      .from('federation_players')
+      .select('id, name, country, birth_year, title, rating_standard')
+      .eq('id', federationPlayerId)
+      .maybeSingle();
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    if (data) anchorPlayer = data as FederationPlayerLite;
+  }
+
   // Insert query row first so we have an id even on error.
   const { data: queryRow, error: insertErr } = await supabase
     .from('identification_queries')
     .insert({
-      query_payload: { games_pasted: games.length },
+      query_payload: {
+        games_pasted: games.length,
+        ...(anchorPlayer
+          ? {
+              federation_player_id: anchorPlayer.id,
+              name: anchorPlayer.name,
+              country: anchorPlayer.country,
+              fide_rating: anchorPlayer.rating_standard,
+              title: anchorPlayer.title,
+            }
+          : {}),
+      },
       input_method: 'sample_game',
       sample_pgn,
       status: 'pending',
@@ -209,6 +239,7 @@ async function handleSamplePgn(
     const rows = matches.map((m, i) => ({
       query_id: queryId,
       rank: i + 1,
+      federation_player_id: anchorPlayer?.id ?? null,
       platform: m.platform,
       handle: m.handle,
       confidence_label:

@@ -5,11 +5,22 @@ import { useRouter } from 'next/navigation';
 
 /**
  * Paste-a-PGN form. POSTs sample_pgn to /api/identify, redirects to
- * /scout/match/[query_id]. AI stylometric matching runs in 1-3s server-
+ * /scout/match/[query_id]. AI stylometric matching runs in ~1s server-
  * side; we show an inline loading state rather than a polling page since
  * Stage 3 V0 fits comfortably inside a normal HTTP response.
+ *
+ * Usage:
+ *   <SampleGameForm />                                  # standalone (deferred — see plan)
+ *   <SampleGameForm federationPlayerId={id} subjectLabel="Gelfand, Boris" />
+ *     # anchored to a FIDE player; the match page shows their name as
+ *     # the subject and the candidates are persisted with that anchor.
  */
-export function SampleGameForm() {
+export interface SampleGameFormProps {
+  federationPlayerId?: string;
+  subjectLabel?: string;
+}
+
+export function SampleGameForm({ federationPlayerId, subjectLabel }: SampleGameFormProps = {}) {
   const router = useRouter();
   const [pgn, setPgn] = useState('');
   const [loading, setLoading] = useState(false);
@@ -24,10 +35,12 @@ export function SampleGameForm() {
     setLoading(true);
     setError(null);
     try {
+      const body: Record<string, unknown> = { sample_pgn: pgn };
+      if (federationPlayerId) body.federation_player_id = federationPlayerId;
       const res = await fetch('/api/identify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sample_pgn: pgn }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -45,11 +58,13 @@ export function SampleGameForm() {
     <form onSubmit={onSubmit} className="space-y-3">
       <div>
         <label htmlFor="pgn" className="text-sm font-medium">
-          Paste one or more PGNs of the target player
+          Paste 10+ PGN games of{' '}
+          {subjectLabel ? <strong>{subjectLabel}</strong> : 'the target player'}
         </label>
         <p className="mt-1 text-xs text-muted-foreground">
-          10+ games gives the best signal. AI matches play patterns against ~1,400 indexed Lichess
-          handles — name + handle don&apos;t need to match.
+          AI matches play patterns against ~1,400 indexed Lichess handles. The target&apos;s real
+          handle doesn&apos;t need to resemble their name — works on opening repertoire, time class,
+          and opponent-rating signal.
         </p>
         <textarea
           id="pgn"
