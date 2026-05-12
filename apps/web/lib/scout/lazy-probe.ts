@@ -92,6 +92,11 @@ interface LichessProfileBlock {
 interface LichessUserExtended extends LichessAccount {
   title?: string;
   profile?: LichessProfileBlock;
+  /** Account closed by the user. Lichess hides these from /@/{handle} pages
+   *  ("No such player") but still returns them from POST /api/users. */
+  disabled?: boolean;
+  /** Account closed by mods for ToS violations — same UI behavior. */
+  tosViolation?: boolean;
 }
 
 function lichessRatingFromPerf(perf?: { rating?: number; prov?: boolean }): number | null {
@@ -119,18 +124,20 @@ async function probeLichess(handles: string[]): Promise<ProbeHit[]> {
     });
     if (!res.ok) return [];
     const users = (await res.json()) as LichessUserExtended[];
-    return users.map((u) => ({
-      platform: 'lichess' as const,
-      handle: u.username,
-      handle_normalized: u.username.toLowerCase(),
-      country: u.profile?.country ?? null,
-      title: u.title ?? null,
-      claimed_name: u.profile?.realName ?? null,
-      rating_bullet: lichessRatingFromPerf(u.perfs?.bullet),
-      rating_blitz: lichessRatingFromPerf(u.perfs?.blitz),
-      rating_rapid: lichessRatingFromPerf(u.perfs?.rapid),
-      rating_classical: lichessRatingFromPerf(u.perfs?.classical),
-    }));
+    return users
+      .filter((u) => !u.disabled && !u.tosViolation)
+      .map((u) => ({
+        platform: 'lichess' as const,
+        handle: u.username,
+        handle_normalized: u.username.toLowerCase(),
+        country: u.profile?.country ?? null,
+        title: u.title ?? null,
+        claimed_name: u.profile?.realName ?? null,
+        rating_bullet: lichessRatingFromPerf(u.perfs?.bullet),
+        rating_blitz: lichessRatingFromPerf(u.perfs?.blitz),
+        rating_rapid: lichessRatingFromPerf(u.perfs?.rapid),
+        rating_classical: lichessRatingFromPerf(u.perfs?.classical),
+      }));
   } catch {
     return [];
   } finally {
