@@ -53,6 +53,12 @@ export default async function DashboardPage() {
 
         <div className="flex items-center gap-2">
           <Link
+            href="/scout"
+            className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-accent-foreground hover:opacity-90"
+          >
+            Scout players
+          </Link>
+          <Link
             href="/account"
             className="rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-muted"
           >
@@ -100,18 +106,38 @@ export default async function DashboardPage() {
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          Available now
+        </h2>
+        <ul className="grid gap-3 sm:grid-cols-2">
+          <LiveCard
+            href="/scout"
+            label="Live"
+            title="Scout players"
+            body="755k+ FIDE players. Search by name, country, title, rating range."
+          />
+          <LiveCard
+            href="/account"
+            label="Live"
+            title="Manage linked accounts"
+            body="Verify your Lichess or Chess.com account so we can import your games."
+          />
+        </ul>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           Coming soon
         </h2>
         <ul className="grid gap-3 sm:grid-cols-2">
           <PlaceholderCard
-            label="Phase 0 W5"
-            title="FIDE ingestion"
-            body="Searchable rating list of every FIDE-rated player worldwide."
+            label="Phase 0 W6"
+            title="Import your games"
+            body="Pull your last 200 games from each linked account into Chessco for analysis."
           />
           <PlaceholderCard
-            label="Phase 0 W6"
-            title="Find a player"
-            body="Federation-anchored search → online accounts. Fuzzy name + country + rating."
+            label="Phase 0 W7"
+            title="USCF + Israeli CF"
+            body="Expand /scout to cover US and Israeli OTB-rated players."
           />
           <PlaceholderCard
             label="Phase 1"
@@ -170,6 +196,31 @@ function PlaceholderCard({ label, title, body }: { label: string; title: string;
       <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent">{label}</p>
       <p className="mt-1 font-medium">{title}</p>
       <p className="mt-1 text-sm text-muted-foreground">{body}</p>
+    </li>
+  );
+}
+
+function LiveCard({
+  href,
+  label,
+  title,
+  body,
+}: {
+  href: string;
+  label: string;
+  title: string;
+  body: string;
+}) {
+  return (
+    <li>
+      <Link
+        href={href}
+        className="block rounded-lg border border-accent/30 bg-accent/5 p-5 transition hover:border-accent/60"
+      >
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent">{label}</p>
+        <p className="mt-1 font-medium">{title}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{body}</p>
+      </Link>
     </li>
   );
 }

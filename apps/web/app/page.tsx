@@ -18,12 +18,20 @@ export default async function HomePage() {
 
         <div className="mt-4 flex flex-col items-center gap-3 sm:flex-row">
           {user ? (
-            <Link
-              href="/dashboard"
-              className="rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition hover:opacity-90"
-            >
-              Go to dashboard
-            </Link>
+            <>
+              <Link
+                href="/scout"
+                className="rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition hover:opacity-90"
+              >
+                Scout players →
+              </Link>
+              <Link
+                href="/dashboard"
+                className="rounded-md border border-border bg-card px-5 py-2.5 text-sm font-semibold text-foreground transition hover:bg-muted"
+              >
+                Dashboard
+              </Link>
+            </>
           ) : (
             <>
               <Link
@@ -33,8 +41,14 @@ export default async function HomePage() {
                 Get started
               </Link>
               <Link
-                href="/login"
+                href="/scout"
                 className="rounded-md border border-border bg-card px-5 py-2.5 text-sm font-semibold text-foreground transition hover:bg-muted"
+              >
+                Try the scout
+              </Link>
+              <Link
+                href="/login"
+                className="rounded-md border border-transparent px-5 py-2.5 text-sm font-semibold text-muted-foreground transition hover:text-foreground"
               >
                 Sign in
               </Link>
@@ -44,8 +58,8 @@ export default async function HomePage() {
 
         <div className="mt-8 flex flex-col gap-3 text-sm">
           <div className="rounded-lg border border-border bg-card px-6 py-4 text-muted-foreground">
-            <span className="font-medium text-foreground">Phase 0 — Foundation.</span> Auth and
-            account linking shipping now; player search next.
+            <span className="font-medium text-foreground">755,081 FIDE players indexed.</span> Try
+            the scout above — no sign-up needed. Prep reports next.
           </div>
           <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
             <span>Scout</span>
