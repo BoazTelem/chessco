@@ -1,5 +1,5 @@
 // Palette used by the Chessco chessboard mark. Index into this from GRID.
-const COLORS = ['#221705', '#3D2D08', '#5C4506', '#EAB308'] as const;
+const COLORS = ['#14100A', '#2A1F05', '#5C4506', '#EAB308'] as const;
 
 // 8x8 grid forming the Chessco "C" — two gold bands top/bottom, dark interior cutout.
 const GRID: ReadonlyArray<ReadonlyArray<number>> = [
