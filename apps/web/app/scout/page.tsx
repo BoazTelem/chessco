@@ -7,6 +7,7 @@ import { SearchForm } from './search-form';
 import { HandleResultCard, ResultCard, type HandleResult } from './result-card';
 import { TrackPersonCTA } from './track-person-cta';
 import { normalizeCountry } from '@/lib/scout/country-code';
+import { searchLichessHandlesByName } from '@/lib/scout/lichess-handles';
 import type { SearchResult } from './types';
 
 export const metadata = {
@@ -46,12 +47,15 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
   let searchError: string | null = null;
 
   if (hasQuery) {
-    // FIDE federation rows and chess.com platform handles are queried in
-    // parallel and rendered as two grouped sections. The chess.com fuzzy
-    // is name-only (no rating-band filter): name+country is enough signal
-    // and most chess.com rows have no rating-band data yet.
+    // Three parallel searches:
+    //   1. FIDE federation rows (Supabase)
+    //   2. chess.com handles by claimed_name (Supabase platform_players)
+    //   3. Lichess handles by fuzzy handle text (Cloud SQL games-corpus)
+    // All three results render as grouped sections; chess.com + Lichess
+    // share the HandleResultCard component because the result shape is
+    // identical (modulo platform-specific URL formatting).
     const handleCountry = country ? normalizeCountry(country) : null;
-    const [fideRes, handleRes] = await Promise.all([
+    const [fideRes, handleRes, lichessHandles] = await Promise.all([
       supabase.rpc('search_federation_players', {
         q,
         country_filter: country,
@@ -70,6 +74,9 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
             min_similarity: 0.4,
           })
         : Promise.resolve({ data: [], error: null }),
+      q.length >= 2
+        ? searchLichessHandlesByName(q.toLowerCase(), 10, 0.3).catch(() => [])
+        : Promise.resolve([] as HandleResult[]),
     ]);
 
     if (fideRes.error) {
@@ -80,6 +87,12 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
     }
     if (!handleRes.error && handleRes.data) {
       handleResults = handleRes.data as HandleResult[];
+    }
+    // Append Lichess handles to the combined handle list. Dedupe is not
+    // needed today (chess.com and Lichess can't collide), but if we ever
+    // merge they would by (platform, handle).
+    if (lichessHandles.length > 0) {
+      handleResults = [...handleResults, ...lichessHandles];
     }
   }
 
@@ -142,9 +155,9 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
             Find any chess player
           </h1>
           <p className="text-sm text-muted-foreground md:text-base">
-            Search {(755_081).toLocaleString()} rated players from 200+ federations to start — open
-            a profile and identify their Lichess / chess.com accounts there. Lichess + chess.com
-            handles fold into search soon so amateurs are findable too.
+            Search {(755_081).toLocaleString()} rated players from 200+ federations plus indexed
+            Lichess and chess.com handles — amateurs are findable too. Open a profile to identify
+            their other online accounts.
           </p>
         </div>
 
@@ -217,7 +230,7 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
                       online{' '}
                       {handleResults.length === 1 ? 'handle also matches' : 'handles also match'}
                     </span>
-                    <span className="text-xs">(chess.com — opens external profile)</span>
+                    <span className="text-xs">(chess.com + Lichess — opens external profile)</span>
                   </div>
                   <ul className="grid gap-3">
                     {handleResults.map((h) => (
