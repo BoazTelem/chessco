@@ -4,8 +4,9 @@ import { getUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { ChesscoMark } from '@/lib/logo';
 import { SearchForm } from './search-form';
-import { ResultCard } from './result-card';
+import { HandleResultCard, ResultCard, type HandleResult } from './result-card';
 import { TrackPersonCTA } from './track-person-cta';
+import { normalizeCountry } from '@/lib/scout/country-code';
 import type { SearchResult } from './types';
 
 export const metadata = {
@@ -40,26 +41,45 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
   const hasQuery = q.length > 0 || country || title || min !== null || max !== null;
 
   let results: SearchResult[] = [];
+  let handleResults: HandleResult[] = [];
   let totalCount = 0;
   let searchError: string | null = null;
 
   if (hasQuery) {
-    const { data, error } = await supabase.rpc('search_federation_players', {
-      q,
-      country_filter: country,
-      rating_min: Number.isFinite(min) ? min : null,
-      rating_max: Number.isFinite(max) ? max : null,
-      federation_filter: null,
-      title_filter: title,
-      page_size: PAGE_SIZE,
-      page_offset: offset,
-    });
+    // FIDE federation rows and chess.com platform handles are queried in
+    // parallel and rendered as two grouped sections. The chess.com fuzzy
+    // is name-only (no rating-band filter): name+country is enough signal
+    // and most chess.com rows have no rating-band data yet.
+    const handleCountry = country ? normalizeCountry(country) : null;
+    const [fideRes, handleRes] = await Promise.all([
+      supabase.rpc('search_federation_players', {
+        q,
+        country_filter: country,
+        rating_min: Number.isFinite(min) ? min : null,
+        rating_max: Number.isFinite(max) ? max : null,
+        federation_filter: null,
+        title_filter: title,
+        page_size: PAGE_SIZE,
+        page_offset: offset,
+      }),
+      q.length >= 2
+        ? supabase.rpc('search_platform_players_by_name', {
+            q: q.toLowerCase(),
+            country_filter: handleCountry,
+            limit_count: 15,
+            min_similarity: 0.4,
+          })
+        : Promise.resolve({ data: [], error: null }),
+    ]);
 
-    if (error) {
-      searchError = error.message;
+    if (fideRes.error) {
+      searchError = fideRes.error.message;
     } else {
-      results = (data ?? []) as SearchResult[];
+      results = (fideRes.data ?? []) as SearchResult[];
       totalCount = results[0]?.total_count ?? 0;
+    }
+    if (!handleRes.error && handleRes.data) {
+      handleResults = handleRes.data as HandleResult[];
     }
   }
 
@@ -147,42 +167,77 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
             <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
               Search failed: {searchError}
             </p>
-          ) : results.length === 0 ? (
+          ) : results.length === 0 && handleResults.length === 0 ? (
             <TrackPersonCTA name={q} country={country} signedIn={!!user} nextPath={nextPath} />
           ) : (
             <>
-              <div className="mb-4 flex items-center justify-between text-sm text-muted-foreground">
-                <span>
-                  <span className="text-foreground">{totalCount.toLocaleString()}</span>{' '}
-                  {totalCount === 1 ? 'result' : 'results'}
-                  {q && (
-                    <>
-                      {' for '}
-                      <span className="text-foreground">&ldquo;{q}&rdquo;</span>
-                    </>
+              {results.length > 0 && (
+                <>
+                  <div className="mb-4 flex items-center justify-between text-sm text-muted-foreground">
+                    <span>
+                      <span className="text-foreground">{totalCount.toLocaleString()}</span> FIDE /
+                      federation {totalCount === 1 ? 'result' : 'results'}
+                      {q && (
+                        <>
+                          {' for '}
+                          <span className="text-foreground">&ldquo;{q}&rdquo;</span>
+                        </>
+                      )}
+                    </span>
+                    {totalPages > 1 && (
+                      <span>
+                        Page {page} of {totalPages}
+                      </span>
+                    )}
+                  </div>
+
+                  <ul className="grid gap-3">
+                    {results.map((r) => (
+                      <li key={r.id}>
+                        <ResultCard result={r} />
+                      </li>
+                    ))}
+                  </ul>
+
+                  {totalPages > 1 && (
+                    <Pagination
+                      page={page}
+                      totalPages={totalPages}
+                      params={{ q, country, title, min, max }}
+                    />
                   )}
-                </span>
-                {totalPages > 1 && (
-                  <span>
-                    Page {page} of {totalPages}
-                  </span>
-                )}
-              </div>
+                </>
+              )}
 
-              <ul className="grid gap-3">
-                {results.map((r) => (
-                  <li key={r.id}>
-                    <ResultCard result={r} />
-                  </li>
-                ))}
-              </ul>
+              {handleResults.length > 0 && (
+                <div className={results.length > 0 ? 'mt-10' : ''}>
+                  <div className="mb-4 flex items-center gap-3 text-sm text-muted-foreground">
+                    <span className="text-foreground">{handleResults.length}</span>
+                    <span>
+                      online{' '}
+                      {handleResults.length === 1 ? 'handle also matches' : 'handles also match'}
+                    </span>
+                    <span className="text-xs">(chess.com — opens external profile)</span>
+                  </div>
+                  <ul className="grid gap-3">
+                    {handleResults.map((h) => (
+                      <li key={`${h.platform}:${h.handle}`}>
+                        <HandleResultCard result={h} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
-              {totalPages > 1 && (
-                <Pagination
-                  page={page}
-                  totalPages={totalPages}
-                  params={{ q, country, title, min, max }}
-                />
+              {results.length === 0 && handleResults.length > 0 && (
+                <div className="mt-8">
+                  <TrackPersonCTA
+                    name={q}
+                    country={country}
+                    signedIn={!!user}
+                    nextPath={nextPath}
+                  />
+                </div>
               )}
             </>
           )}
