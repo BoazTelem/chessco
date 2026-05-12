@@ -72,11 +72,11 @@ export default async function HomePage() {
             <span className="text-accent">→</span>
             <span>Find</span>
             <span className="text-accent">→</span>
+            <span>Prepare</span>
+            <span className="text-accent">→</span>
             <span>Practice</span>
             <span className="text-accent">→</span>
-            <span>Pay</span>
-            <span className="text-accent">→</span>
-            <span>Improve</span>
+            <span>Win</span>
           </div>
         </div>
       </div>
