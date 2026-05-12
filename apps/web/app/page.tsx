@@ -65,7 +65,7 @@ export default async function HomePage() {
         <div className="mt-8 flex flex-col gap-3 text-sm">
           <div className="rounded-lg border border-border bg-card px-6 py-4 text-muted-foreground">
             <span className="font-medium text-foreground">868,194 players indexed</span> across
-            chess.com and Lichess. Try the scout — no sign-up needed. Prep reports next.
+            chess.com and Lichess. Try the scout, no sign-up needed.
           </div>
           <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
             <span>Scout</span>
