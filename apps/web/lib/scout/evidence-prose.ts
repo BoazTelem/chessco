@@ -1,6 +1,6 @@
 /**
- * Claude Haiku turns the bullet-list "reasons" we already attach to each
- * candidate into a one-sentence English explanation.
+ * Turns the bullet-list "reasons" we already attach to each candidate into
+ * a one-sentence English explanation, via a swappable LLM provider.
  *
  *   reasons: ["fuzzy match on 'gelfand'", "name match 57%", "country matches",
  *             "rating in band"]
@@ -9,20 +9,20 @@
  *     2635 FIDE rating."
  *
  * Design:
+ *   - LLM choice lives in `llm-providers.ts` (DeepSeek by default; flip
+ *     SCOUT_PROSE_PROVIDER=anthropic for A/B). This file is engine-agnostic.
  *   - One batched call per identification query (15 candidates max).
  *   - Strict JSON-only output, keyed by `${platform}:${handle}` so we
  *     can map prose back to rows.
- *   - Graceful fallback: if ANTHROPIC_API_KEY is unset or the API fails,
+ *   - Graceful fallback: if no provider is configured or the API fails,
  *     return an empty map. The match page falls back to bullet reasons.
  *
- * Cost: ~2-3k output tokens per query × $0.004/1k for Haiku ≈ $0.012/query.
- * Latency: ~1-2s. We add it after the candidates are persisted with a
- * status update, so the user can see results immediately and the prose
- * fills in on refresh.
+ * Cost: ~2-3k output tokens per query × ~$0.27/M for DeepSeek-chat
+ * ≈ $0.0008/query. Latency: ~1-2s. We add it after the candidates are
+ * persisted with a status update, so the user can see results immediately
+ * and the prose fills in on refresh.
  */
-import Anthropic from '@anthropic-ai/sdk';
-
-const HAIKU_MODEL = 'claude-haiku-4-5-20251001';
+import { getProseProvider } from './llm-providers';
 
 export interface ProseSubject {
   name: string;
@@ -55,15 +55,8 @@ export async function generateEvidenceProse(
   const out = new Map<string, string>();
   if (candidates.length === 0) return out;
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return out;
-
-  let client: Anthropic;
-  try {
-    client = new Anthropic({ apiKey });
-  } catch {
-    return out;
-  }
+  const provider = getProseProvider();
+  if (!provider) return out;
 
   const subjectLine = [
     subject.title,
@@ -120,15 +113,7 @@ Return strict JSON only, in this exact shape — no prose, no markdown:
 Use the exact "platform/handle" keys from the candidates above.`;
 
   try {
-    const res = await client.messages.create({
-      model: HAIKU_MODEL,
-      max_tokens: 2000,
-      messages: [{ role: 'user', content: prompt }],
-    });
-    const text = res.content
-      .filter((b) => b.type === 'text')
-      .map((b) => (b as { text: string }).text)
-      .join('');
+    const text = await provider.generate({ prompt, maxTokens: 2000 });
     const parsed = extractJsonObject(text);
     if (parsed) {
       for (const [k, v] of Object.entries(parsed)) {
@@ -142,7 +127,7 @@ Use the exact "platform/handle" keys from the candidates above.`;
 }
 
 /** Find the first `{ ... }` block in the text and JSON.parse it.
- *  Claude sometimes adds a stray sentence even when asked for JSON only. */
+ *  Models sometimes add a stray sentence even when asked for JSON only. */
 function extractJsonObject(text: string): Record<string, unknown> | null {
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
