@@ -5,6 +5,7 @@ import { getUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { ChesscoLockup } from '@/lib/logo';
 import { CountryBadge, FederationBadge, TitleBadge } from '../../scout/result-card';
+import { IdentifyButton } from './identify-button';
 
 export const metadata = {
   title: 'Player profile',
@@ -132,16 +133,31 @@ export default async function PlayerProfilePage({
 
         <section className="mt-10">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+            Find online
+          </h2>
+          <div className="mt-3 rounded-lg border border-border bg-card p-5">
+            <p className="text-sm text-muted-foreground">
+              Match {player.name.split(',')[0] ?? player.name} to their Lichess and chess.com
+              accounts using fuzzy name search + country + rating-band on our online-handle corpus.
+            </p>
+            <div className="mt-4">
+              <IdentifyButton federationPlayerId={player.id} />
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-10">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
             Coming soon
           </h2>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <PlaceholderCard
-              label="Phase 1"
-              title="Match online accounts"
-              body="Find this player's Lichess + Chess.com handles via stylometric matching."
+              label="Phase 1 W5"
+              title="By sample game"
+              body="Paste 1+ PGNs of the target player and run AI stylometric matching across millions of profiles."
             />
             <PlaceholderCard
-              label="Phase 1"
+              label="Phase 1 W7-W9"
               title="Build prep report"
               body="Per-opponent battle plan: their repertoire, leaks, recommended lines, practice positions."
             />
