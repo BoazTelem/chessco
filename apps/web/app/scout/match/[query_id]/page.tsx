@@ -48,6 +48,10 @@ interface Candidate {
       rapid: number | null;
       classical: number | null;
     };
+    /** Claude Haiku one-sentence explanation. Null until LLM enrichment ran
+     *  (missing ANTHROPIC_API_KEY, API failure, etc.). UI falls back to the
+     *  bullet `reasons` when null. */
+    prose?: string | null;
   };
   user_confirmed: boolean | null;
 }
@@ -306,6 +310,10 @@ function CandidateCard({
           ))}
         </div>
       )}
+
+      {c.evidence.prose ? (
+        <p className="mt-3 text-sm leading-relaxed text-foreground/90">{c.evidence.prose}</p>
+      ) : null}
 
       <ul className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
         {c.evidence.reasons.map((r) => (

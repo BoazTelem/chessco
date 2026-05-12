@@ -16,6 +16,11 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { parsePgnToGameRows } from '@/lib/scout/pgn';
 import { rankBySampleGames, type Stage3Match } from '@/lib/scout/stage3';
 import { runStage2Cached } from '@/lib/scout/stage2';
+import {
+  generateEvidenceProse,
+  type ProseCandidate,
+  type ProseSubject,
+} from '@/lib/scout/evidence-prose';
 
 interface FederationPlayerLite {
   id: string;
@@ -152,6 +157,24 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   // ---- Persist top N as candidates ------------------------------------
   const persisted = candidates.slice(0, MAX_CANDIDATES_PERSISTED);
+  const proseMap = await generateProseSafe(
+    {
+      name: stage2Input.name,
+      country: stage2Input.country,
+      fide_rating: stage2Input.fide_rating,
+      title: stage2Input.title,
+      via: 'name',
+    },
+    persisted.map((c) => ({
+      platform: c.platform,
+      handle: c.handle,
+      confidence: c.confidence,
+      country: c.country,
+      title: c.title,
+      ratings: c.ratings,
+      reasons: c.reasons,
+    })),
+  );
   if (persisted.length > 0) {
     const rows = persisted.map((c, i) => ({
       query_id: queryId,
@@ -167,6 +190,7 @@ export async function POST(req: Request): Promise<NextResponse> {
         country: c.country,
         title: c.title,
         ratings: c.ratings,
+        prose: proseMap.get(`${c.platform}/${c.handle}`) ?? null,
       },
     }));
     const { error: candErr } = await supabase.from('identification_candidates').insert(rows);
@@ -181,6 +205,19 @@ export async function POST(req: Request): Promise<NextResponse> {
     .eq('id', queryId);
 
   return NextResponse.json({ query_id: queryId, candidate_count: persisted.length });
+}
+
+/** Fail-soft wrapper around generateEvidenceProse — never throws,
+ *  returns empty map if anything goes wrong (no key, API down, etc.). */
+async function generateProseSafe(
+  subject: ProseSubject,
+  candidates: ProseCandidate[],
+): Promise<Map<string, string>> {
+  try {
+    return await generateEvidenceProse(subject, candidates);
+  } catch {
+    return new Map();
+  }
 }
 
 async function handleAdHocStage2(
@@ -238,6 +275,18 @@ async function handleAdHocStage2(
   }
 
   const persisted = candidates.slice(0, MAX_CANDIDATES_PERSISTED);
+  const proseMap = await generateProseSafe(
+    { name: adHoc.name, country: adHoc.country, via: 'name' },
+    persisted.map((c) => ({
+      platform: c.platform,
+      handle: c.handle,
+      confidence: c.confidence,
+      country: c.country,
+      title: c.title,
+      ratings: c.ratings,
+      reasons: c.reasons,
+    })),
+  );
   if (persisted.length > 0) {
     const rows = persisted.map((c, i) => ({
       query_id: queryId,
@@ -253,6 +302,7 @@ async function handleAdHocStage2(
         country: c.country,
         title: c.title,
         ratings: c.ratings,
+        prose: proseMap.get(`${c.platform}/${c.handle}`) ?? null,
       },
     }));
     const { error: candErr } = await supabase.from('identification_candidates').insert(rows);
@@ -356,6 +406,32 @@ async function handleSamplePgn(
     );
   }
 
+  const proseSubject: ProseSubject = {
+    name: anchorPlayer?.name ?? adHocAnchor?.name ?? 'unknown subject',
+    country: anchorPlayer?.country ?? adHocAnchor?.country ?? null,
+    fide_rating: anchorPlayer?.rating_standard ?? null,
+    title: anchorPlayer?.title ?? null,
+    via: 'sample_game',
+  };
+  const matchReasons = (m: Stage3Match): string[] => [
+    `eco-W ${(m.components.eco_white * 100).toFixed(0)}%`,
+    `eco-B ${(m.components.eco_black * 100).toFixed(0)}%`,
+    `time-class ${(m.components.time_class * 100).toFixed(0)}%`,
+    `opp-rating ${(m.components.opp_rating * 100).toFixed(0)}%`,
+  ];
+  const proseMap = await generateProseSafe(
+    proseSubject,
+    matches.map((m) => ({
+      platform: m.platform as 'lichess' | 'chess.com',
+      handle: m.handle,
+      confidence: m.combined_score,
+      country: null,
+      title: null,
+      ratings: { bullet: null, blitz: null, rapid: null, classical: null },
+      reasons: matchReasons(m),
+    })),
+  );
+
   if (matches.length > 0) {
     const rows = matches.map((m, i) => ({
       query_id: queryId,
@@ -371,15 +447,11 @@ async function handleSamplePgn(
       evidence: {
         components: m.components,
         games_window: m.games_window,
-        reasons: [
-          `eco-W ${(m.components.eco_white * 100).toFixed(0)}%`,
-          `eco-B ${(m.components.eco_black * 100).toFixed(0)}%`,
-          `time-class ${(m.components.time_class * 100).toFixed(0)}%`,
-          `opp-rating ${(m.components.opp_rating * 100).toFixed(0)}%`,
-        ],
+        reasons: matchReasons(m),
         country: null,
         title: null,
         ratings: { bullet: null, blitz: null, rapid: null, classical: null },
+        prose: proseMap.get(`${m.platform}/${m.handle}`) ?? null,
       },
     }));
     const { error: candErr } = await supabase.from('identification_candidates').insert(rows);
