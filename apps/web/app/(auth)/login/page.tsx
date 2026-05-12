@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getUser } from '@/lib/auth';
+import { GoogleButton } from '../google-button';
 import { LoginForm } from './login-form';
 
 export const metadata = {
@@ -20,6 +21,10 @@ export default async function LoginPage() {
         </p>
       </div>
 
+      <GoogleButton label="Continue with Google" />
+
+      <Divider />
+
       <LoginForm />
 
       <p className="text-center text-sm text-muted-foreground">
@@ -28,6 +33,21 @@ export default async function LoginPage() {
           Create an account
         </Link>
       </p>
+    </div>
+  );
+}
+
+function Divider() {
+  return (
+    <div className="relative">
+      <div className="absolute inset-0 flex items-center">
+        <span className="w-full border-t border-border" />
+      </div>
+      <div className="relative flex justify-center">
+        <span className="bg-background px-3 text-xs uppercase tracking-wider text-muted-foreground">
+          or with email
+        </span>
+      </div>
     </div>
   );
 }

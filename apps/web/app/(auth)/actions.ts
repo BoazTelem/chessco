@@ -121,3 +121,37 @@ export async function signOut() {
   await supabase.auth.signOut();
   redirect('/');
 }
+
+/**
+ * Initiate Google OAuth. Returns the URL to redirect the browser to; the
+ * client component performs the actual `window.location` swap.
+ *
+ * Google redirects back to Supabase's `/auth/v1/callback`, which finishes the
+ * exchange and bounces to our `/auth/callback` route, which then routes the
+ * user onward (new users → /onboarding, returning → /dashboard).
+ *
+ * NOTE: Apple OAuth is parked; see TODO in PLAN.md Week 7. The implementation
+ * pattern is identical — swap `provider: 'google'` for `provider: 'apple'`.
+ */
+export async function signInWithGoogle(): Promise<ActionResult & { url?: string }> {
+  const supabase = await createClient();
+  const origin = await getRequestOrigin();
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: `${origin}/auth/callback`,
+      // Force account chooser instead of silent reuse; matches user
+      // expectation that "Sign in with Google" lets them pick an account.
+      queryParams: { prompt: 'select_account' },
+    },
+  });
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  if (!data?.url) {
+    return { ok: false, error: 'Google did not return a redirect URL. Try again.' };
+  }
+  return { ok: true, url: data.url };
+}
