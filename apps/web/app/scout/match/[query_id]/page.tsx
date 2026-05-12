@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/server';
 import { CountryBadge, TitleBadge } from '../../result-card';
 import { SampleGameForm } from '../../sample-game-form';
 import { ConfirmButtons } from './confirm-buttons';
+import { enrichChesscomRatings } from '@/lib/scout/enrich-chesscom-ratings';
 
 export const metadata = {
   title: 'Identification results',
@@ -81,6 +82,13 @@ export default async function MatchPage({ params }: { params: Promise<{ query_id
     )
     .eq('query_id', query_id)
     .order('rank', { ascending: true })) as { data: Candidate[] | null };
+
+  // Country-seeded chess.com handles have no ratings in platform_players, so
+  // Stage 2 snapshots all-null ratings into evidence. Backfill on first render
+  // — bounded fetch, persisted back to platform_players + this candidate row.
+  if (candidates && candidates.length > 0) {
+    await enrichChesscomRatings(candidates);
+  }
 
   const nextPath = `/scout/match/${query_id}`;
   const signedIn = !!user;
