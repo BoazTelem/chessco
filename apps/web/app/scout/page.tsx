@@ -142,9 +142,9 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
             Find any chess player
           </h1>
           <p className="text-sm text-muted-foreground md:text-base">
-            Search {(755_081).toLocaleString()} FIDE players to start — open a profile and identify
-            their Lichess / chess.com accounts there. Lichess + chess.com handles fold into search
-            soon so amateurs are findable too.
+            Search {(755_081).toLocaleString()} rated players from 200+ federations to start — open
+            a profile and identify their Lichess / chess.com accounts there. Lichess + chess.com
+            handles fold into search soon so amateurs are findable too.
           </p>
         </div>
 
