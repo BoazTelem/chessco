@@ -114,6 +114,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     country: federationPlayer?.country ?? body.country ?? null,
     fide_rating: federationPlayer?.rating_standard ?? body.fide_rating ?? null,
     title: federationPlayer?.title ?? body.title ?? null,
+    birth_year: federationPlayer?.birth_year ?? null,
     federation_player_id: federationPlayer?.id ?? null,
   };
 

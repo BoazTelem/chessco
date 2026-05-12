@@ -9,12 +9,16 @@
  */
 import { createAdminClient } from '@/lib/supabase/admin';
 import { countryMatches, normalizeCountry } from './country-code';
+import { runLazyProbe, type ProbeHit } from './lazy-probe';
 
 export interface Stage2Input {
   name: string;
   country?: string | null;
   fide_rating?: number | null;
   title?: string | null;
+  /** Optional birth year — feeds the lazy handle synthesizer
+   *  (e.g. "carlsen90"). Skip if unknown. */
+  birth_year?: number | null;
   /** federation_players.id of the anchor — used by the cross-reference
    *  filter to drop candidates whose claimed_name resolves to a DIFFERENT
    *  FIDE-registered player. */
@@ -234,14 +238,25 @@ export async function runStage2Cached(input: Stage2Input): Promise<Stage2Candida
   const countryIso2 = input.country ? normalizeCountry(input.country) : null;
   const supabase = createAdminClient();
 
-  const { data, error } = await supabase.rpc('stage2_cached_match', {
-    name_tokens: nameTokens,
-    country_filter: countryIso2,
-    per_token_limit: 30,
-  });
-  if (error) throw new Error(`stage2_cached_match RPC failed: ${error.message}`);
+  // Run the cached corpus match and the lazy name-probe in parallel. The
+  // probe catches handles the country crawler missed (chess.com caps at
+  // ~10k handles per ISO, so most players are uncached). Failures in the
+  // lazy probe are swallowed inside runLazyProbe and surface as [].
+  const [cachedRes, lazyHits] = await Promise.all([
+    supabase.rpc('stage2_cached_match', {
+      name_tokens: nameTokens,
+      country_filter: countryIso2,
+      per_token_limit: 30,
+    }),
+    runLazyProbe({ name: input.name, birthYear: input.birth_year ?? null }).catch(
+      () => [] as ProbeHit[],
+    ),
+  ]);
+  if (cachedRes.error)
+    throw new Error(`stage2_cached_match RPC failed: ${cachedRes.error.message}`);
 
-  const rows = (data ?? []) as RpcRow[];
+  const cachedRows = (cachedRes.data ?? []) as RpcRow[];
+  const rows = mergeWithLazyHits(cachedRows, lazyHits, nameTokens);
 
   // ---- Cross-reference: for any candidate with a claimed_name, find the
   // best federation_players match and check whether it's a DIFFERENT player
@@ -328,4 +343,55 @@ function isDifferentFederationPlayer(
   if (!anchorFederationPlayerId) return false;
   if (m.federation_player_id === anchorFederationPlayerId) return false;
   return true;
+}
+
+/**
+ * Merge lazy probe hits with cached RPC rows. Lazy hits were synthesized
+ * from the FIDE name, so by construction they contain the name tokens —
+ * we synthesize sim = 1.0 so the per-token scorer treats them as exact
+ * name matches (compoundContainmentSim catches this anyway, but setting
+ * sim explicit avoids edge cases with single-token names). Dedup by
+ * (platform, handle) — if a handle is in both sets, the lazy version
+ * wins (it has fresher profile data).
+ */
+function mergeWithLazyHits(cached: RpcRow[], lazy: ProbeHit[], nameTokens: string[]): RpcRow[] {
+  if (lazy.length === 0) return cached;
+  const matchedDisplay = nameTokens.join(' ');
+  const seen = new Set<string>();
+  const out: RpcRow[] = [];
+  for (const h of lazy) {
+    const key = `${h.platform}:${h.handle_normalized}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      platform_player_id: '',
+      platform: h.platform,
+      handle: h.handle,
+      country: h.country,
+      title: h.title,
+      rating_bullet: h.rating_bullet,
+      rating_blitz: h.rating_blitz,
+      rating_rapid: h.rating_rapid,
+      rating_classical: h.rating_classical,
+      sim: 1,
+      matched_token: matchedDisplay,
+      claimed_name: h.claimed_name,
+      claimed_name_normalized: h.claimed_name
+        ? h.claimed_name
+            .normalize('NFD')
+            .replace(/[̀-ͯ]/g, '')
+            .toLowerCase()
+            .replace(/[^a-z0-9 ]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim() || null
+        : null,
+    });
+  }
+  for (const r of cached) {
+    const key = `${r.platform}:${r.handle.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+  }
+  return out;
 }
