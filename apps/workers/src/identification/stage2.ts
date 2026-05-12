@@ -40,6 +40,31 @@ export interface Stage2Candidate {
   ratings?: { bullet?: number; blitz?: number; rapid?: number; classical?: number };
   country?: string | null;
   title?: string | null;
+  /** Did we have enough rating data on both sides to check, and did it match?
+   *  Used by the implausibility filter — out-of-band candidates whose anchor
+   *  is a strong-rated player (FIDE >= 1800) get hard-dropped. */
+  rating_band_match: boolean | null;
+}
+
+/**
+ * Drop candidates whose online ratings are clearly too low for the
+ * FIDE-rated anchor. Loose "max(online) < fide - 500" check, separate
+ * from the tight ±400 band used for the in-band scoring bonus. A 2600
+ * GM can't be a 1500 handle, but might be a 2150 handle (some pros
+ * don't grind online).
+ */
+const STRONG_FIDE_THRESHOLD = 1800;
+const MAX_RATING_GAP = 500;
+function isImplausibleByRating(
+  fide: number | null | undefined,
+  ratings: { bullet?: number; blitz?: number; rapid?: number; classical?: number } | undefined,
+): boolean {
+  if (fide == null || fide < STRONG_FIDE_THRESHOLD || !ratings) return false;
+  const list = [ratings.bullet, ratings.blitz, ratings.rapid, ratings.classical].filter(
+    (r): r is number => typeof r === 'number',
+  );
+  if (list.length === 0) return false;
+  return Math.max(...list) < fide - MAX_RATING_GAP;
 }
 
 export async function runStage2(sql: postgres.Sql, input: Stage2Input): Promise<Stage2Candidate[]> {
@@ -62,15 +87,16 @@ export async function runStage2(sql: postgres.Sql, input: Stage2Input): Promise<
       rapid: c.rating_rapid ?? undefined,
       classical: c.rating_classical ?? undefined,
     };
+    const rbm = ratingBandMatch(input.fide_rating, {
+      bullet: c.rating_bullet,
+      blitz: c.rating_blitz,
+      rapid: c.rating_rapid,
+      classical: c.rating_classical,
+    });
     const s = score({
       name_similarity: c.similarity,
       country_match: countryMatches(c.country, input.country),
-      rating_band_match: ratingBandMatch(input.fide_rating, {
-        bullet: c.rating_bullet,
-        blitz: c.rating_blitz,
-        rapid: c.rating_rapid,
-        classical: c.rating_classical,
-      }),
+      rating_band_match: rbm,
       title_match: c.title ? c.title === (input.title ?? c.title) : null,
     });
     candidates.set(key, {
@@ -82,6 +108,7 @@ export async function runStage2(sql: postgres.Sql, input: Stage2Input): Promise<
       ratings,
       country: c.country,
       title: c.title,
+      rating_band_match: rbm,
     });
   }
 
@@ -149,10 +176,11 @@ export async function runStage2(sql: postgres.Sql, input: Stage2Input): Promise<
             last_seen_at = NOW()
         `;
 
+        const rbmProbe = ratingBandMatch(input.fide_rating, result.ratings ?? {});
         const s = score({
           name_similarity: 0.95, // hypothesized handle matched an expected pattern
           country_match: countryMatches(result.country, input.country),
-          rating_band_match: ratingBandMatch(input.fide_rating, result.ratings ?? {}),
+          rating_band_match: rbmProbe,
           title_match: result.title ? true : null,
         });
 
@@ -165,6 +193,7 @@ export async function runStage2(sql: postgres.Sql, input: Stage2Input): Promise<
           ratings: result.ratings,
           country: result.country,
           title: result.title,
+          rating_band_match: rbmProbe,
         });
       } catch (err) {
         console.warn(`  probe ${platform}/${h.handle} failed:`, (err as Error).message);
@@ -172,5 +201,7 @@ export async function runStage2(sql: postgres.Sql, input: Stage2Input): Promise<
     }
   }
 
-  return [...candidates.values()].sort((a, b) => b.confidence - a.confidence);
+  return [...candidates.values()]
+    .filter((c) => !isImplausibleByRating(input.fide_rating, c.ratings))
+    .sort((a, b) => b.confidence - a.confidence);
 }

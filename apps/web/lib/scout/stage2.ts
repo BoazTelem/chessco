@@ -30,6 +30,43 @@ export interface Stage2Candidate {
     rapid: number | null;
     classical: number | null;
   };
+  /** Did we have enough rating data on both sides to check, and did it match?
+   *  Used by the implausibility filter — out-of-band candidates whose anchor
+   *  is a strong-rated player (FIDE >= 1800) get hard-dropped. */
+  rating_band_match: boolean | null;
+}
+
+/**
+ * Drop candidates whose online ratings are clearly too low for the
+ * FIDE-rated anchor. Separate from the rating-band scoring bonus —
+ * the bonus uses a tight ±400 band for precision; this filter uses
+ * a loose "more than 500 below FIDE" gap for hard removal.
+ *
+ * A 2635 GM cannot be a 1500-rated handle, even with a perfect name
+ * match. But a 2635 GM CAN be a 2150 chess.com handle (some pros don't
+ * grind online), so we don't drop those — only the impossible cases.
+ *
+ * No filtering for amateur anchors (fide < 1800) — name mismatches are
+ * common and rating gaps are noisier.
+ */
+const STRONG_FIDE_THRESHOLD = 1800;
+const MAX_RATING_GAP = 500;
+function isImplausibleByRating(
+  fide: number | null | undefined,
+  online: {
+    bullet: number | null;
+    blitz: number | null;
+    rapid: number | null;
+    classical: number | null;
+  },
+): boolean {
+  if (fide == null || fide < STRONG_FIDE_THRESHOLD) return false;
+  const ratings = [online.bullet, online.blitz, online.rapid, online.classical].filter(
+    (r): r is number => typeof r === 'number',
+  );
+  if (ratings.length === 0) return false; // no data → can't judge → keep
+  const maxOnline = Math.max(...ratings);
+  return maxOnline < fide - MAX_RATING_GAP;
 }
 
 const STOP_WORDS = new Set(['jr', 'sr', 'iii', 'ii', 'iv']);
@@ -137,15 +174,16 @@ export async function runStage2Cached(input: Stage2Input): Promise<Stage2Candida
 
   const rows = (data ?? []) as RpcRow[];
   const candidates: Stage2Candidate[] = rows.map((r) => {
+    const rbm = ratingBandMatch(input.fide_rating, {
+      bullet: r.rating_bullet,
+      blitz: r.rating_blitz,
+      rapid: r.rating_rapid,
+      classical: r.rating_classical,
+    });
     const s = score({
       name_similarity: r.sim,
       country_match: countryMatches(r.country, input.country),
-      rating_band_match: ratingBandMatch(input.fide_rating, {
-        bullet: r.rating_bullet,
-        blitz: r.rating_blitz,
-        rapid: r.rating_rapid,
-        classical: r.rating_classical,
-      }),
+      rating_band_match: rbm,
       title_match: r.title ? true : null,
     });
     return {
@@ -161,8 +199,11 @@ export async function runStage2Cached(input: Stage2Input): Promise<Stage2Candida
         rapid: r.rating_rapid,
         classical: r.rating_classical,
       },
+      rating_band_match: rbm,
     };
   });
 
-  return candidates.sort((a, b) => b.confidence - a.confidence);
+  return candidates
+    .filter((c) => !isImplausibleByRating(input.fide_rating, c.ratings))
+    .sort((a, b) => b.confidence - a.confidence);
 }
