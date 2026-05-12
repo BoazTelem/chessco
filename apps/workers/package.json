@@ -12,6 +12,7 @@
     "lichess:dump:dry": "tsx src/lichess-dumps/run.ts --dry-run",
     "chesscom:titled": "tsx src/chesscom-titled/run.ts",
     "chesscom:country": "tsx src/chesscom-country/run.ts",
+    "stage2": "tsx src/identification/run.ts",
     "games-db:migrate": "tsx src/games-db-migrate.ts",
     "games-db:verify": "tsx src/games-db-verify.ts",
     "typecheck": "tsc --noEmit",
