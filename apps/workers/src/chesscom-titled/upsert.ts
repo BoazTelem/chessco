@@ -9,6 +9,7 @@
  */
 import type postgres from 'postgres';
 import { fetchPlayer, fetchPlayerStats, isoFromCountryUrl } from '../lib/chesscom-api';
+import { normalizeClaimedName } from '../lib/claimed-name';
 
 export interface UpsertResult {
   upserted: number;
@@ -67,6 +68,8 @@ export async function upsertChesscomTitled(
         fetchPlayerStats(normalized),
       ]);
       if (!player) continue;
+      const claimedName = player.name ?? null;
+      const claimedNormalized = claimedName ? normalizeClaimedName(claimedName) : null;
       await sql`
         UPDATE platform_players SET
           country = ${isoFromCountryUrl(player.country) ?? null},
@@ -74,6 +77,8 @@ export async function upsertChesscomTitled(
           rating_blitz = ${stats?.chess_blitz?.last?.rating ?? null},
           rating_rapid = ${stats?.chess_rapid?.last?.rating ?? null},
           rating_classical = ${stats?.chess_daily?.last?.rating ?? null},
+          claimed_name = ${claimedName},
+          claimed_name_normalized = ${claimedNormalized},
           raw = COALESCE(raw, '{}'::jsonb) || ${JSON.stringify({ player, stats })}::jsonb,
           last_seen_at = NOW()
         WHERE platform = 'chess.com' AND handle = ${normalized}

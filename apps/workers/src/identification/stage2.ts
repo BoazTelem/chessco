@@ -17,8 +17,21 @@ import type postgres from 'postgres';
 import { countryMatches } from '../lib/country-code';
 import { cachedFuzzyMatch } from './cached-match';
 import { hypothesizeHandles } from './hypothesize';
-import { probeChesscom, probeLichess } from './probe';
+import { probeChesscom, probeLichess, type ProbeResult } from './probe';
 import { ratingBandMatch, score } from './score';
+
+function extractClaimedName(p: ProbeResult): string | null {
+  const raw = p.raw as
+    | {
+        username?: string;
+        name?: string;
+        profile?: { realName?: string };
+        player?: { name?: string };
+      }
+    | undefined;
+  if (!raw) return null;
+  return raw.profile?.realName ?? raw.name ?? raw.player?.name ?? null;
+}
 
 export interface Stage2Input {
   name: string;
@@ -44,6 +57,10 @@ export interface Stage2Candidate {
    *  Used by the implausibility filter — out-of-band candidates whose anchor
    *  is a strong-rated player (FIDE >= 1800) get hard-dropped. */
   rating_band_match: boolean | null;
+  /** Real name claimed by the platform profile, if any. Used by the
+   *  cross-reference filter to detect "this handle's owner is a different
+   *  FIDE player than our anchor." */
+  claimed_name: string | null;
 }
 
 /**
@@ -109,6 +126,7 @@ export async function runStage2(sql: postgres.Sql, input: Stage2Input): Promise<
       country: c.country,
       title: c.title,
       rating_band_match: rbm,
+      claimed_name: null, // worker cached path doesn't carry claimed_name today
     });
   }
 
@@ -184,6 +202,7 @@ export async function runStage2(sql: postgres.Sql, input: Stage2Input): Promise<
           title_match: result.title ? true : null,
         });
 
+        const claimedName = extractClaimedName(result);
         candidates.set(`${result.platform}:${result.handle}`, {
           platform: result.platform,
           handle: result.handle,
@@ -194,6 +213,7 @@ export async function runStage2(sql: postgres.Sql, input: Stage2Input): Promise<
           country: result.country,
           title: result.title,
           rating_band_match: rbmProbe,
+          claimed_name: claimedName,
         });
       } catch (err) {
         console.warn(`  probe ${platform}/${h.handle} failed:`, (err as Error).message);

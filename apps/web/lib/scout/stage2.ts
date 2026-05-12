@@ -15,6 +15,10 @@ export interface Stage2Input {
   country?: string | null;
   fide_rating?: number | null;
   title?: string | null;
+  /** federation_players.id of the anchor — used by the cross-reference
+   *  filter to drop candidates whose claimed_name resolves to a DIFFERENT
+   *  FIDE-registered player. */
+  federation_player_id?: string | null;
 }
 
 export interface Stage2Candidate {
@@ -34,6 +38,16 @@ export interface Stage2Candidate {
    *  Used by the implausibility filter — out-of-band candidates whose anchor
    *  is a strong-rated player (FIDE >= 1800) get hard-dropped. */
   rating_band_match: boolean | null;
+  /** Real name claimed by the platform profile, if any. */
+  claimed_name: string | null;
+  /** If the claimed_name fuzzy-matched a federation_players row, what id? */
+  claimed_federation_match: {
+    federation_player_id: string;
+    federation_id: string;
+    federation_player_id_str: string;
+    matched_name: string;
+    sim: number;
+  } | null;
 }
 
 /**
@@ -156,6 +170,17 @@ interface RpcRow {
   rating_classical: number | null;
   sim: number;
   matched_token: string;
+  claimed_name: string | null;
+  claimed_name_normalized: string | null;
+}
+
+interface FedMatchRow {
+  name_input: string;
+  federation_player_id: string;
+  federation_id: string;
+  federation_player_id_str: string;
+  matched_name: string;
+  sim: number;
 }
 
 export async function runStage2Cached(input: Stage2Input): Promise<Stage2Candidate[]> {
@@ -173,6 +198,28 @@ export async function runStage2Cached(input: Stage2Input): Promise<Stage2Candida
   if (error) throw new Error(`stage2_cached_match RPC failed: ${error.message}`);
 
   const rows = (data ?? []) as RpcRow[];
+
+  // ---- Cross-reference: for any candidate with a claimed_name, find the
+  // best federation_players match and check whether it's a DIFFERENT player
+  // than our anchor. One batched RPC call instead of N round-trips.
+  const claimedNames = Array.from(
+    new Set(
+      rows
+        .map((r) => r.claimed_name_normalized)
+        .filter((n): n is string => typeof n === 'string' && n.length > 0),
+    ),
+  );
+  const fedMatchByName = new Map<string, FedMatchRow>();
+  if (claimedNames.length > 0) {
+    const { data: fedData, error: fedErr } = await supabase.rpc('match_federation_players_batch', {
+      names: claimedNames,
+    });
+    if (fedErr) throw new Error(`match_federation_players_batch failed: ${fedErr.message}`);
+    for (const row of (fedData ?? []) as FedMatchRow[]) {
+      fedMatchByName.set(row.name_input, row);
+    }
+  }
+
   const candidates: Stage2Candidate[] = rows.map((r) => {
     const rbm = ratingBandMatch(input.fide_rating, {
       bullet: r.rating_bullet,
@@ -186,6 +233,9 @@ export async function runStage2Cached(input: Stage2Input): Promise<Stage2Candida
       rating_band_match: rbm,
       title_match: r.title ? true : null,
     });
+    const fedMatch = r.claimed_name_normalized
+      ? (fedMatchByName.get(r.claimed_name_normalized) ?? null)
+      : null;
     return {
       platform: r.platform,
       handle: r.handle,
@@ -200,10 +250,35 @@ export async function runStage2Cached(input: Stage2Input): Promise<Stage2Candida
         classical: r.rating_classical,
       },
       rating_band_match: rbm,
+      claimed_name: r.claimed_name,
+      claimed_federation_match: fedMatch,
     };
   });
 
   return candidates
     .filter((c) => !isImplausibleByRating(input.fide_rating, c.ratings))
+    .filter((c) => !isDifferentFederationPlayer(c, input.federation_player_id))
     .sort((a, b) => b.confidence - a.confidence);
+}
+
+/**
+ * If the candidate's claimed_name resolves to a federation_players row
+ * with high similarity AND that row's id is not our anchor, this is
+ * provably a different person. Drop.
+ *
+ * Threshold: claimed_name → federation match similarity >= 0.7. Lower
+ * thresholds risk false positives (common surnames like "Smith"). 0.7
+ * still catches "Boris Kantsler" vs "Kantsler Boris" (trigram-symmetric).
+ */
+const DIFFERENT_PERSON_SIMILARITY = 0.7;
+function isDifferentFederationPlayer(
+  candidate: Stage2Candidate,
+  anchorFederationPlayerId: string | null | undefined,
+): boolean {
+  const m = candidate.claimed_federation_match;
+  if (!m) return false;
+  if (m.sim < DIFFERENT_PERSON_SIMILARITY) return false;
+  if (!anchorFederationPlayerId) return false;
+  if (m.federation_player_id === anchorFederationPlayerId) return false;
+  return true;
 }
