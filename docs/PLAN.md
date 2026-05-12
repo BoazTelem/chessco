@@ -96,7 +96,7 @@ Tooling: pnpm + Turborepo, TS strict, ESLint + Prettier + Husky + lint-staged, V
 | 4    | Lichess OAuth integration (verified account linking). Chess.com bio-token verification flow (`verification_tokens` table). External account display on profile.                                                                                                                                                                                                                                                                                                                                                                                    |
 | 5    | **FIDE ratings ingestion worker** (Inngest, monthly cron `0 4 5 * *` + manual trigger). Stream-parse XML, batch upsert 1000 rows at a time, write `federation_rating_snapshots` for ratings/title changes. Implementation per [`fide-ingestion-spec.md`](fide-ingestion-spec.md). USCF top-list ingest if scope allows; else slip to Phase 1.                                                                                                                                                                                                      |
 | 6    | Federation search MVP at `/scout` — trigram-fuzzy name + country/title/rating filters against `federation_players` (now 755k FIDE players + USCF added this week). **USCF top-list ingestion worker** — HTML scrape of public USCF top lists (no clean XML dump unlike FIDE). PGN import worker (Inngest) — pull last 200 games from each linked Lichess/chess.com account, parse, intern positions, write `games` + `moves` into Supabase for now (will migrate to AWS RDS games DB in Phase 1 W1). Backfill `external_accounts.rating_*` fields. |
-| 7    | `/dashboard` with own games list + linked accounts, `/account` for profile + linked accounts management, `/p/[player_id]` basic federation player profile (name, country, title, rating chart from snapshots), marketing site placeholder home page, deployment hardening, **Apple OAuth** (deferred from W3 — mirror the Google `signInWithGoogle` pattern; needs Apple Developer Service ID + .p8 key), Phase 0 retro.                                                                                                                           |
+| 7    | **Israeli Chess Federation (ICF) ingest** — HTML scrape of `chess.org.il` ratings (~30k players; primary launch market). `/account` polish, marketing site placeholder home page, deployment hardening, **Apple OAuth** (deferred from W3 — mirror the Google `signInWithGoogle` pattern; needs Apple Developer Service ID + .p8 key), Phase 0 retro. **Note:** /dashboard own-games and /p/[player_id] profile pages move into W6 since they're tightly coupled to /scout (click result → profile) and own-game import.                           |
 
 **Exit criteria:**
 
@@ -108,6 +108,142 @@ Tooling: pnpm + Turborepo, TS strict, ESLint + Prettier + Husky + lint-staged, V
 **Out of scope:** prep reports, online-account matching, marketplace, payments.
 
 **Why FIDE first.** Federation rating list is the canonical anchor for all of Feature 1. Small (~400k records), structured, free, monthly cadence. Without it, the system has no way to ground "real-world player" → "online account" matches.
+
+---
+
+## National Federations Coverage Roadmap
+
+Every national federation needs a custom HTML scraper because they all publish ratings differently — there's no shared standard. Each parser is ~150–250 LOC and reuses the upsert/normalize/run-tracker code from the FIDE worker. Average effort per federation: **~3–5 days** (research source + write parser + run + verify).
+
+Each row below is a separate `apps/workers/src/<federation>/` worker.
+
+### Tier 1 — Phase 0 + Phase 1 launch markets (must ship before paid launch)
+
+| #   | Federation                       | Code | Est. rated players  | When       | Priority           |
+| --- | -------------------------------- | ---- | ------------------- | ---------- | ------------------ |
+| 1   | **FIDE** (international)         | FIDE | ~755k ✅            | Phase 0 W5 | Done               |
+| 2   | **USCF** (United States)         | USCF | ~10–25k (top-lists) | Phase 0 W6 | User pick          |
+| 3   | **Israeli CF** (`chess.org.il`)  | ICF  | ~30k                | Phase 0 W7 | Primary IL market  |
+| 4   | **ECF** (England Chess Fed)      | ECF  | ~12k                | Phase 1 W6 | Launch market (UK) |
+| 5   | **DSB** (Deutscher Schachbund)   | DSB  | ~110k DWZ           | Phase 1 W6 | Launch market (DE) |
+| 6   | **FSI** (Federazione Italiana)   | FSI  | ~28k                | Phase 1 W7 | Launch market (IT) |
+| 7   | **FFE** (Féd. Française)         | FFE  | ~57k                | Phase 1 W7 | Launch market (FR) |
+| 8   | **CFC** (Chess Federation of CA) | CFC  | ~9k                 | Phase 1 W8 | Launch market (CA) |
+| 9   | **ACF** (Australian CF)          | ACF  | ~5k                 | Phase 1 W8 | Launch market (AU) |
+| 10  | **FEDA** (Spanish Fed.)          | FEDA | ~28k                | Phase 1 W9 | Major EU market    |
+
+### Tier 2 — Phase 2 (broader EU + strong chess countries)
+
+| Federation                                          | Code     | Est. players  | When       |
+| --------------------------------------------------- | -------- | ------------- | ---------- |
+| KNSB (Netherlands)                                  | KNSB     | ~17k          | Phase 2 W3 |
+| KBSB-FRBE (Belgium)                                 | KBSB     | ~5k           | Phase 2 W3 |
+| ÖSB / ÖSV (Austria)                                 | OESB     | ~7k           | Phase 2 W3 |
+| SSV-FSE (Switzerland)                               | SSV      | ~6k           | Phase 2 W3 |
+| SP / PZSzach (Poland)                               | PZSZ     | ~30k          | Phase 2 W4 |
+| ŠSČR (Czechia)                                      | SSCR     | ~12k          | Phase 2 W4 |
+| MSSZ (Hungary)                                      | MSSZ     | ~10k          | Phase 2 W4 |
+| FRS (Romania)                                       | FRS      | ~6k           | Phase 2 W4 |
+| ChF (Armenia), ACF (Azerbaijan), GCF (Georgia)      | —        | ~3–10k each   | Phase 2 W5 |
+| All-Russian CF / Ukrainian CF                       | RCF, UCF | ~50–150k each | Phase 2 W5 |
+| Nordic: SSF (SE), SU (NO), DSF (DK), SSL (FI)       | —        | ~3–10k each   | Phase 2 W6 |
+| Other EU: PFCh (PT), ECF-GR (Greece), IRE (Ireland) | —        | ~3–8k each    | Phase 2 W6 |
+
+### Tier 3 — Phase 3+ (rollout as markets expand)
+
+| Region         | Federations                                      | Notes                            |
+| -------------- | ------------------------------------------------ | -------------------------------- |
+| South Asia     | AICF (India), Pakistan CF                        | India has ~30k+ rated players    |
+| East Asia      | CCA (China), JCA (Japan), KCF (S. Korea)         | China data limited public access |
+| Southeast Asia | NCFP (Philippines), VCF (Vietnam)                | Strong chess cultures            |
+| Latin America  | CBX (Brazil), FADA (Argentina), FENAMAC (Mexico) | Spanish/Portuguese site parsing  |
+| Africa         | South African CF, Egypt CF, Nigeria              | Smaller pools                    |
+| Other          | TCF (Türkiye), ECU (regional aggregator)         |                                  |
+
+### Strategy notes
+
+- **Source-of-truth check before each parser:** confirm public rating lists are accessible without auth + ToS allows scraping. Some federations (e.g. USCF full directory) gate behind paid membership — we settle for top lists. A few aggregator sites (e.g. ratings.fide.com mirrors national data) but first-party is more reliable.
+- **All federation workers share infrastructure:** `apps/workers/src/lib/run-tracker.ts` (ingestion_runs row management), `apps/workers/src/fide/normalize.ts` (re-exported as `apps/workers/src/lib/normalize.ts` after USCF), `apps/workers/src/fide/upsert.ts` (UNNEST batch upsert pattern, abstracted into `lib/`).
+- **The `federation_players.federation_id` column already supports this** — we seeded 6 federation rows in 0001_core_schema.sql; we add more rows via UPDATE/INSERT as parsers ship. No new tables needed.
+- **Ratings differ across federations:** USCF has `rating_quick`, German has DWZ (different scale), correspondence federations have separate pools. The `federation_players.raw jsonb` column captures the original record so we don't lose precision.
+- **Privacy posture:** federations differ on what data is publicly published. Where age/birth year or contact info is private, we omit it. Right-to-delist applies uniformly (spec §6 privacy defaults).
+
+---
+
+## Ongoing Data Ingestion (steady-state, post-launch)
+
+Per-query lazy fetches (chess.com), monthly batch refreshes (FIDE / federations), and weekly tournament feeds keep the corpus current. These workers run 24/7 once Phase 1 launches.
+
+### Chess.com continuous coverage (priority-queue crawler)
+
+Spec §6 default is lazy-fetch-per-query, which serves the immediate user. **The longer game is continuous background crawling** to widen coverage so most queries hit a warm cache.
+
+**Approach:**
+
+- New table `chesscom_crawl_queue` (id, handle, priority int, reason text, last_attempted_at, next_attempt_at, status enum). Workers dequeue by `priority DESC, next_attempt_at ASC`.
+- **Priority feeders** (initial seeds, ongoing additions):
+  1. All FIDE-titled players with `chess_title IS NOT NULL` + their candidate chess.com handles (from Stage 2 matching)
+  2. All linked external_accounts (`SELECT external_id FROM external_accounts WHERE platform = 'chess.com'`)
+  3. All players who were targets of `identification_queries` in the last 90 days
+  4. Top 1000 chess.com rated players globally + per-country top-100 (via chess.com's leaderboard endpoints)
+  5. Opponents of any indexed game (transitively grow the graph)
+- **Worker loop:** every 60s, dequeue 30 handles → fetch via PubAPI → write `games` + update `external_accounts.last_synced_at` → re-enqueue with `next_attempt_at = NOW() + 7 days` (or longer for inactive accounts).
+- **Rate limit:** token-bucket capped at 30 req/min globally (chess.com's documented limit). Single Cloud Run worker; not parallelizable across IPs without proxies, which we won't do (against the spirit of their rate limits).
+- **Storage:** all games → RDS games DB (provisioned Phase 1 W1).
+- **ToS posture:** chess.com PubAPI is explicitly free for read-only public-data access; we attribute games to the chess.com URL in any rendered context per their attribution requirement.
+
+**Ships:** **Phase 2 W1** as a follow-on to the Phase 1 lazy fetcher. The Phase 1 fetcher establishes the per-query path; Phase 2 adds the continuous queue + worker on top.
+
+**Honest cap:** at 30 req/min, ~1.5M player profiles/year max. We will never cover all 150M chess.com users. We cover the ones that matter — titled players, active competitors, opponents of indexed games. The corpus grows organically with user demand.
+
+### ChessBase free player profile pages
+
+ChessBase publishes free public profile pages at `chessbase.com/en/players/{slug}` for prominent players (titled, World Championship participants, top-100, etc.). These pages contain:
+
+- Player bio + photo
+- Career highlights + tournament results
+- Selected recent games (typically 10–50 per player, PGN downloadable)
+
+**These are legal to fetch and render** (public marketing pages, not the licensed Mega Database). What's NOT legal is the Mega Database itself (paid product, EULA forbids redistribution).
+
+**Approach:**
+
+- New worker `apps/workers/src/chessbase/` — scrape free player profile pages for FIDE-titled players.
+- Respect robots.txt; one request every 5s (conservative; their site doesn't publish a rate limit).
+- Parse PGN sections, write games to RDS games DB tagged `source = 'chessbase'`.
+- Cross-reference with the same player on Lichess/chess.com — these games may overlap with master databases already in the Lichess corpus, but the comments/annotations on ChessBase pages are sometimes unique.
+
+**Ships:** **Phase 2 W2** alongside other Tier 2 enrichments. Low priority — the Lichess dumps already include most high-profile games via TWIC re-publication. ChessBase is a coverage-quality booster, not a primary source.
+
+**Honest cap:** ~3–5k notable players have ChessBase profile pages with games. We're not building a competitor to ChessBase Mega — we're enriching our existing corpus with the small subset of public material they publish.
+
+### TWIC (The Week in Chess) — weekly tournament games
+
+TWIC publishes a weekly PGN file (~3k games/week) of top-level tournaments — the same games that flow into ChessBase Mega and Lichess master databases. Free, well-structured, no auth.
+
+**Approach:**
+
+- Weekly Inngest cron `0 6 * * 1` (Mondays 06:00 UTC)
+- Download the week's TWIC PGN bundle from theweekinchess.com
+- Parse and write to games DB with `source = 'twic'` + tournament metadata
+- Players auto-resolved to canonical `players` rows by FIDE ID where present
+
+**Ships:** **Phase 1 W2** as a third source alongside Lichess dumps and chess.com PubAPI. ~150k games/year, ~15GB total — trivial volume.
+
+### Re-ingest cadence summary
+
+| Source                | Cadence                | Worker                             |
+| --------------------- | ---------------------- | ---------------------------------- |
+| FIDE monthly list     | Monthly (5th)          | `apps/workers/src/fide/`           |
+| USCF top-lists        | Monthly                | `apps/workers/src/uscf/`           |
+| Tier 1 nat'l feds     | Monthly or quarterly   | `apps/workers/src/<fed>/`          |
+| Tier 2 nat'l feds     | Quarterly              | same                               |
+| Lichess monthly dumps | Monthly (~5th of next) | `apps/workers/src/lichess/dumps/`  |
+| Chess.com PubAPI      | Continuous (queue)     | `apps/workers/src/chesscom/crawl/` |
+| TWIC                  | Weekly (Mondays)       | `apps/workers/src/twic/`           |
+| ChessBase free pages  | Quarterly (titled set) | `apps/workers/src/chessbase/`      |
+
+All workers log into `ingestion_runs` for the admin dashboard (spec §22 admin/ingestion section).
 
 ---
 
@@ -141,15 +277,15 @@ Tooling: pnpm + Turborepo, TS strict, ESLint + Prettier + Husky + lint-staged, V
 
 **Goal:** Identification works against partially anonymous online accounts, not just OTB-anchored players. Style fingerprint becomes a real verifier and an explorer.
 
-| Week | Deliverables                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1    | **Engineered feature extractor** at scale — 200–500 named features per player from their game corpus. Write to `style_features.features`. Backfill for Tier A/B players.                                                                                                                                                                                                                                                 |
-| 2    | Feature normalization + float vector projection for fast comparison.                                                                                                                                                                                                                                                                                                                                                     |
-| 3–4  | **Embedding model training** (offline) — small transformer encoder over game-feature sequences, contrastive loss (same-player batches close, diff-player far). 384-dim output. Training pipeline + model versioning in `ops/models/`. Eval on held-out player set.                                                                                                                                                       |
-| 5    | Inference path — encode any player's recent games to embedding, write to `players.embedding`. Schedule weekly recomputation. **pgvector HNSW index** on `players.embedding`.                                                                                                                                                                                                                                             |
-| 6    | Stylometric verification integrated into Stage 3 ranking. "Find unrated lookalikes" — given an anchor, find similar online accounts that may belong to the same person. Cross-platform sibling-account consistency check.                                                                                                                                                                                                |
-| 7    | Style fingerprint UX polish — radar chart on 8 axes, prose summary via Haiku, sample-game upload to compare your style to a target. `/scout/federation/{id}` ranked-list browse mode (SEO + discovery). **National federation ingest workers** ship in parallel during Phase 2: ECF (UK), DSB (Germany), FSI (Italy), FFE (France), Israeli CF — each ~3–5 days, mirroring the USCF HTML-scrape pattern from Phase 0 W6. |
-| 8    | **Privacy & ethics enforcement** in product — anonymous accounts off by default, opt-in toggle in `/account`, right-to-delist endpoint, doxxing-prevention copy review. Federation rating data hide-from-search on request. Phase 2 retro.                                                                                                                                                                               |
+| Week | Deliverables                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | **Engineered feature extractor** at scale — 200–500 named features per player from their game corpus. Write to `style_features.features`. Backfill for Tier A/B players.                                                                                                                                                                                                                                                                                                                                        |
+| 2    | Feature normalization + float vector projection for fast comparison.                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 3–4  | **Embedding model training** (offline) — small transformer encoder over game-feature sequences, contrastive loss (same-player batches close, diff-player far). 384-dim output. Training pipeline + model versioning in `ops/models/`. Eval on held-out player set.                                                                                                                                                                                                                                              |
+| 5    | Inference path — encode any player's recent games to embedding, write to `players.embedding`. Schedule weekly recomputation. **pgvector HNSW index** on `players.embedding`.                                                                                                                                                                                                                                                                                                                                    |
+| 6    | Stylometric verification integrated into Stage 3 ranking. "Find unrated lookalikes" — given an anchor, find similar online accounts that may belong to the same person. Cross-platform sibling-account consistency check.                                                                                                                                                                                                                                                                                       |
+| 7    | Style fingerprint UX polish — radar chart on 8 axes, prose summary via Haiku, sample-game upload to compare your style to a target. `/scout/federation/{id}` ranked-list browse mode (SEO + discovery). **Tier 2 national federations** ship in parallel (KNSB Netherlands, ÖSV Austria, SSV Switzerland, PZSzach Poland, MSSZ Hungary, etc.) — see the National Federations Coverage Roadmap section above. Tier 1 federations (FIDE/USCF/ICF/ECF/DSB/FSI/FFE/CFC/ACF/FEDA) are all shipped by end of Phase 1. |
+| 8    | **Privacy & ethics enforcement** in product — anonymous accounts off by default, opt-in toggle in `/account`, right-to-delist endpoint, doxxing-prevention copy review. Federation rating data hide-from-search on request. Phase 2 retro.                                                                                                                                                                                                                                                                      |
 
 **Exit criteria:**
 
