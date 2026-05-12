@@ -69,6 +69,20 @@ interface RawGameRow {
   termination: string | null;
   /** postgres-js with prepare:false returns timestamptz as ISO string. */
   played_at: string;
+  // Stockfish-derived per-game aggregates (Phase 1 W5). Null until the
+  // backfill worker analyzes the row.
+  mean_cp_loss: string | null;
+  mean_cp_loss_white: string | null;
+  mean_cp_loss_black: string | null;
+  blunder_count: number | null;
+  plies_analyzed: number | null;
+}
+
+/** postgres-js returns numeric columns as strings. Cast safely. */
+function numOrNull(v: string | null): number | null {
+  if (v === null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 /** Composite key encoding (platform, handle). Stable, human-readable. */
@@ -100,7 +114,9 @@ async function main() {
           SELECT source,
             white_handle_snapshot, black_handle_snapshot,
             white_rating, black_rating,
-            result, time_class, opening_eco, ply_count, termination, played_at
+            result, time_class, opening_eco, ply_count, termination, played_at,
+            mean_cp_loss, mean_cp_loss_white, mean_cp_loss_black,
+            blunder_count, plies_analyzed
           FROM games
           WHERE source IN ${sourceList}
             AND (LOWER(white_handle_snapshot) = ${args.filterHandle}
@@ -110,7 +126,9 @@ async function main() {
           SELECT source,
             white_handle_snapshot, black_handle_snapshot,
             white_rating, black_rating,
-            result, time_class, opening_eco, ply_count, termination, played_at
+            result, time_class, opening_eco, ply_count, termination, played_at,
+            mean_cp_loss, mean_cp_loss_white, mean_cp_loss_black,
+            blunder_count, plies_analyzed
           FROM games
           WHERE source IN ${sourceList}
         `);
@@ -122,6 +140,9 @@ async function main() {
     const byHandle = new Map<string, GameRow[]>();
     for (const r of rows) {
       const playedAt = new Date(r.played_at);
+      const meanCp = numOrNull(r.mean_cp_loss);
+      const meanCpW = numOrNull(r.mean_cp_loss_white);
+      const meanCpB = numOrNull(r.mean_cp_loss_black);
       if (r.white_handle_snapshot) {
         const k = groupKey(r.source, r.white_handle_snapshot.toLowerCase());
         const list = byHandle.get(k) ?? [];
@@ -134,6 +155,11 @@ async function main() {
           termination: r.termination,
           opponent_rating: r.black_rating,
           played_at: playedAt,
+          mean_cp_loss: meanCp,
+          mean_cp_loss_white: meanCpW,
+          mean_cp_loss_black: meanCpB,
+          blunder_count: r.blunder_count,
+          plies_analyzed: r.plies_analyzed,
         });
         byHandle.set(k, list);
       }
@@ -149,6 +175,11 @@ async function main() {
           termination: r.termination,
           opponent_rating: r.white_rating,
           played_at: playedAt,
+          mean_cp_loss: meanCp,
+          mean_cp_loss_white: meanCpW,
+          mean_cp_loss_black: meanCpB,
+          blunder_count: r.blunder_count,
+          plies_analyzed: r.plies_analyzed,
         });
         byHandle.set(k, list);
       }

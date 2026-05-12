@@ -78,6 +78,17 @@ interface RawGameRow {
   ply_count: number;
   termination: string | null;
   played_at: string;
+  mean_cp_loss: string | null;
+  mean_cp_loss_white: string | null;
+  mean_cp_loss_black: string | null;
+  blunder_count: number | null;
+  plies_analyzed: number | null;
+}
+
+function numOrNull(v: string | null): number | null {
+  if (v === null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 function groupKey(source: string, handle: string): string {
@@ -111,7 +122,9 @@ async function main() {
     const rows = await client<RawGameRow[]>`
       SELECT source, white_handle_snapshot, black_handle_snapshot,
              white_rating, black_rating,
-             result, time_class, opening_eco, ply_count, termination, played_at
+             result, time_class, opening_eco, ply_count, termination, played_at,
+             mean_cp_loss, mean_cp_loss_white, mean_cp_loss_black,
+             blunder_count, plies_analyzed
       FROM games
       WHERE source IN ('lichess', 'chess.com')
     `;
@@ -123,6 +136,9 @@ async function main() {
     const byHandle = new Map<string, GameRow[]>();
     for (const r of rows) {
       const playedAt = new Date(r.played_at);
+      const meanCp = numOrNull(r.mean_cp_loss);
+      const meanCpW = numOrNull(r.mean_cp_loss_white);
+      const meanCpB = numOrNull(r.mean_cp_loss_black);
       if (r.white_handle_snapshot) {
         const k = groupKey(r.source, r.white_handle_snapshot.toLowerCase());
         const list = byHandle.get(k) ?? [];
@@ -135,6 +151,11 @@ async function main() {
           termination: r.termination,
           opponent_rating: r.black_rating,
           played_at: playedAt,
+          mean_cp_loss: meanCp,
+          mean_cp_loss_white: meanCpW,
+          mean_cp_loss_black: meanCpB,
+          blunder_count: r.blunder_count,
+          plies_analyzed: r.plies_analyzed,
         });
         byHandle.set(k, list);
       }
@@ -150,6 +171,11 @@ async function main() {
           termination: r.termination,
           opponent_rating: r.white_rating,
           played_at: playedAt,
+          mean_cp_loss: meanCp,
+          mean_cp_loss_white: meanCpW,
+          mean_cp_loss_black: meanCpB,
+          blunder_count: r.blunder_count,
+          plies_analyzed: r.plies_analyzed,
         });
         byHandle.set(k, list);
       }
@@ -246,14 +272,29 @@ async function main() {
       bands.push({ band, n: subset.length, ...agg });
     }
 
+    // Surface the cp-loss coverage of the corpus at eval time so the /trust
+    // page can explain whether Stockfish features were active for this run.
+    const analyzedCount = splits.filter(
+      (s) => s.trainFeatures.mean_cp_loss != null && s.testFeatures.mean_cp_loss != null,
+    ).length;
+    const cpLossCoverage = splits.length > 0 ? analyzedCount / splits.length : 0;
+
     const summary = {
       run_at: new Date().toISOString(),
-      methodology: 'leave-K-out cosine over V0 fingerprint',
+      methodology: 'leave-K-out cosine over V0 fingerprint + Stockfish cp-loss',
       features_version: 'v0',
-      features_used: ['eco_white', 'eco_black', 'time_class', 'avg_opponent_rating'],
+      features_used: [
+        'eco_white',
+        'eco_black',
+        'time_class',
+        'avg_opponent_rating',
+        'mean_cp_loss',
+      ],
       k_test_games: args.k,
       min_handle_games: args.minGames,
       total_handles_qualified: splits.length,
+      cp_loss_coverage: cpLossCoverage,
+      cp_loss_handles_with_signal: analyzedCount,
       overall,
       by_band: bands,
     };

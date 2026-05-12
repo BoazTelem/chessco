@@ -27,6 +27,9 @@ interface EvalSummary {
   k_test_games: number;
   min_handle_games: number;
   total_handles_qualified: number;
+  /** Fraction of handles whose train + test slices both had cp-loss signal. */
+  cp_loss_coverage?: number;
+  cp_loss_handles_with_signal?: number;
   overall: { top1: number; top5: number; top10: number; mrr: number };
   by_band: BandStats[];
 }
@@ -185,9 +188,28 @@ export default async function TrustPage() {
                     Features ({summary.features_version}
                     ):
                   </strong>{' '}
-                  {summary.features_used.join(', ')}. Stockfish-derived signals (per-ply cp-loss,
-                  blunder rate) are NOT in this version — they&apos;re scheduled for the next
-                  upgrade and should lift the lower bands significantly.
+                  {summary.features_used.join(', ')}.
+                  {summary.cp_loss_coverage !== undefined && summary.cp_loss_coverage > 0 ? (
+                    <>
+                      {' '}
+                      Stockfish cp-loss signal was active for{' '}
+                      <strong className="text-foreground">
+                        {pct(summary.cp_loss_coverage)}
+                      </strong>{' '}
+                      of the handles in this run (
+                      {summary.cp_loss_handles_with_signal?.toLocaleString()} of{' '}
+                      {summary.total_handles_qualified.toLocaleString()}). Handles without analyzed
+                      games yet contribute 0 on the cp-loss component so the matcher degrades
+                      gracefully during the rolling backfill.
+                    </>
+                  ) : (
+                    <>
+                      {' '}
+                      Stockfish-derived signals (per-ply cp-loss, blunder rate) are NOT yet active
+                      in this run — they&apos;re scheduled for the next upgrade and should lift the
+                      lower bands significantly.
+                    </>
+                  )}
                 </li>
               </ul>
             </section>

@@ -1,19 +1,20 @@
 /**
- * Stage 3 V0 — fingerprint matcher.
+ * Stage 3 — fingerprint matcher.
  *
  * Input:  target PlayerFeaturesV0 (extracted from pasted PGN(s))
- * Lookup: all style_features rows in chessco-games (currently ~1.4k)
+ * Lookup: all style_features rows in chessco-games
  * Output: top-K candidates ranked by combined similarity score
  *
- * Combined score:
- *   0.40 × cosine(eco_white)       — repertoire as White
- *   0.40 × cosine(eco_black)       — repertoire as Black
- *   0.10 × cosine(time_class)      — pace preference
- *   0.10 × gaussianScalar(avg_opponent_rating, σ=200)
+ * Combined score (weights sum to 1.0):
+ *   0.30 × cosine(eco_white)              — repertoire as White
+ *   0.30 × cosine(eco_black)              — repertoire as Black
+ *   0.10 × cosine(time_class)             — pace preference
+ *   0.15 × gaussianScalar(opp_rating, σ=250)
+ *   0.15 × gaussianScalar(mean_cp_loss, σ=20)   — play quality (Stockfish)
  *
- * The 0.8 weight on ECO is intentional — opening repertoire is the
- * strongest free fingerprint signal we have. Stockfish-derived signals
- * (cp-loss, blunder rate) come in W4.5 and will get their own weight band.
+ * The cp-loss term contributes 0 when either side hasn't been analyzed yet,
+ * so the matcher degrades gracefully during a rolling backfill — handles
+ * with engine evals just get a real signal there; unanalyzed handles get 0.
  */
 import type postgres from 'postgres';
 import type { PlayerFeaturesV0 } from '../features/types';
@@ -30,6 +31,7 @@ export interface Stage3Match {
     eco_black: number;
     time_class: number;
     opp_rating: number;
+    cp_loss: number;
   };
 }
 
@@ -47,8 +49,11 @@ export function compareFingerprints(
   const ecoB = cosineSparse(target.eco_black, cand.eco_black);
   const time = cosineSparse(target.time_class, cand.time_class);
   const opp = gaussianScalar(target.avg_opponent_rating, cand.avg_opponent_rating, 250);
+  // gaussianScalar returns 0 when either input is null, so partially-analyzed
+  // corpora gracefully degrade to "no cp-loss signal" without code branches.
+  const cpLoss = gaussianScalar(target.mean_cp_loss ?? null, cand.mean_cp_loss ?? null, 20);
 
-  const combined = 0.4 * ecoW + 0.4 * ecoB + 0.1 * time + 0.1 * opp;
+  const combined = 0.3 * ecoW + 0.3 * ecoB + 0.1 * time + 0.15 * opp + 0.15 * cpLoss;
 
   return {
     combined,
@@ -57,6 +62,7 @@ export function compareFingerprints(
       eco_black: ecoB,
       time_class: time,
       opp_rating: opp,
+      cp_loss: cpLoss,
     },
   };
 }

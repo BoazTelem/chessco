@@ -51,4 +51,20 @@ export interface PlayerFeaturesV0 {
   /** Window covered by these games. */
   earliest_played_at: string;
   latest_played_at: string;
+
+  // ---- Stockfish-derived stylometric signals (Phase 1 W5) ----
+  // All cp-loss fields are nullable: a handle may have games_total=80 but
+  // only analyzed_games=50 of them analyzed at any given moment during the
+  // rolling backfill. The matcher treats null as "no signal" and assigns
+  // the cp-loss component a similarity score of 0.
+  /** Count of this handle's games that had cp_loss populated. */
+  analyzed_games?: number;
+  /** Mean cp-loss across analyzed plies (lower = stronger play). */
+  mean_cp_loss?: number | null;
+  /** Same, restricted to plies the player moved as white. */
+  mean_cp_loss_white?: number | null;
+  /** Same, restricted to plies the player moved as black. */
+  mean_cp_loss_black?: number | null;
+  /** Fraction of analyzed plies where cp-loss >= 200 (a "blunder"). */
+  blunder_rate?: number | null;
 }

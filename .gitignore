@@ -49,3 +49,7 @@ Thumbs.db
 # Misc
 *.pem
 .cache/
+
+# Vendored binaries (Stockfish per-platform — too large + per-OS to commit;
+# devs run apps/workers/scripts/fetch-stockfish.ps1 to populate locally).
+apps/workers/vendor/

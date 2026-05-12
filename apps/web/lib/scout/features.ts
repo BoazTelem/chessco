@@ -26,6 +26,13 @@ export interface PlayerFeaturesV0 {
   opponent_rating_max: number | null;
   earliest_played_at: string;
   latest_played_at: string;
+  // Stockfish-derived stylometric signals (Phase 1 W5). See the worker
+  // copy at apps/workers/src/features/types.ts for full design notes.
+  analyzed_games?: number;
+  mean_cp_loss?: number | null;
+  mean_cp_loss_white?: number | null;
+  mean_cp_loss_black?: number | null;
+  blunder_rate?: number | null;
 }
 
 export interface GameRow {
@@ -37,6 +44,11 @@ export interface GameRow {
   termination: string | null;
   opponent_rating: number | null;
   played_at: Date;
+  mean_cp_loss?: number | null;
+  mean_cp_loss_white?: number | null;
+  mean_cp_loss_black?: number | null;
+  blunder_count?: number | null;
+  plies_analyzed?: number | null;
 }
 
 export function extractFeaturesV0(games: GameRow[]): PlayerFeaturesV0 {
@@ -60,6 +72,14 @@ export function extractFeaturesV0(games: GameRow[]): PlayerFeaturesV0 {
   let oppMax: number | null = null;
   let earliest: Date | null = null;
   let latest: Date | null = null;
+  let analyzedGames = 0;
+  let cpLossPlyTotal = 0;
+  let cpLossWeightedSum = 0;
+  let cpLossWhitePlyTotal = 0;
+  let cpLossWhiteWeightedSum = 0;
+  let cpLossBlackPlyTotal = 0;
+  let cpLossBlackWeightedSum = 0;
+  let blunderCount = 0;
 
   for (const g of games) {
     if (g.color === 'white') {
@@ -89,6 +109,24 @@ export function extractFeaturesV0(games: GameRow[]): PlayerFeaturesV0 {
     }
     if (earliest === null || g.played_at < earliest) earliest = g.played_at;
     if (latest === null || g.played_at > latest) latest = g.played_at;
+
+    if (g.plies_analyzed != null && g.plies_analyzed > 0) {
+      analyzedGames++;
+      if (g.mean_cp_loss != null) {
+        cpLossPlyTotal += g.plies_analyzed;
+        cpLossWeightedSum += g.mean_cp_loss * g.plies_analyzed;
+      }
+      const halfPlies = g.plies_analyzed / 2;
+      if (g.mean_cp_loss_white != null) {
+        cpLossWhitePlyTotal += halfPlies;
+        cpLossWhiteWeightedSum += g.mean_cp_loss_white * halfPlies;
+      }
+      if (g.mean_cp_loss_black != null) {
+        cpLossBlackPlyTotal += halfPlies;
+        cpLossBlackWeightedSum += g.mean_cp_loss_black * halfPlies;
+      }
+      if (g.blunder_count != null) blunderCount += g.blunder_count;
+    }
   }
 
   return {
@@ -112,5 +150,12 @@ export function extractFeaturesV0(games: GameRow[]): PlayerFeaturesV0 {
     opponent_rating_max: oppMax,
     earliest_played_at: earliest?.toISOString() ?? new Date(0).toISOString(),
     latest_played_at: latest?.toISOString() ?? new Date(0).toISOString(),
+    analyzed_games: analyzedGames,
+    mean_cp_loss: cpLossPlyTotal > 0 ? cpLossWeightedSum / cpLossPlyTotal : null,
+    mean_cp_loss_white:
+      cpLossWhitePlyTotal > 0 ? cpLossWhiteWeightedSum / cpLossWhitePlyTotal : null,
+    mean_cp_loss_black:
+      cpLossBlackPlyTotal > 0 ? cpLossBlackWeightedSum / cpLossBlackPlyTotal : null,
+    blunder_rate: cpLossPlyTotal > 0 ? blunderCount / cpLossPlyTotal : null,
   };
 }

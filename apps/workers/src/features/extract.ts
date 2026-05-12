@@ -16,6 +16,14 @@ export interface GameRow {
   termination: string | null;
   opponent_rating: number | null;
   played_at: Date;
+  // ---- Optional Stockfish-derived per-game aggregates (Phase 1 W5) ----
+  // Pre-computed by apps/workers/src/stockfish/backfill.ts and stored on
+  // the `games` row. Present for analyzed games, null for the rest.
+  mean_cp_loss?: number | null;
+  mean_cp_loss_white?: number | null;
+  mean_cp_loss_black?: number | null;
+  blunder_count?: number | null;
+  plies_analyzed?: number | null;
 }
 
 export function extractFeaturesV0(games: GameRow[]): PlayerFeaturesV0 {
@@ -39,6 +47,17 @@ export function extractFeaturesV0(games: GameRow[]): PlayerFeaturesV0 {
   let oppMax: number | null = null;
   let earliest: Date | null = null;
   let latest: Date | null = null;
+
+  // cp-loss aggregation across analyzed games only. Weighted by plies_analyzed
+  // so a 60-ply analyzed game contributes more than a 12-ply one.
+  let analyzedGames = 0;
+  let cpLossPlyTotal = 0;
+  let cpLossWeightedSum = 0;
+  let cpLossWhitePlyTotal = 0;
+  let cpLossWhiteWeightedSum = 0;
+  let cpLossBlackPlyTotal = 0;
+  let cpLossBlackWeightedSum = 0;
+  let blunderCount = 0;
 
   for (const g of games) {
     if (g.color === 'white') {
@@ -73,6 +92,31 @@ export function extractFeaturesV0(games: GameRow[]): PlayerFeaturesV0 {
 
     if (earliest === null || g.played_at < earliest) earliest = g.played_at;
     if (latest === null || g.played_at > latest) latest = g.played_at;
+
+    // Aggregate cp-loss only when the game has been analyzed (plies_analyzed
+    // is the unambiguous signal). The mover-color split lets the matcher
+    // pick out "this player blunders as black" patterns later.
+    if (g.plies_analyzed != null && g.plies_analyzed > 0) {
+      analyzedGames++;
+      if (g.mean_cp_loss != null) {
+        cpLossPlyTotal += g.plies_analyzed;
+        cpLossWeightedSum += g.mean_cp_loss * g.plies_analyzed;
+      }
+      // The per-side numbers cover only the analyzed plies of that color.
+      // We don't track per-color ply count separately, so weight by half
+      // the total analyzed plies as an approximation — close enough for
+      // averaging across many games.
+      const halfPlies = g.plies_analyzed / 2;
+      if (g.mean_cp_loss_white != null) {
+        cpLossWhitePlyTotal += halfPlies;
+        cpLossWhiteWeightedSum += g.mean_cp_loss_white * halfPlies;
+      }
+      if (g.mean_cp_loss_black != null) {
+        cpLossBlackPlyTotal += halfPlies;
+        cpLossBlackWeightedSum += g.mean_cp_loss_black * halfPlies;
+      }
+      if (g.blunder_count != null) blunderCount += g.blunder_count;
+    }
   }
 
   return {
@@ -96,5 +140,12 @@ export function extractFeaturesV0(games: GameRow[]): PlayerFeaturesV0 {
     opponent_rating_max: oppMax,
     earliest_played_at: earliest?.toISOString() ?? new Date(0).toISOString(),
     latest_played_at: latest?.toISOString() ?? new Date(0).toISOString(),
+    analyzed_games: analyzedGames,
+    mean_cp_loss: cpLossPlyTotal > 0 ? cpLossWeightedSum / cpLossPlyTotal : null,
+    mean_cp_loss_white:
+      cpLossWhitePlyTotal > 0 ? cpLossWhiteWeightedSum / cpLossWhitePlyTotal : null,
+    mean_cp_loss_black:
+      cpLossBlackPlyTotal > 0 ? cpLossBlackWeightedSum / cpLossBlackPlyTotal : null,
+    blunder_rate: cpLossPlyTotal > 0 ? blunderCount / cpLossPlyTotal : null,
   };
 }

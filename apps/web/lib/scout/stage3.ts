@@ -20,6 +20,7 @@ export interface Stage3Match {
     eco_black: number;
     time_class: number;
     opp_rating: number;
+    cp_loss: number;
   };
 }
 
@@ -55,10 +56,17 @@ export function compareFingerprints(
   const ecoB = cosineSparse(target.eco_black, cand.eco_black);
   const time = cosineSparse(target.time_class, cand.time_class);
   const opp = gaussianScalar(target.avg_opponent_rating, cand.avg_opponent_rating, 250);
-  const combined = 0.4 * ecoW + 0.4 * ecoB + 0.1 * time + 0.1 * opp;
+  const cpLoss = gaussianScalar(target.mean_cp_loss ?? null, cand.mean_cp_loss ?? null, 20);
+  const combined = 0.3 * ecoW + 0.3 * ecoB + 0.1 * time + 0.15 * opp + 0.15 * cpLoss;
   return {
     combined,
-    components: { eco_white: ecoW, eco_black: ecoB, time_class: time, opp_rating: opp },
+    components: {
+      eco_white: ecoW,
+      eco_black: ecoB,
+      time_class: time,
+      opp_rating: opp,
+      cp_loss: cpLoss,
+    },
   };
 }
 

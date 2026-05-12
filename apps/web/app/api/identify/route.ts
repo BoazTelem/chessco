@@ -423,12 +423,21 @@ async function handleSamplePgn(
     title: anchorPlayer?.title ?? null,
     via: 'sample_game',
   };
-  const matchReasons = (m: Stage3Match): string[] => [
-    `eco-W ${(m.components.eco_white * 100).toFixed(0)}%`,
-    `eco-B ${(m.components.eco_black * 100).toFixed(0)}%`,
-    `time-class ${(m.components.time_class * 100).toFixed(0)}%`,
-    `opp-rating ${(m.components.opp_rating * 100).toFixed(0)}%`,
-  ];
+  const matchReasons = (m: Stage3Match): string[] => {
+    const r = [
+      `eco-W ${(m.components.eco_white * 100).toFixed(0)}%`,
+      `eco-B ${(m.components.eco_black * 100).toFixed(0)}%`,
+      `time-class ${(m.components.time_class * 100).toFixed(0)}%`,
+      `opp-rating ${(m.components.opp_rating * 100).toFixed(0)}%`,
+    ];
+    // Surface cp-loss reason only when both sides actually had cp-loss data —
+    // gaussianScalar returns 0 when either is null, which would otherwise
+    // produce a misleading "cp-loss 0%" line during the rolling backfill.
+    if (m.components.cp_loss > 0) {
+      r.push(`cp-loss ${(m.components.cp_loss * 100).toFixed(0)}%`);
+    }
+    return r;
+  };
   const proseMap = await generateProseSafe(
     proseSubject,
     matches.map((m) => ({

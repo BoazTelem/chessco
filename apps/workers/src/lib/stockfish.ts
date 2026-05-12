@@ -16,10 +16,19 @@
  * spawning multiple StockfishEngine instances.
  */
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export type SfVariant = 'lite-single' | 'single' | 'lite' | 'full';
+
+export interface StartOptions {
+  /** WASM variant to use when no native binary is configured. */
+  variant?: SfVariant;
+  /** Explicit path to a native Stockfish binary. Overrides env + auto-detect. */
+  nativeBinaryPath?: string;
+}
 
 export interface PositionEval {
   /** Centipawns from side-to-move POV. null if mate-only. */
@@ -41,6 +50,36 @@ function resolveEngineJs(variant: SfVariant): string {
   return join(pkgRoot, 'bin', VARIANT_FILES[variant]);
 }
 
+/**
+ * Look for a native Stockfish binary, in order:
+ *   1. Explicit `nativeBinaryPath` option
+ *   2. STOCKFISH_BIN env var (absolute path)
+ *   3. apps/workers/vendor/stockfish/stockfish/stockfish-windows-x86-64-avx2.exe
+ *      (the vendored Win64 binary that scripts/fetch-stockfish.ps1 drops)
+ *   4. `stockfish` on PATH (Linux/Mac dev installs)
+ *
+ * Returns null if no native binary is found — caller falls back to WASM.
+ */
+function resolveNativeBinary(explicit?: string): string | null {
+  if (explicit && existsSync(explicit)) return explicit;
+  const fromEnv = process.env.STOCKFISH_BIN;
+  if (fromEnv && existsSync(fromEnv)) return fromEnv;
+
+  // apps/workers/vendor/stockfish/stockfish/stockfish-windows-x86-64-avx2.exe
+  // relative to this lib file's location at apps/workers/src/lib/stockfish.ts
+  const here = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    join(here, '..', '..', 'vendor', 'stockfish', 'stockfish', 'stockfish-windows-x86-64-avx2.exe'),
+    join(here, '..', '..', 'vendor', 'stockfish', 'stockfish', 'stockfish'),
+    join(here, '..', '..', 'vendor', 'stockfish', 'stockfish-windows-x86-64-avx2.exe'),
+    join(here, '..', '..', 'vendor', 'stockfish', 'stockfish'),
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) return c;
+  }
+  return null;
+}
+
 export class StockfishEngine {
   private readonly proc: ChildProcessWithoutNullStreams;
   private buf = '';
@@ -60,9 +99,29 @@ export class StockfishEngine {
     });
   }
 
-  static async start(variant: SfVariant = 'lite-single'): Promise<StockfishEngine> {
-    const enginePath = resolveEngineJs(variant);
-    const proc = spawn(process.execPath, [enginePath], { stdio: ['pipe', 'pipe', 'pipe'] });
+  /**
+   * Start a Stockfish engine. Prefers a native binary (5-10x faster than
+   * WASM) when one is available; otherwise spawns the bundled WASM build
+   * under Node. The UCI protocol is identical either way so callers don't
+   * need to know which they got.
+   *
+   * Pass `start()` or `start({ variant: 'lite-single' })` for the legacy
+   * WASM-explicit call shape. Pass `start({ nativeBinaryPath })` to force
+   * a specific binary path.
+   */
+  static async start(opts: StartOptions | SfVariant = {}): Promise<StockfishEngine> {
+    const options: StartOptions = typeof opts === 'string' ? { variant: opts } : opts;
+    const variant = options.variant ?? 'lite-single';
+    const native = resolveNativeBinary(options.nativeBinaryPath);
+
+    let proc: ChildProcessWithoutNullStreams;
+    if (native) {
+      proc = spawn(native, [], { stdio: ['pipe', 'pipe', 'pipe'] });
+    } else {
+      const enginePath = resolveEngineJs(variant);
+      proc = spawn(process.execPath, [enginePath], { stdio: ['pipe', 'pipe', 'pipe'] });
+    }
+
     const engine = new StockfishEngine(proc);
     await engine.send('uci', (l) => l === 'uciok');
     await engine.send('isready', (l) => l === 'readyok');
@@ -114,13 +173,11 @@ export class StockfishEngine {
   }
 
   async evalPosition(fen: string, depth: number): Promise<PositionEval> {
-    // `ucinewgame` keeps the hash table from leaking between unrelated positions.
-    // It's cheap (no actual recomputation) but means evals are independent.
-    await this.send('ucinewgame', () => true, 1000).catch(() => undefined);
-    // ucinewgame doesn't print anything; the .catch is just to swallow the inherent
-    // timeout. Force a sync barrier with isready.
-    await this.send('isready', (l) => l === 'readyok');
-
+    // `position fen` fully resets the board, so we don't need `ucinewgame`
+    // between calls — the hash table can leak across unrelated positions but
+    // that only affects timing (warm cache), never the eval. Earlier code
+    // round-tripped ucinewgame + isready which silently burned 1s per call
+    // (ucinewgame emits nothing, so the predicate waited for the timeout).
     this.proc.stdin.write(`position fen ${fen}\n`);
     const lines = await this.send(`go depth ${depth}`, (l) => l.startsWith('bestmove '));
 
