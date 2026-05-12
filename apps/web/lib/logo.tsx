@@ -13,15 +13,17 @@ const GRID: ReadonlyArray<ReadonlyArray<number>> = [
   [0, 1, 2, 3, 2, 3, 2, 1],
 ];
 
-type MarkVariant = 'solid' | 'float';
+type MarkVariant = 'solid' | 'float' | 'glyph';
 
 type MarkProps = {
   className?: string;
   title?: string;
   decorative?: boolean;
-  // 'solid' renders the full 8x8 board. 'float' drops palette 0/1 (the dim
-  // surround) so only the C strokes render — useful at hero size where the
-  // dim cells turn to mud against the page background.
+  // 'solid' = full 8x8 board.
+  // 'float' = drop palette 0/1 (dim surround); C strokes float on background.
+  // 'glyph' = same silhouette as float, but every C cell rendered in gold
+  //           — no mid-brown alternation. Used at small sizes (favicon ≤32)
+  //           where the chess parity isn't legible anyway.
   variant?: MarkVariant;
 };
 
@@ -44,7 +46,8 @@ function MarkSvg({
       {!decorative && <title>{title}</title>}
       {GRID.flatMap((row, y) =>
         row.map((c, x) => {
-          if (variant === 'float' && c < 2) return null;
+          if ((variant === 'float' || variant === 'glyph') && c < 2) return null;
+          const fill = variant === 'glyph' ? COLORS[3] : COLORS[c];
           return (
             <rect
               key={`${x}-${y}`}
@@ -52,7 +55,7 @@ function MarkSvg({
               y={y * 32}
               width={32}
               height={32}
-              fill={COLORS[c]}
+              fill={fill}
             />
           );
         }),

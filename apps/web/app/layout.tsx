@@ -18,12 +18,9 @@ export const metadata: Metadata = {
   },
   description: brand.description,
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? `https://${brand.domain}`),
-  // app/icon.svg is auto-picked up for <link rel="icon">. apple-icon only supports
-  // .jpg|.jpeg|.png via the file convention, so we link the SVG explicitly here —
-  // modern iOS Safari renders it; older versions fall back gracefully.
-  icons: {
-    apple: '/chessco-mark.svg',
-  },
+  // Icons are emitted via file conventions: app/icon.svg (flat gold C),
+  // app/icon1.tsx (sized PNG fallbacks), app/apple-icon.tsx (180px PNG),
+  // app/opengraph-image.tsx (1200x630 social card).
   openGraph: {
     title: `${brand.name} — ${brand.slogan}`,
     description: brand.description,
