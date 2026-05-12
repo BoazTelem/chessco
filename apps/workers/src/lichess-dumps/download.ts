@@ -34,10 +34,7 @@ export interface DumpStream {
  *
  * Resumes from a partial file if it exists and matches Content-Length.
  */
-export async function downloadAndOpenDumpStream(
-  url: string,
-  dumpId: string,
-): Promise<DumpStream> {
+export async function downloadAndOpenDumpStream(url: string, dumpId: string): Promise<DumpStream> {
   const cachePath = path.join(tmpdir(), `chessco-lichess-${dumpId}.pgn.zst`);
 
   // Try to reuse a fully-downloaded file from a previous run.

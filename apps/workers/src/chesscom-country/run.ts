@@ -57,10 +57,7 @@ async function upsertCountryChunk(
   iso: string,
   handles: string[],
 ): Promise<number> {
-  const insert = sql as unknown as (
-    rows: object[],
-    ...cols: string[]
-  ) => postgres.Helper<object[]>;
+  const insert = sql as unknown as (rows: object[], ...cols: string[]) => postgres.Helper<object[]>;
   const rows = handles.map((h) => {
     const normalized = h.trim().toLowerCase();
     return {
@@ -105,7 +102,9 @@ async function main() {
         console.log(`\n→ /pub/country/${iso}/players`);
         const t0 = Date.now();
         const handles = await fetchCountryPlayers(iso);
-        console.log(`  fetched ${handles.length.toLocaleString()} handles (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+        console.log(
+          `  fetched ${handles.length.toLocaleString()} handles (${((Date.now() - t0) / 1000).toFixed(1)}s)`,
+        );
 
         let upserted = 0;
         for (let i = 0; i < handles.length; i += ROW_CHUNK) {
