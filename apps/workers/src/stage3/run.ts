@@ -23,20 +23,61 @@ import { processGame } from '../lichess-dumps/parse-game';
 import { rankFingerprints } from './match';
 
 interface CliArgs {
-  mode: 'self' | 'pgn';
+  mode: 'self' | 'self-sample' | 'pgn';
   platform?: string;
   handle?: string;
   pgnPath?: string;
+  /** For --self-sample: how many games to randomly pick from the handle's set. */
+  sampleN?: number;
+  /** Seed the sampler so the test is reproducible. */
+  seed?: number;
 }
 
 function parseArgs(argv: string[]): CliArgs {
   if (argv[0] === '--self' && argv[1] && argv[2]) {
     return { mode: 'self', platform: argv[1], handle: argv[2].toLowerCase() };
   }
+  if (argv[0] === '--self-sample' && argv[1] && argv[2] && argv[3]) {
+    return {
+      mode: 'self-sample',
+      platform: argv[1],
+      handle: argv[2].toLowerCase(),
+      sampleN: Number.parseInt(argv[3], 10),
+      seed: argv[4] ? Number.parseInt(argv[4], 10) : 1,
+    };
+  }
   if (argv[0] === '--pgn' && argv[1]) {
     return { mode: 'pgn', pgnPath: argv[1] };
   }
-  throw new Error('Usage: stage3 --self <platform> <handle>  OR  stage3 --pgn <file.pgn>');
+  throw new Error(
+    'Usage: stage3 --self <platform> <handle>\n' +
+      '       stage3 --self-sample <platform> <handle> <N> [seed]\n' +
+      '       stage3 --pgn <file.pgn>',
+  );
+}
+
+/** Deterministic small PRNG (mulberry32) — same seed = same sample. */
+function makeRng(seed: number): () => number {
+  let s = seed >>> 0 || 1;
+  return () => {
+    s |= 0;
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function sampleN<T>(arr: T[], n: number, seed: number): T[] {
+  if (n >= arr.length) return arr.slice();
+  const rng = makeRng(seed);
+  const idx = arr.map((_, i) => i);
+  // Fisher-Yates partial shuffle
+  for (let i = idx.length - 1; i > idx.length - 1 - n; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [idx[i], idx[j]] = [idx[j]!, idx[i]!];
+  }
+  return idx.slice(idx.length - n).map((i) => arr[i]!);
 }
 
 async function loadSelfGames(
@@ -119,6 +160,10 @@ async function main() {
     if (args.mode === 'self') {
       games = await loadSelfGames(client, args.platform!, args.handle!);
       label = `${args.platform}/${args.handle} (self-test)`;
+    } else if (args.mode === 'self-sample') {
+      const all = await loadSelfGames(client, args.platform!, args.handle!);
+      games = sampleN(all, args.sampleN!, args.seed!);
+      label = `${args.platform}/${args.handle} (sampled ${games.length}/${all.length}, seed=${args.seed})`;
     } else {
       games = await loadPgnFile(args.pgnPath!, null);
       label = `PGN file ${args.pgnPath}`;
