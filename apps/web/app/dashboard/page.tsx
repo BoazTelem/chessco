@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { requireUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
@@ -10,15 +11,26 @@ export const metadata = {
 export default async function DashboardPage() {
   const user = await requireUser();
   const supabase = await createClient();
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('username, display_name, country')
-    .eq('id', user.id)
-    .maybeSingle();
+
+  const [{ data: profile }, { data: accounts }] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('username, display_name, country')
+      .eq('id', user.id)
+      .maybeSingle(),
+    supabase
+      .from('external_accounts')
+      .select('platform, external_id, verified')
+      .eq('profile_id', user.id),
+  ]);
 
   if (!profile?.username || !profile?.country) {
     redirect('/onboarding');
   }
+
+  const linked = accounts ?? [];
+  const lichess = linked.find((a) => a.platform === 'lichess');
+  const chesscom = linked.find((a) => a.platform === 'chess.com');
 
   return (
     <div className="container mx-auto max-w-3xl space-y-10 px-4 py-12">
@@ -39,15 +51,52 @@ export default async function DashboardPage() {
           </p>
         </div>
 
-        <form action={signOut}>
-          <button
-            type="submit"
+        <div className="flex items-center gap-2">
+          <Link
+            href="/account"
             className="rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-muted"
           >
-            Sign out
-          </button>
-        </form>
+            Account
+          </Link>
+          <form action={signOut}>
+            <button
+              type="submit"
+              className="rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-muted"
+            >
+              Sign out
+            </button>
+          </form>
+        </div>
       </header>
+
+      <section className="space-y-3">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+            Linked accounts
+          </h2>
+          <Link href="/account" className="text-xs text-accent hover:underline">
+            Manage →
+          </Link>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <AccountBadge
+            name="Lichess"
+            handle={lichess?.external_id}
+            verified={!!lichess?.verified}
+          />
+          <AccountBadge
+            name="Chess.com"
+            handle={chesscom?.external_id}
+            verified={!!chesscom?.verified}
+          />
+        </div>
+        {!lichess && !chesscom && (
+          <p className="text-xs text-muted-foreground">
+            Connect at least one chess account so we can import your games and build prep reports
+            against opponents that share your repertoire.
+          </p>
+        )}
+      </section>
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
@@ -55,14 +104,14 @@ export default async function DashboardPage() {
         </h2>
         <ul className="grid gap-3 sm:grid-cols-2">
           <PlaceholderCard
-            label="Phase 0 W4"
-            title="Link a chess account"
-            body="Verify your Lichess or Chess.com account so we can import your games."
+            label="Phase 0 W5"
+            title="FIDE ingestion"
+            body="Searchable rating list of every FIDE-rated player worldwide."
           />
           <PlaceholderCard
-            label="Phase 0 W5"
+            label="Phase 0 W6"
             title="Find a player"
-            body="Search the FIDE rating list to find your next opponent."
+            body="Federation-anchored search → online accounts. Fuzzy name + country + rating."
           />
           <PlaceholderCard
             label="Phase 1"
@@ -76,6 +125,41 @@ export default async function DashboardPage() {
           />
         </ul>
       </section>
+    </div>
+  );
+}
+
+function AccountBadge({
+  name,
+  handle,
+  verified,
+}: {
+  name: string;
+  handle?: string;
+  verified: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3">
+      <div className="space-y-0.5">
+        <p className="text-xs uppercase tracking-wider text-muted-foreground">{name}</p>
+        {handle ? (
+          <p className="font-medium">@{handle}</p>
+        ) : (
+          <p className="text-sm text-muted-foreground">Not connected</p>
+        )}
+      </div>
+      {handle ? (
+        <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-accent">
+          {verified ? '✓ Verified' : 'Pending'}
+        </span>
+      ) : (
+        <Link
+          href="/account"
+          className="rounded-md bg-accent px-3 py-1 text-xs font-semibold text-accent-foreground hover:opacity-90"
+        >
+          Connect
+        </Link>
+      )}
     </div>
   );
 }
