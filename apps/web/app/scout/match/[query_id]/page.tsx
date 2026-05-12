@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { brand } from '@chessco/ui';
@@ -101,6 +102,14 @@ export default async function MatchPage({ params }: { params: Promise<{ query_id
     (query.query_payload.games_pasted
       ? `AI match · ${query.query_payload.games_pasted} pasted games`
       : '(unknown subject)');
+  const canOfferSampleGameFallback =
+    query.status === 'ready' &&
+    query.input_method !== 'sample_game' &&
+    Boolean(query.query_payload.federation_player_id || query.query_payload.ad_hoc_player_id);
+  const sampleGameFallbackIndex =
+    canOfferSampleGameFallback && candidates && candidates.length > 0
+      ? getSampleGameFallbackInsertionIndex(candidates)
+      : null;
 
   return (
     <div className="min-h-screen">
@@ -181,47 +190,54 @@ export default async function MatchPage({ params }: { params: Promise<{ query_id
               Showing top {candidates.length}. Confidence is computed from handle similarity,
               country, rating-band, and title alignment.
             </p>
-            {candidates.map((c) => (
-              <CandidateCard
-                key={`${c.platform}-${c.handle}`}
-                c={c}
-                signedIn={signedIn}
-                nextPath={nextPath}
-              />
+            {candidates.map((c, index) => (
+              <Fragment key={`${c.platform}-${c.handle}`}>
+                {sampleGameFallbackIndex === index && (
+                  <SampleGameFallback
+                    subjectName={subjectName}
+                    federationPlayerId={query.query_payload.federation_player_id}
+                    adHocPlayerId={query.query_payload.ad_hoc_player_id}
+                    subjectLabel={query.query_payload.name}
+                  />
+                )}
+                <CandidateCard c={c} signedIn={signedIn} nextPath={nextPath} />
+              </Fragment>
             ))}
+            {sampleGameFallbackIndex === candidates.length && (
+              <SampleGameFallback
+                subjectName={subjectName}
+                federationPlayerId={query.query_payload.federation_player_id}
+                adHocPlayerId={query.query_payload.ad_hoc_player_id}
+                subjectLabel={query.query_payload.name}
+              />
+            )}
           </section>
         )}
 
-        {/* AI fallback — no dead-ends. Available regardless of result quality
-            so users with weak matches see the escape hatch and users with strong
-            matches can still cross-verify with games if they want. */}
-        {query.status === 'ready' &&
-          query.input_method !== 'sample_game' &&
-          (query.query_payload.federation_player_id || query.query_payload.ad_hoc_player_id) && (
-            <section className="mt-10 rounded-lg border border-accent/40 bg-accent/5 p-5">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="font-display text-lg font-semibold">None look right?</h2>
-                <span className="text-[10px] uppercase tracking-[0.2em] text-accent">
-                  AI matching
-                </span>
-              </div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Paste 10+ PGN games of {subjectName} and find their accounts by play pattern
-                instead. Works on amateur and titled players alike — the AI doesn&apos;t need their
-                handle to match their name.
-              </p>
-              <div className="mt-4 max-w-2xl">
-                <SampleGameForm
-                  federationPlayerId={query.query_payload.federation_player_id ?? undefined}
-                  adHocPlayerId={query.query_payload.ad_hoc_player_id ?? undefined}
-                  subjectLabel={query.query_payload.name}
-                />
-              </div>
-            </section>
-          )}
+        {canOfferSampleGameFallback && (!candidates || candidates.length === 0) && (
+          <div className="mt-10">
+            <SampleGameFallback
+              subjectName={subjectName}
+              federationPlayerId={query.query_payload.federation_player_id}
+              adHocPlayerId={query.query_payload.ad_hoc_player_id}
+              subjectLabel={query.query_payload.name}
+            />
+          </div>
+        )}
       </main>
     </div>
   );
+}
+
+function getSampleGameFallbackInsertionIndex(candidates: Candidate[]): number {
+  const firstWeakerCandidate = candidates.findIndex((c) => c.confidence_label !== 'high');
+  if (firstWeakerCandidate > 0) return firstWeakerCandidate;
+  if (firstWeakerCandidate === -1) return candidates.length;
+
+  const topScore = candidates[0]?.combined_score ?? 0;
+  const firstOutsideTopCluster = candidates.findIndex((c) => topScore - c.combined_score > 0.05);
+  if (firstOutsideTopCluster > 0) return firstOutsideTopCluster;
+  return Math.min(candidates.length, 3);
 }
 
 /**
@@ -253,6 +269,39 @@ function DiscriminationNote({ candidates }: { candidates: Candidate[] }) {
         finds them by play style.
       </p>
     </div>
+  );
+}
+
+function SampleGameFallback({
+  subjectName,
+  federationPlayerId,
+  adHocPlayerId,
+  subjectLabel,
+}: {
+  subjectName: string;
+  federationPlayerId?: string | null;
+  adHocPlayerId?: string | null;
+  subjectLabel?: string;
+}) {
+  return (
+    <section className="rounded-lg border border-accent/40 bg-accent/5 p-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-display text-lg font-semibold">None look right?</h2>
+        <span className="text-[10px] uppercase tracking-[0.2em] text-accent">AI matching</span>
+      </div>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Paste 10+ PGN games of {subjectName} and find their accounts by play pattern instead. Works
+        on amateur and titled players alike — the AI doesn&apos;t need their handle to match their
+        name.
+      </p>
+      <div className="mt-4 max-w-2xl">
+        <SampleGameForm
+          federationPlayerId={federationPlayerId ?? undefined}
+          adHocPlayerId={adHocPlayerId ?? undefined}
+          subjectLabel={subjectLabel}
+        />
+      </div>
+    </section>
   );
 }
 
