@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { ChesscoMark } from '@/lib/logo';
 import { SearchForm } from './search-form';
 import { ResultCard } from './result-card';
+import { SampleGameForm } from './sample-game-form';
 import type { SearchResult } from './types';
 
 export const metadata = {
@@ -111,26 +112,57 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-accent">Scout</p>
           <h1 className="font-display text-3xl font-bold tracking-tight md:text-4xl">
-            Find a chess player
+            Find any chess player
           </h1>
           <p className="text-sm text-muted-foreground md:text-base">
-            Searching <span className="text-foreground">{(755_081).toLocaleString()}</span> FIDE
-            players. More federations (USCF, ICF, ECF, DSB, …) coming online weekly.
+            Identify the Lichess / chess.com accounts of any player worldwide. Works on titled
+            players, amateurs, and anyone in between — no FIDE rating required.
           </p>
         </div>
 
-        <div className="mt-8">
-          <SearchForm
-            initial={{
-              q,
-              country: country ?? '',
-              fed: fed ?? '',
-              title: title ?? '',
-              min: min?.toString() ?? '',
-              max: max?.toString() ?? '',
-            }}
-          />
-        </div>
+        {/* PRIMARY: AI sample-game matching — works for every player, FIDE or not. */}
+        <section className="mt-8 rounded-lg border border-accent/40 bg-accent/5 p-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="font-display text-lg font-semibold">Paste their games — AI matching</h2>
+            <span className="text-[10px] uppercase tracking-[0.2em] text-accent">
+              For any player
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Have 10+ games of any chess player? AI identifies their Lichess + chess.com accounts by
+            play pattern (opening repertoire, time class, opponent rating). Works whether
+            they&apos;re titled, FIDE-rated, or completely unrated.
+          </p>
+          <div className="mt-4 max-w-2xl">
+            <SampleGameForm />
+          </div>
+        </section>
+
+        {/* SECONDARY: structured FIDE search — for users who already know the player. */}
+        <section className="mt-6">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="font-display text-lg font-semibold">Or search by name</h2>
+            <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              FIDE database · {(755_081).toLocaleString()} players
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Already know who they are? Search the FIDE rating list directly. Drill into a profile to
+            run AI matching anchored to their name.
+          </p>
+          <div className="mt-4">
+            <SearchForm
+              initial={{
+                q,
+                country: country ?? '',
+                fed: fed ?? '',
+                title: title ?? '',
+                min: min?.toString() ?? '',
+                max: max?.toString() ?? '',
+              }}
+            />
+          </div>
+        </section>
 
         <section className="mt-10">
           {!hasQuery ? (

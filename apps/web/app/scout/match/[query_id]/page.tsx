@@ -19,6 +19,8 @@ interface IdentificationQuery {
     country?: string | null;
     fide_rating?: number | null;
     title?: string | null;
+    /** When the query was a pure sample-game paste with no FIDE anchor. */
+    games_pasted?: number;
   };
   created_at: string;
   completed_at: string | null;
@@ -70,7 +72,14 @@ export default async function MatchPage({ params }: { params: Promise<{ query_id
     .eq('query_id', query_id)
     .order('rank', { ascending: true })) as { data: Candidate[] | null };
 
-  const subjectName = query.query_payload.name ?? '(unknown subject)';
+  // When the query has a FIDE anchor, show their name. Otherwise (pure
+  // sample-game paste with no anchor — common for amateurs), show a
+  // descriptive label about the input instead of "(unknown subject)".
+  const subjectName =
+    query.query_payload.name ??
+    (query.query_payload.games_pasted
+      ? `AI match · ${query.query_payload.games_pasted} pasted games`
+      : '(unknown subject)');
 
   return (
     <div className="min-h-screen">
