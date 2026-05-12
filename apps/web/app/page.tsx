@@ -2,9 +2,10 @@ import Link from 'next/link';
 import { brand } from '@chessco/ui';
 import { getUser } from '@/lib/auth';
 import { ChesscoMark } from '@/lib/logo';
+import { getIndexedPlayerCounts } from '@/lib/scout/player-counts';
 
 export default async function HomePage() {
-  const user = await getUser();
+  const [user, counts] = await Promise.all([getUser(), getIndexedPlayerCounts()]);
 
   return (
     <main className="container mx-auto flex min-h-screen flex-col items-center justify-center px-4 py-16">
@@ -64,8 +65,11 @@ export default async function HomePage() {
 
         <div className="mt-8 flex flex-col gap-3 text-sm">
           <div className="rounded-lg border border-border bg-card px-6 py-4 text-muted-foreground">
-            <span className="font-medium text-foreground">755,081 FIDE players indexed.</span> Try
-            the scout — no sign-up needed. Prep reports next.
+            <span className="font-medium text-foreground">
+              {counts.total.toLocaleString()} players indexed
+            </span>{' '}
+            across FIDE, chess.com, and Lichess. Try the scout — no sign-up needed. Prep reports
+            next.
           </div>
           <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
             <span>Scout</span>
