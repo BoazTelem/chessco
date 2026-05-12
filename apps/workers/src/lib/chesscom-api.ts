@@ -159,3 +159,86 @@ export function isoFromCountryUrl(url: string | undefined): string | null {
   const m = /\/country\/([A-Z]{2,3})$/.exec(url);
   return m?.[1] ?? null;
 }
+
+// ============================================================================
+// Games archives (used by the crawler — Phase 2 W1 pulled forward)
+// ============================================================================
+
+/** /pub/player/{u}/games/archives → { archives: string[] } of monthly URLs. */
+export interface ArchivesList {
+  archives: string[];
+}
+
+export async function fetchArchivesList(handle: string): Promise<string[]> {
+  const data = await fetchJson<ArchivesList>(
+    `/player/${encodeURIComponent(handle.toLowerCase())}/games/archives`,
+  );
+  return data?.archives ?? [];
+}
+
+/**
+ * One game in a chess.com monthly archive. Field set per
+ * https://www.chess.com/news/view/published-data-api#pubapi-endpoint-games-archive
+ *
+ * Notes:
+ *  - `rules` is the variant: 'chess' is standard, others (chess960, kingofthehill,
+ *    bughouse, …) we drop at filter time.
+ *  - `pgn` is a full PGN string including headers.
+ *  - `end_time` is unix-seconds.
+ *  - White/black `result` is per-player (win/checkmated/timeout/resigned/…); the
+ *    game-level outcome is reconstructed from the white side at parse time.
+ */
+export interface ChesscomArchiveGame {
+  url: string;
+  pgn?: string;
+  time_control: string;
+  end_time: number;
+  rated: boolean;
+  tcn?: string;
+  uuid?: string;
+  fen?: string;
+  time_class: 'bullet' | 'blitz' | 'rapid' | 'daily';
+  rules: string;
+  white: {
+    rating: number;
+    result: string;
+    '@id': string;
+    username: string;
+    uuid?: string;
+  };
+  black: {
+    rating: number;
+    result: string;
+    '@id': string;
+    username: string;
+    uuid?: string;
+  };
+  eco?: string;
+  accuracies?: { white: number; black: number };
+}
+
+export interface ArchiveMonth {
+  games: ChesscomArchiveGame[];
+}
+
+/**
+ * /pub/player/{u}/games/{YYYY}/{MM} → list of games in that month.
+ * Accepts the full archive URL (as returned by fetchArchivesList) or a
+ * relative path. Returns [] on 404 (chess.com returns 404 if the player
+ * has no games in that month, even if the URL was listed).
+ */
+export async function fetchArchiveMonth(urlOrPath: string): Promise<ChesscomArchiveGame[]> {
+  // The archives list returns absolute URLs; fetchJson handles both forms.
+  const data = await fetchJson<ArchiveMonth>(urlOrPath);
+  return data?.games ?? [];
+}
+
+/** Parse year/month out of an archives URL like '.../games/2024/01'. */
+export function parseArchiveUrl(url: string): { year: number; month: number } | null {
+  const m = /\/games\/(\d{4})\/(\d{2})$/.exec(url);
+  if (!m) return null;
+  const year = Number.parseInt(m[1]!, 10);
+  const month = Number.parseInt(m[2]!, 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
+  return { year, month };
+}

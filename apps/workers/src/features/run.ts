@@ -1,12 +1,15 @@
 /**
- * Backfill style_features for the entire games corpus.
+ * Backfill style_features for the entire games corpus, across both
+ * source platforms (lichess + chess.com). One fingerprint per
+ * (platform, handle) pair — i.e. a player with both a lichess and a
+ * chess.com account gets two fingerprints. That's intentional: Stage 3
+ * matches against handles, not personas.
  *
- *  1. Stream all games once (currently lichess-only) into memory grouped
- *     by handle. ~68k games × ~250 B per row = ~17 MB; fits comfortably.
- *  2. Skip handles with fewer than --min-games (default 10) — feature
+ *  1. Stream every games row into memory, grouped by (platform, handle).
+ *  2. Skip groups with fewer than --min-games (default 10) — feature
  *     vectors below that are too noisy to be useful.
- *  3. Upsert each handle into `handles` to get its uuid.
- *  4. Compute V0 features per handle (pure fn).
+ *  3. Upsert each (platform, handle) into `handles` to get its uuid.
+ *  4. Compute V0 features per group (pure fn, platform-agnostic).
  *  5. Batch-upsert into `style_features`.
  *
  * Idempotent: re-runs replace style_features rows for the same handle.
@@ -14,35 +17,47 @@
  * Usage:
  *   pnpm --filter @chessco/workers features:run                    # all handles >= 10 games
  *   pnpm --filter @chessco/workers features:run --min-games 5
- *   pnpm --filter @chessco/workers features:run --handle gelfand   # one handle, for debugging
+ *   pnpm --filter @chessco/workers features:run --source lichess   # one platform only
+ *   pnpm --filter @chessco/workers features:run --handle gelfand   # match across platforms
  */
 import 'dotenv/config';
 import type postgres from 'postgres';
 import { getGamesDb } from '../db';
 import { extractFeaturesV0, type GameRow } from './extract';
 
+type Source = 'lichess' | 'chess.com';
+
 interface CliArgs {
   minGames: number;
   filterHandle: string | null;
+  sources: Source[];
 }
 
 function parseArgs(argv: string[]): CliArgs {
   let minGames = 10;
   let filterHandle: string | null = null;
+  let sources: Source[] = ['lichess', 'chess.com'];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--min-games' && argv[i + 1]) {
       minGames = Number.parseInt(argv[++i]!, 10);
     } else if (a === '--handle' && argv[i + 1]) {
       filterHandle = argv[++i]!.toLowerCase();
+    } else if (a === '--source' && argv[i + 1]) {
+      const s = argv[++i]!;
+      if (s !== 'lichess' && s !== 'chess.com') {
+        throw new Error(`--source must be 'lichess' or 'chess.com', got ${s}`);
+      }
+      sources = [s];
     } else {
       throw new Error(`Unknown arg: ${a}`);
     }
   }
-  return { minGames, filterHandle };
+  return { minGames, filterHandle, sources };
 }
 
 interface RawGameRow {
+  source: Source;
   white_handle_snapshot: string | null;
   black_handle_snapshot: string | null;
   white_rating: number | null;
@@ -56,35 +71,60 @@ interface RawGameRow {
   played_at: string;
 }
 
+/** Composite key encoding (platform, handle). Stable, human-readable. */
+function groupKey(source: Source, handle: string): string {
+  return `${source}::${handle}`;
+}
+function parseGroupKey(key: string): { source: Source; handle: string } {
+  const idx = key.indexOf('::');
+  return { source: key.slice(0, idx) as Source, handle: key.slice(idx + 2) };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  console.log(`[features] min-games=${args.minGames} handle=${args.filterHandle ?? '(all)'}`);
+  console.log(
+    `[features] sources=[${args.sources.join(',')}] min-games=${args.minGames} ` +
+      `handle=${args.filterHandle ?? '(all)'}`,
+  );
 
   const { client } = getGamesDb();
   try {
     // ---- 1. Stream games into memory ------------------------------------
     const t0 = Date.now();
-    const rows = await client<RawGameRow[]>`
-      SELECT
-        white_handle_snapshot, black_handle_snapshot,
-        white_rating, black_rating,
-        result, time_class, opening_eco, ply_count, termination, played_at
-      FROM games WHERE source = 'lichess'
-        ${args.filterHandle ? client`AND (LOWER(white_handle_snapshot) = ${args.filterHandle} OR LOWER(black_handle_snapshot) = ${args.filterHandle})` : client``}
-    `;
+    // `args.sources` is validated by parseArgs to be a non-empty subset of
+    // {'lichess', 'chess.com'}, so we can interpolate via the IN helper
+    // without worrying about injection.
+    const sourceList = client(args.sources);
+    const rows = await (args.filterHandle
+      ? client<RawGameRow[]>`
+          SELECT source,
+            white_handle_snapshot, black_handle_snapshot,
+            white_rating, black_rating,
+            result, time_class, opening_eco, ply_count, termination, played_at
+          FROM games
+          WHERE source IN ${sourceList}
+            AND (LOWER(white_handle_snapshot) = ${args.filterHandle}
+                 OR LOWER(black_handle_snapshot) = ${args.filterHandle})
+        `
+      : client<RawGameRow[]>`
+          SELECT source,
+            white_handle_snapshot, black_handle_snapshot,
+            white_rating, black_rating,
+            result, time_class, opening_eco, ply_count, termination, played_at
+          FROM games
+          WHERE source IN ${sourceList}
+        `);
     console.log(
       `[features] loaded ${rows.length.toLocaleString()} games in ${((Date.now() - t0) / 1000).toFixed(1)}s`,
     );
 
-    // ---- 2. Group by handle --------------------------------------------
+    // ---- 2. Group by (platform, handle) --------------------------------
     const byHandle = new Map<string, GameRow[]>();
     for (const r of rows) {
-      // ingest already filters out unfinished games ('*'), but the
-      // declared type includes only finished results, so we just trust it.
       const playedAt = new Date(r.played_at);
       if (r.white_handle_snapshot) {
-        const h = r.white_handle_snapshot.toLowerCase();
-        const list = byHandle.get(h) ?? [];
+        const k = groupKey(r.source, r.white_handle_snapshot.toLowerCase());
+        const list = byHandle.get(k) ?? [];
         list.push({
           color: 'white',
           result: r.result,
@@ -95,11 +135,11 @@ async function main() {
           opponent_rating: r.black_rating,
           played_at: playedAt,
         });
-        byHandle.set(h, list);
+        byHandle.set(k, list);
       }
       if (r.black_handle_snapshot) {
-        const h = r.black_handle_snapshot.toLowerCase();
-        const list = byHandle.get(h) ?? [];
+        const k = groupKey(r.source, r.black_handle_snapshot.toLowerCase());
+        const list = byHandle.get(k) ?? [];
         list.push({
           color: 'black',
           result: r.result,
@@ -110,14 +150,18 @@ async function main() {
           opponent_rating: r.white_rating,
           played_at: playedAt,
         });
-        byHandle.set(h, list);
+        byHandle.set(k, list);
       }
     }
-    console.log(`[features] grouped into ${byHandle.size.toLocaleString()} handles`);
+    const breakdown = countBySource(byHandle);
+    console.log(
+      `[features] grouped into ${byHandle.size.toLocaleString()} (platform, handle) pairs ` +
+        `(${breakdown.lichess.toLocaleString()} lichess, ${breakdown['chess.com'].toLocaleString()} chess.com)`,
+    );
 
     const qualified = [...byHandle.entries()].filter(([, gs]) => gs.length >= args.minGames);
     console.log(
-      `[features] ${qualified.length.toLocaleString()} handles with >= ${args.minGames} games`,
+      `[features] ${qualified.length.toLocaleString()} pairs with >= ${args.minGames} games`,
     );
 
     if (qualified.length === 0) {
@@ -127,37 +171,42 @@ async function main() {
 
     // ---- 3. Upsert handles, get their uuids ----------------------------
     const handlesUpsertT = Date.now();
-    const handleRows = qualified.map(([handle, games]) => ({
-      platform: 'lichess',
-      handle,
-      games_seen: games.length,
-      first_seen_at: minDate(games).toISOString(),
-      last_seen_at: maxDate(games).toISOString(),
-    }));
+    const handleRows = qualified.map(([key, games]) => {
+      const { source, handle } = parseGroupKey(key);
+      return {
+        platform: source,
+        handle,
+        games_seen: games.length,
+        first_seen_at: minDate(games).toISOString(),
+        last_seen_at: maxDate(games).toISOString(),
+      };
+    });
 
     const insert = client as unknown as (
       rs: object[],
       ...cs: string[]
     ) => postgres.Helper<object[]>;
-    const handleIds = await client<{ id: string; handle: string }[]>`
+    const handleIds = await client<{ id: string; platform: string; handle: string }[]>`
       INSERT INTO handles
         ${insert(handleRows, 'platform', 'handle', 'games_seen', 'first_seen_at', 'last_seen_at')}
       ON CONFLICT (platform, handle) DO UPDATE SET
         games_seen = GREATEST(handles.games_seen, EXCLUDED.games_seen),
         first_seen_at = LEAST(handles.first_seen_at, EXCLUDED.first_seen_at),
         last_seen_at = GREATEST(handles.last_seen_at, EXCLUDED.last_seen_at)
-      RETURNING id, handle
+      RETURNING id, platform, handle
     `;
     console.log(
       `[features] upserted ${handleIds.length.toLocaleString()} handles in ${((Date.now() - handlesUpsertT) / 1000).toFixed(1)}s`,
     );
-    const handleIdByName = new Map(handleIds.map((r) => [r.handle, r.id]));
+    const handleIdByKey = new Map(
+      handleIds.map((r) => [groupKey(r.platform as Source, r.handle), r.id]),
+    );
 
     // ---- 4. Compute features -------------------------------------------
     const featuresT = Date.now();
     const featureRows = qualified
-      .map(([handle, games]) => {
-        const playerId = handleIdByName.get(handle);
+      .map(([key, games]) => {
+        const playerId = handleIdByKey.get(key);
         if (!playerId) return null;
         const features = extractFeaturesV0(games);
         return {
@@ -209,6 +258,15 @@ function maxDate(games: GameRow[]): Date {
   let m = games[0]!.played_at;
   for (const g of games) if (g.played_at > m) m = g.played_at;
   return m;
+}
+
+function countBySource(byHandle: Map<string, GameRow[]>): Record<Source, number> {
+  const counts: Record<Source, number> = { lichess: 0, 'chess.com': 0 };
+  for (const k of byHandle.keys()) {
+    const { source } = parseGroupKey(k);
+    counts[source]++;
+  }
+  return counts;
 }
 
 main().catch((err) => {
