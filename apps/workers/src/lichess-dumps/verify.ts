@@ -12,16 +12,18 @@ async function main() {
     `;
     for (const c of counts) console.log(`  ${c.tbl.padEnd(20)}: ${c.n.toLocaleString()}`);
 
-    const sample = await client<{
-      source_game_id: string;
-      white_handle_snapshot: string;
-      black_handle_snapshot: string;
-      white_rating: number;
-      black_rating: number;
-      result: string;
-      time_class: string;
-      played_at: string;
-    }[]>`
+    const sample = await client<
+      {
+        source_game_id: string;
+        white_handle_snapshot: string;
+        black_handle_snapshot: string;
+        white_rating: number;
+        black_rating: number;
+        result: string;
+        time_class: string;
+        played_at: string;
+      }[]
+    >`
       SELECT source_game_id, white_handle_snapshot, black_handle_snapshot,
              white_rating, black_rating, result, time_class, played_at::text
       FROM games
@@ -38,7 +40,16 @@ async function main() {
       );
     }
 
-    const runs = await client<{ dump_id: string; status: string; games_seen: bigint; games_filtered_in: bigint; positions_inserted: bigint; moves_inserted: bigint }[]>`
+    const runs = await client<
+      {
+        dump_id: string;
+        status: string;
+        games_seen: bigint;
+        games_filtered_in: bigint;
+        positions_inserted: bigint;
+        moves_inserted: bigint;
+      }[]
+    >`
       SELECT dump_id, status, games_seen, games_filtered_in, positions_inserted, moves_inserted
       FROM lichess_dump_runs ORDER BY started_at
     `;

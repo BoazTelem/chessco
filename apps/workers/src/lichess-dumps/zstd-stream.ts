@@ -23,13 +23,12 @@ export class ZstdDecompressStream extends Transform {
     });
   }
 
-  override _transform(
-    chunk: Buffer,
-    _enc: BufferEncoding,
-    cb: (err?: Error | null) => void,
-  ): void {
+  override _transform(chunk: Buffer, _enc: BufferEncoding, cb: (err?: Error | null) => void): void {
     try {
-      this.decompressor.push(new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength), false);
+      this.decompressor.push(
+        new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength),
+        false,
+      );
       for (const out of this.pending) this.push(out);
       this.pending.length = 0;
       cb();

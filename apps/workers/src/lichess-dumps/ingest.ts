@@ -60,10 +60,7 @@ interface MoveInsertRow {
   eval_after_mate: number | null;
 }
 
-export async function ingestBatch(
-  sql: postgres.Sql,
-  batch: ProcessedGame[],
-): Promise<IngestStats> {
+export async function ingestBatch(sql: postgres.Sql, batch: ProcessedGame[]): Promise<IngestStats> {
   if (batch.length === 0) {
     return { games: 0, positions_inserted: 0, positions_dedup_hits: 0, moves: 0 };
   }

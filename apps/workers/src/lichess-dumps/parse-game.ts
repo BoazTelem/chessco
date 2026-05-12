@@ -115,7 +115,7 @@ export function processGame(g: ParsedGame): ProcessedGame | null {
           // Lichess %clk shows the clock AFTER the move was made — assign
           // to the player who just moved (i.e. opposite of side-to-move
           // before this move). At ply N (1-indexed), white moves on odd N.
-          if ((moves.length) % 2 === 1) last.clock_white_ms = c.clk;
+          if (moves.length % 2 === 1) last.clock_white_ms = c.clk;
           else last.clock_black_ms = c.clk;
         }
         if (c.evalCp !== null) last.eval_cp = c.evalCp;
@@ -127,7 +127,13 @@ export function processGame(g: ParsedGame): ProcessedGame | null {
     if (tok.kind !== 'san') continue;
 
     const fenBefore = board.fen();
-    let moveResult: { san: string; lan: string; from: string; to: string; promotion?: string } | null = null;
+    let moveResult: {
+      san: string;
+      lan: string;
+      from: string;
+      to: string;
+      promotion?: string;
+    } | null = null;
     try {
       moveResult = board.move(tok.value);
     } catch {
@@ -137,8 +143,7 @@ export function processGame(g: ParsedGame): ProcessedGame | null {
 
     ply++;
     const fenAfter = board.fen();
-    const uci =
-      moveResult.from + moveResult.to + (moveResult.promotion ?? '');
+    const uci = moveResult.from + moveResult.to + (moveResult.promotion ?? '');
 
     positions.push({
       fen: fenAfter,

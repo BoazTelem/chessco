@@ -28,9 +28,7 @@ interface CliArgs {
 
 function parseArgs(argv: string[]): CliArgs {
   if (argv.length < 1 || !/^\d{4}-\d{2}$/.test(argv[0]!)) {
-    throw new Error(
-      'Usage: lichess:dump <YYYY-MM> [--max-games N] [--dry-run]',
-    );
+    throw new Error('Usage: lichess:dump <YYYY-MM> [--max-games N] [--dry-run]');
   }
   const dumpId = argv[0]!;
   let maxGames: number | null = null;
@@ -113,9 +111,7 @@ async function main() {
         lastTickBytes = bytes;
         const elapsed = (Date.now() - startedAt) / 1000;
         const rate = stats.seen / elapsed;
-        const pct = dump.totalBytes
-          ? ((bytes / dump.totalBytes) * 100).toFixed(1) + '%'
-          : '?';
+        const pct = dump.totalBytes ? ((bytes / dump.totalBytes) * 100).toFixed(1) + '%' : '?';
         console.log(
           `  · ${fmtBytes(bytes)}/${dump.totalBytes ? fmtBytes(dump.totalBytes) : '?'} (${pct})  ` +
             `seen=${fmt(stats.seen)}  accepted=${fmt(stats.accepted)}  ` +
