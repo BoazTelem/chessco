@@ -14,7 +14,7 @@ Chessco is a chess preparation and sparring platform with three integrated capab
 
 This plan executes the build from zero to revenue, mapped to spec v1.1. The architectural change from v1.0 → v1.1 (name-anchored over style-anchored, validated by SnoopChess's product) reorders the phases: FIDE ingestion ships in Phase 0, identification + prep ship together in Phase 1, and embeddings move to Phase 2.
 
-**Why now:** Lichess/chess.com have games but no prep tools. ChessBase has prep tools but is desktop-only, $300+, master-level. SnoopChess does player discovery only. No one ties discovery → prep → practice → paid sparring into a single loop. That's the gap, and the integrated loop (Scout → Find → Practice → Pay → Improve) is the moat.
+**Why now:** Lichess/chess.com have games but no prep tools. ChessBase has prep tools but is desktop-only, $300+, master-level. SnoopChess does player discovery only — name-anchored heuristics, no AI on play patterns (internal teardown: [competitors.md](competitors.md)). No one ties discovery → prep → practice → paid sparring into a single loop, and no one runs AI stylometric matching from sample games. That's the gap, and the integrated loop (Scout → Find → Practice → Pay → Improve) plus the AI Scout engine is the moat.
 
 ---
 

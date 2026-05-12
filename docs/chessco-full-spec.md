@@ -2335,6 +2335,8 @@ Phase 5–6 add another 14–18 weeks.
 
 #### Direct competitor: SnoopChess
 
+> Internal teardown with our specific differentiators lives in [`docs/competitors.md`](competitors.md). The summary below stays public-facing.
+
 **URL:** snoopchess.com
 **Positioning:** "Out-Prepare your Chess Opponent" — chess preparation software focused on player discovery.
 **Stack tells:** Java backend (`.jsp` extensions on all routes); ratings tables structured per-federation; JS-rendered frontend.
