@@ -8,13 +8,19 @@
     "fide:ingest:test": "tsx src/fide/run.ts --max-players 100",
     "icf:ingest": "tsx src/icf/run.ts",
     "icf:ingest:test": "tsx src/icf/run.ts --max-pages 2",
+    "lichess:dump": "tsx src/lichess-dumps/run.ts",
+    "lichess:dump:dry": "tsx src/lichess-dumps/run.ts --dry-run",
+    "games-db:migrate": "tsx src/games-db-migrate.ts",
+    "games-db:verify": "tsx src/games-db-verify.ts",
     "typecheck": "tsc --noEmit",
     "lint": "echo \"(no lint yet)\" && exit 0"
   },
   "dependencies": {
     "@chessco/db": "workspace:*",
     "cheerio": "^1.0.0",
+    "chess.js": "^1.4.0",
     "drizzle-orm": "^0.36.4",
+    "fzstd": "^0.1.1",
     "postgres": "^3.4.5",
     "sax": "^1.4.1",
     "unzipper": "^0.12.3"

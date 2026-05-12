@@ -42,10 +42,16 @@ The dedicated games-corpus database. Lives separate from Supabase so the 400–6
 Once provisioned, in the **Cloud SQL → chessco-games → Databases** tab, ensure the default `postgres` database exists. Then enable extensions via the **Flags** section OR via SQL once connected:
 
 ```sql
-CREATE EXTENSION IF NOT EXISTS pgcrypto;        -- gen_random_uuid()
-CREATE EXTENSION IF NOT EXISTS pg_partman;       -- (if available) for automated partition rotation
-CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;            -- gen_random_uuid()
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;  -- query stats
+CREATE EXTENSION IF NOT EXISTS pg_trgm;             -- trigram fuzzy match (handles table)
 ```
+
+`pg_partman` is intentionally skipped — Cloud SQL standard tier doesn't expose
+it, and we handle partition rotation in worker code instead.
+
+These must be installed by the `postgres` superuser (not `chessco_worker`),
+because `CREATE EXTENSION` requires admin privilege.
 
 Note: pgvector is NOT needed on this DB (vectors live on Supabase `players.embedding`). pg_trgm not needed either (federation player search stays on Supabase).
 
