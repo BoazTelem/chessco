@@ -6,11 +6,14 @@
   "scripts": {
     "fide:ingest": "tsx src/fide/run.ts",
     "fide:ingest:test": "tsx src/fide/run.ts --max-players 100",
+    "icf:ingest": "tsx src/icf/run.ts",
+    "icf:ingest:test": "tsx src/icf/run.ts --max-pages 2",
     "typecheck": "tsc --noEmit",
     "lint": "echo \"(no lint yet)\" && exit 0"
   },
   "dependencies": {
     "@chessco/db": "workspace:*",
+    "cheerio": "^1.0.0",
     "drizzle-orm": "^0.36.4",
     "postgres": "^3.4.5",
     "sax": "^1.4.1",
