@@ -1,0 +1,27 @@
+{
+  "name": "@chessco/workers",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "fide:ingest": "tsx src/fide/run.ts",
+    "fide:ingest:test": "tsx src/fide/run.ts --max-players 100",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo \"(no lint yet)\" && exit 0"
+  },
+  "dependencies": {
+    "@chessco/db": "workspace:*",
+    "drizzle-orm": "^0.36.4",
+    "postgres": "^3.4.5",
+    "sax": "^1.4.1",
+    "unzipper": "^0.12.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "@types/sax": "^1.2.7",
+    "@types/unzipper": "^0.10.10",
+    "dotenv": "^16.4.7",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
