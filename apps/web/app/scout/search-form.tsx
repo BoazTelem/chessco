@@ -6,7 +6,6 @@ import { COUNTRIES } from '@/lib/scout/countries';
 type Initial = {
   q: string;
   country: string;
-  fed: string;
   title: string;
   min: string;
   max: string;
@@ -26,11 +25,7 @@ const TITLES: { code: string; label: string }[] = [
 
 export function SearchForm({ initial }: { initial: Initial }) {
   const id = useId();
-  const hasAdvanced =
-    initial.fed.length > 0 ||
-    initial.title.length > 0 ||
-    initial.min.length > 0 ||
-    initial.max.length > 0;
+  const hasAdvanced = initial.title.length > 0 || initial.min.length > 0 || initial.max.length > 0;
 
   return (
     <form method="GET" action="/scout" className="space-y-4">
@@ -67,7 +62,7 @@ export function SearchForm({ initial }: { initial: Initial }) {
         </button>
       </div>
 
-      {/* Advanced: federation / title / rating range */}
+      {/* Advanced: title / rating range */}
       <details
         open={hasAdvanced}
         className="rounded-md border border-border/60 bg-card/40 px-4 py-3"
@@ -75,7 +70,7 @@ export function SearchForm({ initial }: { initial: Initial }) {
         <summary className="cursor-pointer text-xs font-medium uppercase tracking-wider text-muted-foreground">
           Advanced filters
         </summary>
-        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">
           <Field label="Title" htmlFor={`${id}-title`}>
             <select
               id={`${id}-title`}
@@ -89,17 +84,6 @@ export function SearchForm({ initial }: { initial: Initial }) {
                 </option>
               ))}
             </select>
-          </Field>
-
-          <Field label="Federation" htmlFor={`${id}-fed`}>
-            <input
-              id={`${id}-fed`}
-              name="fed"
-              type="text"
-              defaultValue={initial.fed}
-              placeholder="FIDE / ICF / …"
-              className={inputClass}
-            />
           </Field>
 
           <Field label="Min rating" htmlFor={`${id}-min`}>

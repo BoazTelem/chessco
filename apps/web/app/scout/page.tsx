@@ -258,7 +258,6 @@ function Pagination({
     const sp = new URLSearchParams();
     if (params.q) sp.set('q', params.q);
     if (params.country) sp.set('country', params.country);
-    if (params.fed) sp.set('fed', params.fed);
     if (params.title) sp.set('title', params.title);
     if (params.min !== null) sp.set('min', String(params.min));
     if (params.max !== null) sp.set('max', String(params.max));
