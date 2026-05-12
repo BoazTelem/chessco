@@ -11,7 +11,7 @@ export default async function HomePage() {
       <div className="flex max-w-3xl flex-col items-center gap-8 text-center">
         <div className="flex flex-col items-center gap-3">
           <ChesscoMark variant="float" className="h-[200px] w-[200px] md:h-[240px] md:w-[240px]" />
-          <p className="font-display text-2xl font-medium uppercase tracking-[0.3em] text-accent md:text-3xl">
+          <p className="font-display text-[20px] font-medium uppercase tracking-[0.3em] text-accent md:text-[26px]">
             {brand.name}
           </p>
         </div>
