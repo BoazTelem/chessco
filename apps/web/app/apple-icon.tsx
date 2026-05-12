@@ -21,25 +21,23 @@ export const contentType = 'image/png';
 
 export default function AppleIcon() {
   return new ImageResponse(
-    (
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          width: '100%',
-          height: '100%',
-          background: '#070b15',
-        }}
-      >
-        {GRID.map((row, y) => (
-          <div key={y} style={{ display: 'flex', flex: 1 }}>
-            {row.map((c, x) => (
-              <div key={x} style={{ display: 'flex', flex: 1, background: COLORS[c] }} />
-            ))}
-          </div>
-        ))}
-      </div>
-    ),
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        width: '100%',
+        height: '100%',
+        background: '#070b15',
+      }}
+    >
+      {GRID.map((row, y) => (
+        <div key={y} style={{ display: 'flex', flex: 1 }}>
+          {row.map((c, x) => (
+            <div key={x} style={{ display: 'flex', flex: 1, background: COLORS[c] }} />
+          ))}
+        </div>
+      ))}
+    </div>,
     { ...size },
   );
 }

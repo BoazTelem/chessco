@@ -42,27 +42,25 @@ export default async function Icon({ id }: { id: Promise<string> }) {
   // size >= 192 falls through to solid (full board, no transparency).
 
   return new ImageResponse(
-    (
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          width: '100%',
-          height: '100%',
-          background: 'transparent',
-        }}
-      >
-        {GRID.map((row, y) => (
-          <div key={y} style={{ display: 'flex', flex: 1 }}>
-            {row.map((c, x) => {
-              const hidden = (useGlyph || useFloat) && c < 2;
-              const fill = hidden ? 'transparent' : useGlyph ? GOLD : COLORS[c];
-              return <div key={x} style={{ display: 'flex', flex: 1, background: fill }} />;
-            })}
-          </div>
-        ))}
-      </div>
-    ),
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        width: '100%',
+        height: '100%',
+        background: 'transparent',
+      }}
+    >
+      {GRID.map((row, y) => (
+        <div key={y} style={{ display: 'flex', flex: 1 }}>
+          {row.map((c, x) => {
+            const hidden = (useGlyph || useFloat) && c < 2;
+            const fill = hidden ? 'transparent' : useGlyph ? GOLD : COLORS[c];
+            return <div key={x} style={{ display: 'flex', flex: 1, background: fill }} />;
+          })}
+        </div>
+      ))}
+    </div>,
     { width: size, height: size },
   );
 }

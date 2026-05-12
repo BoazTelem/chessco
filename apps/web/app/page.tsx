@@ -10,10 +10,7 @@ export default async function HomePage() {
     <main className="container mx-auto flex min-h-screen flex-col items-center justify-center px-4 py-16">
       <div className="flex max-w-3xl flex-col items-center gap-8 text-center">
         <div className="flex flex-col items-center gap-3">
-          <ChesscoMark
-            variant="float"
-            className="h-[200px] w-[200px] md:h-[240px] md:w-[240px]"
-          />
+          <ChesscoMark variant="float" className="h-[200px] w-[200px] md:h-[240px] md:w-[240px]" />
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-accent">
             {brand.name}
           </p>

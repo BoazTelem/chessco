@@ -73,14 +73,14 @@ The direct `supabase.rpc()` call from a Server Component was right for the MVP b
 
 A single `<input type="search">` accepting any of these query shapes. The frontend does **lightweight** parsing to determine which filter chips to pre-fill; the server-side parser is authoritative.
 
-| Input pattern                  | Parsed as                                                          | Example                                                  |
-| ------------------------------ | ------------------------------------------------------------------ | -------------------------------------------------------- |
-| Free text (latin or non-latin) | name fuzzy match                                                   | `magnus carlsen`, `Müller`, `gukesh`                     |
-| Numeric, 5–8 digits            | FIDE ID candidate (also tries USCF if FIDE miss)                   | `2806139`                                                |
-| 3-letter all-caps token        | Country/federation code; remaining text becomes name               | `GM ISR Telem`, `NOR carlsen`                            |
-| Token containing `@` or `/`    | Online handle hypothesis (Lichess or chess.com), routes to Stage 2 | `@DrNykterstein`, `chess.com/penguingm1`                 |
-| Two tokens separated by comma  | "Last, First" — common from FIDE list paste                        | `Carlsen, Magnus`                                        |
-| Mixed: name + numeric range    | Name + rating-range parse                                          | `carlsen 2700-2900`                                      |
+| Input pattern                  | Parsed as                                                          | Example                                  |
+| ------------------------------ | ------------------------------------------------------------------ | ---------------------------------------- |
+| Free text (latin or non-latin) | name fuzzy match                                                   | `magnus carlsen`, `Müller`, `gukesh`     |
+| Numeric, 5–8 digits            | FIDE ID candidate (also tries USCF if FIDE miss)                   | `2806139`                                |
+| 3-letter all-caps token        | Country/federation code; remaining text becomes name               | `GM ISR Telem`, `NOR carlsen`            |
+| Token containing `@` or `/`    | Online handle hypothesis (Lichess or chess.com), routes to Stage 2 | `@DrNykterstein`, `chess.com/penguingm1` |
+| Two tokens separated by comma  | "Last, First" — common from FIDE list paste                        | `Carlsen, Magnus`                        |
+| Mixed: name + numeric range    | Name + rating-range parse                                          | `carlsen 2700-2900`                      |
 
 Empty query is valid — it means "let the filter chips drive the search."
 
@@ -88,13 +88,13 @@ Empty query is valid — it means "let the filter chips drive the search."
 
 Persistent UI, prefilled from URL query string (`?country=ISR&title=GM&min=2200`). Backed by the same form as the MVP, restyled as inline chips that update the URL on change.
 
-| Chip            | Type         | Source                                                                       |
-| --------------- | ------------ | ---------------------------------------------------------------------------- |
-| Country         | dropdown     | 3-letter FIDE federation codes (existing `COMMON_COUNTRIES` in `search-form.tsx`) |
-| Federation      | dropdown     | `federations` table — FIDE, USCF, ICF, ECF, DSB, etc. (defaults to "all")    |
-| Title           | dropdown     | GM/WGM/IM/WIM/FM/WFM/CM/WCM/NM/WNM                                           |
-| Rating range    | dual slider  | 1000–3000, step 50                                                           |
-| Has online play | toggle       | Only show candidates with at least one linked `external_account`             |
+| Chip            | Type        | Source                                                                            |
+| --------------- | ----------- | --------------------------------------------------------------------------------- |
+| Country         | dropdown    | 3-letter FIDE federation codes (existing `COMMON_COUNTRIES` in `search-form.tsx`) |
+| Federation      | dropdown    | `federations` table — FIDE, USCF, ICF, ECF, DSB, etc. (defaults to "all")         |
+| Title           | dropdown    | GM/WGM/IM/WIM/FM/WFM/CM/WCM/NM/WNM                                                |
+| Rating range    | dual slider | 1000–3000, step 50                                                                |
+| Has online play | toggle      | Only show candidates with at least one linked `external_account`                  |
 
 ### 4.3 Empty state (no query, no filters)
 
@@ -170,18 +170,18 @@ Content-Type: application/json
 
 Field reference:
 
-| Field                       | Type                          | Default     | Notes                                                                              |
-| --------------------------- | ----------------------------- | ----------- | ---------------------------------------------------------------------------------- |
-| `q`                         | string                        | `""`        | Raw query string. Server parses per §4.1.                                          |
-| `filters.country`           | string \| null                | null        | 3-letter FIDE code                                                                 |
-| `filters.federation`        | string \| null                | null        | `FIDE`, `USCF`, `ICF`, etc. — values from `federations.id`                         |
-| `filters.title`             | string \| null                | null        | Title code                                                                         |
-| `filters.rating_min`        | integer \| null               | null        | Inclusive, applied against `rating_standard`                                       |
-| `filters.rating_max`        | integer \| null               | null        | Inclusive                                                                          |
-| `filters.has_online_play`   | boolean                       | false       | If true, only return anchors that have at least one cached `external_accounts` row |
-| `page`                      | integer                       | 1           |                                                                                    |
-| `page_size`                 | integer                       | 20          | Max 100                                                                            |
-| `include`                   | enum array                    | `["anchors"]` | `"anchors"` always included; `"online_accounts"` opts into Stage 2 enrichment    |
+| Field                     | Type            | Default       | Notes                                                                              |
+| ------------------------- | --------------- | ------------- | ---------------------------------------------------------------------------------- |
+| `q`                       | string          | `""`          | Raw query string. Server parses per §4.1.                                          |
+| `filters.country`         | string \| null  | null          | 3-letter FIDE code                                                                 |
+| `filters.federation`      | string \| null  | null          | `FIDE`, `USCF`, `ICF`, etc. — values from `federations.id`                         |
+| `filters.title`           | string \| null  | null          | Title code                                                                         |
+| `filters.rating_min`      | integer \| null | null          | Inclusive, applied against `rating_standard`                                       |
+| `filters.rating_max`      | integer \| null | null          | Inclusive                                                                          |
+| `filters.has_online_play` | boolean         | false         | If true, only return anchors that have at least one cached `external_accounts` row |
+| `page`                    | integer         | 1             |                                                                                    |
+| `page_size`               | integer         | 20            | Max 100                                                                            |
+| `include`                 | enum array      | `["anchors"]` | `"anchors"` always included; `"online_accounts"` opts into Stage 2 enrichment      |
 
 ### 6.2 Response (success)
 
@@ -235,12 +235,12 @@ Cache-Control: private, max-age=30
 
 Confidence labels (mirrors §6 of the parent spec):
 
-| Label    | Combined score | Display                                                                       |
-| -------- | -------------- | ----------------------------------------------------------------------------- |
-| `high`   | > 0.80         | Green dot + label; "Build prep report" is the primary CTA                     |
+| Label    | Combined score | Display                                                                        |
+| -------- | -------------- | ------------------------------------------------------------------------------ |
+| `high`   | > 0.80         | Green dot + label; "Build prep report" is the primary CTA                      |
 | `medium` | 0.60 – 0.80    | Yellow dot + label; CTA is "Build prep report" with a "review evidence" prompt |
-| `low`    | 0.40 – 0.60    | Gray dot + label; CTA reads "Use anyway" to let user decide                   |
-| `none`   | < 0.40         | Result is filtered out before returning (don't render guesses)                |
+| `low`    | 0.40 – 0.60    | Gray dot + label; CTA reads "Use anyway" to let user decide                    |
+| `none`   | < 0.40         | Result is filtered out before returning (don't render guesses)                 |
 
 `stages_run` tells the frontend which stages contributed, so the evidence panel can label its sources clearly ("based on name match only" vs "name + online play").
 
@@ -276,11 +276,11 @@ X-RateLimit-Reset: 1715517625
 
 Limits:
 
-| Identity         | Window       | Limit  |
-| ---------------- | ------------ | ------ |
-| Anon (per IP)    | 60 seconds   | 30     |
-| Authenticated    | 60 seconds   | 120    |
-| Per-user burst   | 1 second     | 5      |
+| Identity       | Window     | Limit |
+| -------------- | ---------- | ----- |
+| Anon (per IP)  | 60 seconds | 30    |
+| Authenticated  | 60 seconds | 120   |
+| Per-user burst | 1 second   | 5     |
 
 ### 6.5 Response (engine error)
 
@@ -384,23 +384,23 @@ Stage 2 online-account lookups read from `external_accounts` directly — that t
 
 ## 9. Edge Cases & Failure Modes
 
-| Case                                                                  | Handling                                                                                                                                |
-| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Query is empty AND all filters are null                               | Return empty results with `total_count: 0`; UI shows the empty state, not "no results"                                                  |
-| Query is whitespace-only                                              | Treat as empty                                                                                                                          |
-| Query is one character                                                | Allow but warn ("`?` is too short — try a longer query") inline below input; still run the search (some federations have 1-char nicks)  |
-| Query is >100 characters                                              | Reject with `invalid_query` (400); UI surfaces inline error                                                                             |
-| User pastes a chess.com profile URL                                   | Strip to the handle, parse as handle hypothesis (Stage 2 priority)                                                                      |
-| FIDE ID in query but it doesn't exist in our DB                       | Stage 1 returns empty; response still 200 with empty array; frontend shows zero-result state with "Player not yet in our federation index" copy |
-| Stage 2 enrichment times out (>800ms)                                 | Return Stage 1 results only; `stages_run` reflects that; log warning; do not 500                                                        |
-| Supabase RPC errors                                                   | 500 with `engine_error`; log full error server-side, return only `request_id` to client                                                 |
-| Rate limit hit                                                        | 429 with `Retry-After`; UI shows "Try again in Xs" toast                                                                                |
-| Filter `rating_min > rating_max`                                      | 400 with `invalid_filter`                                                                                                               |
-| Filter `country` is not a 3-letter code                               | 400 with `invalid_filter`                                                                                                               |
-| Page > total_pages                                                    | Return empty `results` array but valid `total_count`; UI shows "Page N is past the last page" with a link to page 1                     |
-| Two simultaneous in-flight queries from same client                   | `AbortController` cancels the earlier; server short-circuits cancelled requests                                                         |
-| User cancels mid-flight (navigates away)                              | Request aborts cleanly; partial work is not billed against rate-limit                                                                   |
-| Cache poisoning attempt (handcrafted bad cache key)                   | Cache key is server-derived from canonical request, not user-supplied; impossible by construction                                       |
+| Case                                                | Handling                                                                                                                                        |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Query is empty AND all filters are null             | Return empty results with `total_count: 0`; UI shows the empty state, not "no results"                                                          |
+| Query is whitespace-only                            | Treat as empty                                                                                                                                  |
+| Query is one character                              | Allow but warn ("`?` is too short — try a longer query") inline below input; still run the search (some federations have 1-char nicks)          |
+| Query is >100 characters                            | Reject with `invalid_query` (400); UI surfaces inline error                                                                                     |
+| User pastes a chess.com profile URL                 | Strip to the handle, parse as handle hypothesis (Stage 2 priority)                                                                              |
+| FIDE ID in query but it doesn't exist in our DB     | Stage 1 returns empty; response still 200 with empty array; frontend shows zero-result state with "Player not yet in our federation index" copy |
+| Stage 2 enrichment times out (>800ms)               | Return Stage 1 results only; `stages_run` reflects that; log warning; do not 500                                                                |
+| Supabase RPC errors                                 | 500 with `engine_error`; log full error server-side, return only `request_id` to client                                                         |
+| Rate limit hit                                      | 429 with `Retry-After`; UI shows "Try again in Xs" toast                                                                                        |
+| Filter `rating_min > rating_max`                    | 400 with `invalid_filter`                                                                                                                       |
+| Filter `country` is not a 3-letter code             | 400 with `invalid_filter`                                                                                                                       |
+| Page > total_pages                                  | Return empty `results` array but valid `total_count`; UI shows "Page N is past the last page" with a link to page 1                             |
+| Two simultaneous in-flight queries from same client | `AbortController` cancels the earlier; server short-circuits cancelled requests                                                                 |
+| User cancels mid-flight (navigates away)            | Request aborts cleanly; partial work is not billed against rate-limit                                                                           |
+| Cache poisoning attempt (handcrafted bad cache key) | Cache key is server-derived from canonical request, not user-supplied; impossible by construction                                               |
 
 ## 10. Observability
 
@@ -412,7 +412,7 @@ Every `/api/scout/search` call writes a structured log line:
 {
   "ts": "2026-05-12T12:34:56Z",
   "request_id": "req_...",
-  "user_id": "user_...",   // or null for anon
+  "user_id": "user_...", // or null for anon
   "ip_hash": "sha256(...)",
   "q_length": 14,
   "filters_present": ["country"],
@@ -420,7 +420,7 @@ Every `/api/scout/search` call writes a structured log line:
   "stages_run": ["anchor", "online_accounts"],
   "took_ms": 187,
   "result_count": 1,
-  "cache_hit": "app",      // "edge" | "app" | "miss"
+  "cache_hit": "app", // "edge" | "app" | "miss"
   "rate_limit_remaining": 27
 }
 ```
@@ -438,12 +438,12 @@ The raw query string is **not** logged (privacy). Length and filter shape are su
 
 ### 10.3 Alerts
 
-| Condition                                       | Severity | Action                       |
-| ----------------------------------------------- | -------- | ---------------------------- |
-| p95 latency > 1500ms for 5 minutes              | warn     | Slack #ops                    |
-| Engine-error rate > 1% over 5 minutes           | crit     | Slack #ops + PagerDuty       |
-| Cache hit rate < 30% (after warm-up)            | info     | Slack #ops, look for poisoning or bad invalidation |
-| Rate-limit rejections > 100/min                 | warn     | Slack #ops, check for abuse  |
+| Condition                             | Severity | Action                                             |
+| ------------------------------------- | -------- | -------------------------------------------------- |
+| p95 latency > 1500ms for 5 minutes    | warn     | Slack #ops                                         |
+| Engine-error rate > 1% over 5 minutes | crit     | Slack #ops + PagerDuty                             |
+| Cache hit rate < 30% (after warm-up)  | info     | Slack #ops, look for poisoning or bad invalidation |
+| Rate-limit rejections > 100/min       | warn     | Slack #ops, check for abuse                        |
 
 ## 11. Acceptance Criteria
 

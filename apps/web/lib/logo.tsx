@@ -49,14 +49,7 @@ function MarkSvg({
           if ((variant === 'float' || variant === 'glyph') && c < 2) return null;
           const fill = variant === 'glyph' ? COLORS[3] : COLORS[c];
           return (
-            <rect
-              key={`${x}-${y}`}
-              x={x * 32}
-              y={y * 32}
-              width={32}
-              height={32}
-              fill={fill}
-            />
+            <rect key={`${x}-${y}`} x={x * 32} y={y * 32} width={32} height={32} fill={fill} />
           );
         }),
       )}
@@ -64,11 +57,7 @@ function MarkSvg({
   );
 }
 
-export function ChesscoMark(props: {
-  className?: string;
-  title?: string;
-  variant?: MarkVariant;
-}) {
+export function ChesscoMark(props: { className?: string; title?: string; variant?: MarkVariant }) {
   return <MarkSvg className={props.className} title={props.title} variant={props.variant} />;
 }
 
@@ -83,14 +72,10 @@ export function ChesscoLockup({
 }) {
   return (
     <span className={`inline-flex items-center gap-2 ${className ?? ''}`}>
-      <MarkSvg
-        decorative
-        className={markClassName ?? 'h-[1.5em] w-[1.5em] shrink-0'}
-      />
+      <MarkSvg decorative className={markClassName ?? 'h-[1.5em] w-[1.5em] shrink-0'} />
       <span
         className={
-          wordmarkClassName ??
-          'font-display font-medium uppercase tracking-[0.2em] text-accent'
+          wordmarkClassName ?? 'font-display font-medium uppercase tracking-[0.2em] text-accent'
         }
       >
         Chessco
