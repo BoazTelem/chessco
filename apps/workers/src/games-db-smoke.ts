@@ -7,7 +7,8 @@ async function main() {
     const t0 = Date.now();
     const version = await client`SELECT version()`;
     const ping = Date.now() - t0;
-    const ssl = await client`SELECT ssl AS ssl_in_use FROM pg_stat_ssl WHERE pid = pg_backend_pid()`;
+    const ssl =
+      await client`SELECT ssl AS ssl_in_use FROM pg_stat_ssl WHERE pid = pg_backend_pid()`;
     const ext = await client`
       SELECT extname FROM pg_extension
       WHERE extname IN ('pgcrypto', 'pg_stat_statements')

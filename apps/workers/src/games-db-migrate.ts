@@ -21,9 +21,7 @@ async function main() {
       (await client<{ id: string }[]>`SELECT id FROM games_corpus_migrations`).map((r) => r.id),
     );
 
-    const files = (await readdir(MIGRATIONS_DIR))
-      .filter((f) => f.endsWith('.sql'))
-      .sort();
+    const files = (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith('.sql')).sort();
 
     if (files.length === 0) {
       console.log('No migration files found in', MIGRATIONS_DIR);
