@@ -62,14 +62,14 @@ export default async function PlayerProfilePage({
   const history = (snapshots ?? []).slice().reverse(); // chronological for the chart
 
   // Confirmed online accounts for this FIDE player (user_confirmed = true).
-  // Confirm/reject buttons come in a follow-up; the section is wired now.
-  const { data: confirmedAccounts } = (await supabase
+  // Multiple queries may have produced the same (platform, handle) — dedupe
+  // client-side, keeping the highest-scoring instance per handle.
+  const { data: rawConfirmed } = (await supabase
     .from('identification_candidates')
     .select('platform, handle, combined_score, evidence')
     .eq('federation_player_id', player_id)
     .eq('user_confirmed', true)
-    .order('combined_score', { ascending: false })
-    .limit(10)) as {
+    .order('combined_score', { ascending: false })) as {
     data:
       | {
           platform: 'lichess' | 'chess.com';
@@ -79,6 +79,13 @@ export default async function PlayerProfilePage({
         }[]
       | null;
   };
+  const seenAccounts = new Set<string>();
+  const confirmedAccounts = (rawConfirmed ?? []).filter((a) => {
+    const key = `${a.platform}:${a.handle}`;
+    if (seenAccounts.has(key)) return false;
+    seenAccounts.add(key);
+    return true;
+  });
 
   const ratings: Array<[string, number | null]> = [
     ['Standard', player.rating_standard],
@@ -158,7 +165,7 @@ export default async function PlayerProfilePage({
           </section>
         )}
 
-        {confirmedAccounts && confirmedAccounts.length > 0 && (
+        {confirmedAccounts.length > 0 && (
           <section className="mt-10">
             <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
               Known online accounts

@@ -2,9 +2,11 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { brand } from '@chessco/ui';
 import { ChesscoMark } from '@/lib/logo';
+import { getUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { CountryBadge, TitleBadge } from '../../result-card';
 import { SampleGameForm } from '../../sample-game-form';
+import { ConfirmButtons } from './confirm-buttons';
 
 export const metadata = {
   title: 'Identification results',
@@ -29,6 +31,7 @@ interface IdentificationQuery {
 }
 
 interface Candidate {
+  id: number;
   rank: number;
   platform: 'lichess' | 'chess.com';
   handle: string;
@@ -57,6 +60,7 @@ const PLATFORM_URL: Record<Candidate['platform'], (handle: string) => string> = 
 export default async function MatchPage({ params }: { params: Promise<{ query_id: string }> }) {
   const { query_id } = await params;
   const supabase = await createClient();
+  const user = await getUser();
 
   const { data: query } = (await supabase
     .from('identification_queries')
@@ -69,10 +73,13 @@ export default async function MatchPage({ params }: { params: Promise<{ query_id
   const { data: candidates } = (await supabase
     .from('identification_candidates')
     .select(
-      'rank, platform, handle, confidence_label, combined_score, federation_player_id, evidence, user_confirmed',
+      'id, rank, platform, handle, confidence_label, combined_score, federation_player_id, evidence, user_confirmed',
     )
     .eq('query_id', query_id)
     .order('rank', { ascending: true })) as { data: Candidate[] | null };
+
+  const nextPath = `/scout/match/${query_id}`;
+  const signedIn = !!user;
 
   // When the query has a FIDE anchor, show their name. Otherwise (pure
   // sample-game paste with no anchor — common for amateurs), show a
@@ -163,7 +170,12 @@ export default async function MatchPage({ params }: { params: Promise<{ query_id
               country, rating-band, and title alignment.
             </p>
             {candidates.map((c) => (
-              <CandidateCard key={`${c.platform}-${c.handle}`} c={c} />
+              <CandidateCard
+                key={`${c.platform}-${c.handle}`}
+                c={c}
+                signedIn={signedIn}
+                nextPath={nextPath}
+              />
             ))}
           </section>
         )}
@@ -195,19 +207,6 @@ export default async function MatchPage({ params }: { params: Promise<{ query_id
               </div>
             </section>
           )}
-
-        <section className="mt-10">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-            Coming soon
-          </h2>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <PlaceholderCard
-              label="Phase 1 W6"
-              title="Confirm / reject feedback"
-              body="One-click thumbs up / down on each candidate to train the next user's ranking."
-            />
-          </div>
-        </section>
       </main>
     </div>
   );
@@ -245,7 +244,15 @@ function DiscriminationNote({ candidates }: { candidates: Candidate[] }) {
   );
 }
 
-function CandidateCard({ c }: { c: Candidate }) {
+function CandidateCard({
+  c,
+  signedIn,
+  nextPath,
+}: {
+  c: Candidate;
+  signedIn: boolean;
+  nextPath: string;
+}) {
   const url = PLATFORM_URL[c.platform](c.handle);
   const labelColor =
     c.confidence_label === 'high'
@@ -305,16 +312,18 @@ function CandidateCard({ c }: { c: Candidate }) {
           <li key={r}>· {r}</li>
         ))}
       </ul>
-    </div>
-  );
-}
 
-function PlaceholderCard({ label, title, body }: { label: string; title: string; body: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-card p-5">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent">{label}</p>
-      <p className="mt-1 font-medium">{title}</p>
-      <p className="mt-1 text-sm text-muted-foreground">{body}</p>
+      <div className="mt-4 flex items-center justify-between border-t border-border/60 pt-3">
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+          Is this {c.handle} the right account?
+        </span>
+        <ConfirmButtons
+          candidateId={c.id}
+          initial={c.user_confirmed}
+          signedIn={signedIn}
+          nextPath={nextPath}
+        />
+      </div>
     </div>
   );
 }
