@@ -36,7 +36,10 @@ This plan executes the build from zero to revenue, mapped to spec v1.1. The arch
   - Games corpus → **dedicated Google Cloud SQL** (existing GCP account) in europe-west3 (Frankfurt) (Phase 1 W1)
   - Chess.com → lazy fetch + 7d cache (spec default)
   - ChessBase → never a data source (licensing); free profile pages OK in Phase 2
-- ⏭ **Next code work:** own-game PGN import (W6 final piece), then W7 (Apple OAuth + USCF Playwright + polish + retro).
+- 🎯 **Strategic pivot 2026-05-12: skip Phase 0 polish, jump to Phase 1 W1.** Stage 3 stylometric AI is the headline product (see new `~/.claude/plans/i-want-to-build-generic-ladybug.md` v2 plan). Direct line to it is Phase 1 W1 (Cloud SQL + Lichess monthly dumps + games-corpus schema migration). Deferred Phase 0 polish items tracked in memory:
+  - `phase_0_polish_deferred.md` — own-game import, Apple OAuth, USCF Playwright (all defer to a "Phase 0 cleanup sprint" before paid launch at Phase 1 W10)
+  - `lichess_dump_compute_decision.md` — Cloud Run vs local vs alternative; decide before writing the W1 worker
+- ⏭ **Next code work:** [`SETUP-CLOUDSQL.md`](SETUP-CLOUDSQL.md) provisioning checklist for user → games-corpus schema migration → Lichess dumps worker.
 
 ---
 
