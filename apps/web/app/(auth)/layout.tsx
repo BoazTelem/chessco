@@ -1,15 +1,13 @@
 import Link from 'next/link';
 import { brand } from '@chessco/ui';
+import { ChesscoLockup } from '@/lib/logo';
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col">
       <header className="px-6 py-6">
-        <Link
-          href="/"
-          className="text-xs font-semibold uppercase tracking-[0.3em] text-accent hover:opacity-80"
-        >
-          {brand.name}
+        <Link href="/" aria-label={brand.name} className="text-sm hover:opacity-80">
+          <ChesscoLockup wordmarkClassName="font-display font-semibold uppercase tracking-[0.3em] text-accent" />
         </Link>
       </header>
       <main className="container mx-auto flex flex-1 items-center justify-center px-4 pb-16">

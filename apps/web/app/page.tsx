@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { brand } from '@chessco/ui';
 import { getUser } from '@/lib/auth';
+import { ChesscoLockup } from '@/lib/logo';
 
 export default async function HomePage() {
   const user = await getUser();
@@ -8,7 +9,10 @@ export default async function HomePage() {
   return (
     <main className="container mx-auto flex min-h-screen flex-col items-center justify-center px-4 py-16">
       <div className="flex max-w-3xl flex-col items-center gap-8 text-center">
-        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-accent">{brand.name}</p>
+        <ChesscoLockup
+          className="text-sm"
+          wordmarkClassName="font-display font-semibold uppercase tracking-[0.3em] text-accent"
+        />
 
         <h1 className="font-display text-5xl font-bold tracking-tight md:text-7xl">
           {brand.slogan}

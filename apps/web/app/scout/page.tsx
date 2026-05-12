@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { brand } from '@chessco/ui';
 import { getUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
+import { ChesscoLockup } from '@/lib/logo';
 import { SearchForm } from './search-form';
 import { ResultCard } from './result-card';
 import type { SearchResult } from './types';
@@ -69,11 +70,8 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
     <div className="min-h-screen">
       <header className="border-b border-border bg-card/50">
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <Link
-            href="/"
-            className="text-xs font-semibold uppercase tracking-[0.3em] text-accent hover:opacity-80"
-          >
-            {brand.name}
+          <Link href="/" aria-label={brand.name} className="text-sm hover:opacity-80">
+            <ChesscoLockup wordmarkClassName="font-display font-semibold uppercase tracking-[0.3em] text-accent" />
           </Link>
           <nav className="flex items-center gap-3 text-sm">
             {user ? (

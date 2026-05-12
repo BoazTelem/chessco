@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { brand } from '@chessco/ui';
 import { getUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
+import { ChesscoLockup } from '@/lib/logo';
 import { CountryBadge, FederationBadge, TitleBadge } from '../../scout/result-card';
 
 export const metadata = {
@@ -69,11 +70,8 @@ export default async function PlayerProfilePage({
       <header className="border-b border-border bg-card/50">
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
           <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="text-xs font-semibold uppercase tracking-[0.3em] text-accent hover:opacity-80"
-            >
-              {brand.name}
+            <Link href="/" aria-label={brand.name} className="text-sm hover:opacity-80">
+              <ChesscoLockup wordmarkClassName="font-display font-semibold uppercase tracking-[0.3em] text-accent" />
             </Link>
             <span className="text-muted-foreground">/</span>
             <Link href="/scout" className="text-sm text-muted-foreground hover:text-foreground">
