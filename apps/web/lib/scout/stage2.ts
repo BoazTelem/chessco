@@ -120,6 +120,50 @@ function ratingBandMatch(
   return ratings.some((r) => Math.abs(r - (fide + offset)) <= band);
 }
 
+/**
+ * If the handle contains EVERY name token as a substring, it's almost
+ * certainly the same person — `magnuscarlsen` for "Carlsen, Magnus",
+ * `hikarunakamura` for "Nakamura, Hikaru". Per-token trigram similarity
+ * undersells these (single-token max ≈ 0.4) because the handle is twice
+ * as long as either token alone. Boost to 1.0 when containment is full.
+ *
+ * Requires ≥2 tokens so single-surname inputs ("Carlsen") don't
+ * trivially match every handle containing "carlsen".
+ */
+function compoundContainmentSim(handleNormalized: string, nameTokens: string[]): number {
+  if (nameTokens.length < 2) return 0;
+  return nameTokens.every((t) => handleNormalized.includes(t)) ? 1 : 0;
+}
+
+/** GM > IM > FM > CM > NM > WGM/WIM/WFM/WCM > untitled.
+ *  Returns true only when the candidate's title is at least as strong as
+ *  the anchor's — a CM is not a GM, so a GM anchor matching a CM handle
+ *  should NOT get the title bonus. */
+const TITLE_RANK: Record<string, number> = {
+  GM: 6,
+  IM: 5,
+  FM: 4,
+  CM: 3,
+  NM: 2,
+  WGM: 5,
+  WIM: 4,
+  WFM: 3,
+  WCM: 2,
+};
+function titleMatches(
+  candidateTitle: string | null | undefined,
+  anchorTitle: string | null | undefined,
+): boolean | null {
+  if (!anchorTitle) {
+    // No anchor title (amateur or unknown): any title is a mild positive signal.
+    return candidateTitle ? true : null;
+  }
+  if (!candidateTitle) return null; // no signal from candidate
+  const a = TITLE_RANK[anchorTitle.toUpperCase()] ?? 0;
+  const c = TITLE_RANK[candidateTitle.toUpperCase()] ?? 0;
+  return c >= a;
+}
+
 interface ScoreInput {
   name_similarity: number;
   country_match: boolean | null;
@@ -227,20 +271,23 @@ export async function runStage2Cached(input: Stage2Input): Promise<Stage2Candida
       rapid: r.rating_rapid,
       classical: r.rating_classical,
     });
+    const compoundSim = compoundContainmentSim(normalizeName(r.handle), nameTokens);
+    const effectiveSim = Math.max(r.sim, compoundSim);
     const s = score({
-      name_similarity: r.sim,
+      name_similarity: effectiveSim,
       country_match: countryMatches(r.country, input.country),
       rating_band_match: rbm,
-      title_match: r.title ? true : null,
+      title_match: titleMatches(r.title, input.title),
     });
     const fedMatch = r.claimed_name_normalized
       ? (fedMatchByName.get(r.claimed_name_normalized) ?? null)
       : null;
+    const matchedDisplay = compoundSim > r.sim ? nameTokens.join(' ') : r.matched_token;
     return {
       platform: r.platform,
       handle: r.handle,
       confidence: s.confidence,
-      reasons: [`fuzzy match on '${r.matched_token}'`, ...s.reasons],
+      reasons: [`fuzzy match on '${matchedDisplay}'`, ...s.reasons],
       country: r.country,
       title: r.title,
       ratings: {

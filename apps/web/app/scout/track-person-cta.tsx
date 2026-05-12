@@ -14,10 +14,12 @@ export function TrackPersonCTA({
   name,
   country,
   signedIn,
+  nextPath,
 }: {
   name: string;
   country: string | null;
   signedIn: boolean;
+  nextPath: string;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -68,7 +70,7 @@ export function TrackPersonCTA({
           </button>
         ) : (
           <Link
-            href={`/login?next=${encodeURIComponent(typeof window === 'undefined' ? '/scout' : window.location.pathname + window.location.search)}`}
+            href={`/login?next=${encodeURIComponent(nextPath)}`}
             className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground hover:opacity-90"
           >
             Sign in to track this person →

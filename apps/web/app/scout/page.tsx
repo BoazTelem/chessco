@@ -18,7 +18,6 @@ const PAGE_SIZE = 20;
 type SearchParams = {
   q?: string;
   country?: string;
-  fed?: string;
   title?: string;
   min?: string;
   max?: string;
@@ -32,14 +31,13 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
 
   const q = (params.q ?? '').trim();
   const country = params.country?.trim() || null;
-  const fed = params.fed?.trim() || null;
   const title = params.title?.trim() || null;
   const min = params.min ? parseInt(params.min, 10) : null;
   const max = params.max ? parseInt(params.max, 10) : null;
   const page = Math.max(1, parseInt(params.page ?? '1', 10) || 1);
   const offset = (page - 1) * PAGE_SIZE;
 
-  const hasQuery = q.length > 0 || country || fed || title || min !== null || max !== null;
+  const hasQuery = q.length > 0 || country || title || min !== null || max !== null;
 
   let results: SearchResult[] = [];
   let totalCount = 0;
@@ -51,7 +49,7 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
       country_filter: country,
       rating_min: Number.isFinite(min) ? min : null,
       rating_max: Number.isFinite(max) ? max : null,
-      federation_filter: fed,
+      federation_filter: null,
       title_filter: title,
       page_size: PAGE_SIZE,
       page_offset: offset,
@@ -66,6 +64,15 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
   }
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+
+  const nextQs = new URLSearchParams();
+  if (q) nextQs.set('q', q);
+  if (country) nextQs.set('country', country);
+  if (title) nextQs.set('title', title);
+  if (min !== null && Number.isFinite(min)) nextQs.set('min', String(min));
+  if (max !== null && Number.isFinite(max)) nextQs.set('max', String(max));
+  if (page > 1) nextQs.set('page', String(page));
+  const nextPath = nextQs.toString() ? `/scout?${nextQs.toString()}` : '/scout';
 
   return (
     <div className="min-h-screen">
@@ -126,7 +133,6 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
             initial={{
               q,
               country: country ?? '',
-              fed: fed ?? '',
               title: title ?? '',
               min: min?.toString() ?? '',
               max: max?.toString() ?? '',
@@ -142,7 +148,7 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
               Search failed: {searchError}
             </p>
           ) : results.length === 0 ? (
-            <TrackPersonCTA name={q} country={country} signedIn={!!user} />
+            <TrackPersonCTA name={q} country={country} signedIn={!!user} nextPath={nextPath} />
           ) : (
             <>
               <div className="mb-4 flex items-center justify-between text-sm text-muted-foreground">
@@ -175,7 +181,7 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
                 <Pagination
                   page={page}
                   totalPages={totalPages}
-                  params={{ q, country, fed, title, min, max }}
+                  params={{ q, country, title, min, max }}
                 />
               )}
             </>
@@ -243,7 +249,6 @@ function Pagination({
   params: {
     q: string;
     country: string | null;
-    fed: string | null;
     title: string | null;
     min: number | null;
     max: number | null;
