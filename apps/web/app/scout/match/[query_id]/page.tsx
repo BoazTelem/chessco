@@ -4,6 +4,7 @@ import { brand } from '@chessco/ui';
 import { ChesscoMark } from '@/lib/logo';
 import { createClient } from '@/lib/supabase/server';
 import { CountryBadge, TitleBadge } from '../../result-card';
+import { SampleGameForm } from '../../sample-game-form';
 
 export const metadata = {
   title: 'Identification results',
@@ -15,6 +16,7 @@ interface IdentificationQuery {
   input_method: string | null;
   query_payload: {
     federation_player_id?: string | null;
+    ad_hoc_player_id?: string | null;
     name?: string;
     country?: string | null;
     fide_rating?: number | null;
@@ -166,16 +168,39 @@ export default async function MatchPage({ params }: { params: Promise<{ query_id
           </section>
         )}
 
+        {/* AI fallback — no dead-ends. Available regardless of result quality
+            so users with weak matches see the escape hatch and users with strong
+            matches can still cross-verify with games if they want. */}
+        {query.status === 'ready' &&
+          query.input_method !== 'sample_game' &&
+          (query.query_payload.federation_player_id || query.query_payload.ad_hoc_player_id) && (
+            <section className="mt-10 rounded-lg border border-accent/40 bg-accent/5 p-5">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="font-display text-lg font-semibold">None look right?</h2>
+                <span className="text-[10px] uppercase tracking-[0.2em] text-accent">
+                  AI matching
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Paste 10+ PGN games of {subjectName} and find their accounts by play pattern
+                instead. Works on amateur and titled players alike — the AI doesn&apos;t need their
+                handle to match their name.
+              </p>
+              <div className="mt-4 max-w-2xl">
+                <SampleGameForm
+                  federationPlayerId={query.query_payload.federation_player_id ?? undefined}
+                  adHocPlayerId={query.query_payload.ad_hoc_player_id ?? undefined}
+                  subjectLabel={query.query_payload.name}
+                />
+              </div>
+            </section>
+          )}
+
         <section className="mt-10">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
             Coming soon
           </h2>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <PlaceholderCard
-              label="Phase 1 W5"
-              title="By sample game"
-              body="Paste 1+ PGN(s) of the target player and run AI stylometric matching against ~5M cached profiles."
-            />
             <PlaceholderCard
               label="Phase 1 W6"
               title="Confirm / reject feedback"

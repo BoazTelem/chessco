@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { ChesscoMark } from '@/lib/logo';
 import { SearchForm } from './search-form';
 import { ResultCard } from './result-card';
+import { TrackPersonCTA } from './track-person-cta';
 import type { SearchResult } from './types';
 
 export const metadata = {
@@ -141,7 +142,7 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
               Search failed: {searchError}
             </p>
           ) : results.length === 0 ? (
-            <NoResults q={q} />
+            <TrackPersonCTA name={q} country={country} signedIn={!!user} />
           ) : (
             <>
               <div className="mb-4 flex items-center justify-between text-sm text-muted-foreground">
@@ -229,19 +230,6 @@ function SampleQuery({
     >
       {label}
     </Link>
-  );
-}
-
-function NoResults({ q }: { q: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-card p-8 text-center">
-      <p className="text-sm">
-        No players match <span className="font-medium">&ldquo;{q}&rdquo;</span>.
-      </p>
-      <p className="mt-2 text-xs text-muted-foreground">
-        Try a shorter query, a different country code, or remove the rating range.
-      </p>
-    </div>
   );
 }
 

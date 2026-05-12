@@ -17,10 +17,15 @@ import { useRouter } from 'next/navigation';
  */
 export interface SampleGameFormProps {
   federationPlayerId?: string;
+  adHocPlayerId?: string;
   subjectLabel?: string;
 }
 
-export function SampleGameForm({ federationPlayerId, subjectLabel }: SampleGameFormProps = {}) {
+export function SampleGameForm({
+  federationPlayerId,
+  adHocPlayerId,
+  subjectLabel,
+}: SampleGameFormProps = {}) {
   const router = useRouter();
   const [pgn, setPgn] = useState('');
   const [loading, setLoading] = useState(false);
@@ -37,6 +42,7 @@ export function SampleGameForm({ federationPlayerId, subjectLabel }: SampleGameF
     try {
       const body: Record<string, unknown> = { sample_pgn: pgn };
       if (federationPlayerId) body.federation_player_id = federationPlayerId;
+      if (adHocPlayerId) body.ad_hoc_player_id = adHocPlayerId;
       const res = await fetch('/api/identify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

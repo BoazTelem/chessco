@@ -28,12 +28,21 @@ interface FederationPlayerLite {
 
 interface ReqBody {
   federation_player_id?: string;
+  /** Iteration 3: ad-hoc player anchor (user-created entries). Mutually
+   *  exclusive with federation_player_id. */
+  ad_hoc_player_id?: string;
   name?: string;
   country?: string;
   fide_rating?: number;
   title?: string;
   /** Stage 3: paste of 1+ PGN(s) — triggers stylometric matching. */
   sample_pgn?: string;
+}
+
+interface AdHocPlayerLite {
+  id: string;
+  name: string;
+  country: string | null;
 }
 
 const MAX_CANDIDATES_PERSISTED = 15;
@@ -52,9 +61,9 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: 'invalid JSON body' }, { status: 400 });
   }
 
-  if (!body.federation_player_id && !body.name && !body.sample_pgn) {
+  if (!body.federation_player_id && !body.ad_hoc_player_id && !body.name && !body.sample_pgn) {
     return NextResponse.json(
-      { error: 'must provide federation_player_id, name, or sample_pgn' },
+      { error: 'must provide federation_player_id, ad_hoc_player_id, name, or sample_pgn' },
       { status: 400 },
     );
   }
@@ -62,10 +71,20 @@ export async function POST(req: Request): Promise<NextResponse> {
   const supabase = createAdminClient();
 
   // -- Stage 3 branch: sample-game stylometric matching ---------------------
-  // When a federation_player_id is also given, the result is anchored to
-  // that FIDE row so the match page shows the player's name as the subject.
+  // Anchored to federation_player_id OR ad_hoc_player_id when given, so the
+  // match page shows the player's name as the subject.
   if (body.sample_pgn) {
-    return handleSamplePgn(supabase, body.sample_pgn, body.federation_player_id ?? null);
+    return handleSamplePgn(
+      supabase,
+      body.sample_pgn,
+      body.federation_player_id ?? null,
+      body.ad_hoc_player_id ?? null,
+    );
+  }
+
+  // -- Ad-hoc Stage 2 branch: name search from a tracked ad-hoc player ------
+  if (body.ad_hoc_player_id) {
+    return handleAdHocStage2(supabase, body.ad_hoc_player_id);
   }
 
   // ---- Resolve federation_player if id provided -----------------------
@@ -164,10 +183,95 @@ export async function POST(req: Request): Promise<NextResponse> {
   return NextResponse.json({ query_id: queryId, candidate_count: persisted.length });
 }
 
+async function handleAdHocStage2(
+  supabase: ReturnType<typeof createAdminClient>,
+  adHocPlayerId: string,
+): Promise<NextResponse> {
+  const { data: ah, error: ahErr } = await supabase
+    .from('ad_hoc_players')
+    .select('id, name, country')
+    .eq('id', adHocPlayerId)
+    .maybeSingle();
+  if (ahErr) return NextResponse.json({ error: ahErr.message }, { status: 500 });
+  if (!ah) return NextResponse.json({ error: 'ad_hoc_player not found' }, { status: 404 });
+
+  const adHoc = ah as AdHocPlayerLite;
+
+  const stage2Input = {
+    name: adHoc.name,
+    country: adHoc.country,
+    fide_rating: null,
+    title: null,
+  };
+
+  const { data: queryRow, error: insertErr } = await supabase
+    .from('identification_queries')
+    .insert({
+      query_payload: {
+        ad_hoc_player_id: adHoc.id,
+        name: adHoc.name,
+        country: adHoc.country,
+      },
+      input_method: 'name',
+      ad_hoc_player_id: adHoc.id,
+      status: 'pending',
+    })
+    .select('id')
+    .single();
+  if (insertErr || !queryRow) {
+    return NextResponse.json(
+      { error: insertErr?.message ?? 'failed to create query' },
+      { status: 500 },
+    );
+  }
+  const queryId = (queryRow as { id: string }).id;
+
+  let candidates: Awaited<ReturnType<typeof runStage2Cached>>;
+  try {
+    candidates = await runStage2Cached(stage2Input);
+  } catch (err) {
+    await supabase.from('identification_queries').update({ status: 'failed' }).eq('id', queryId);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'stage 2 failed' },
+      { status: 500 },
+    );
+  }
+
+  const persisted = candidates.slice(0, MAX_CANDIDATES_PERSISTED);
+  if (persisted.length > 0) {
+    const rows = persisted.map((c, i) => ({
+      query_id: queryId,
+      rank: i + 1,
+      ad_hoc_player_id: adHoc.id,
+      platform: c.platform,
+      handle: c.handle,
+      confidence_label: confidenceLabel(c.confidence),
+      combined_score: c.confidence,
+      handle_score: c.confidence,
+      evidence: {
+        reasons: c.reasons,
+        country: c.country,
+        title: c.title,
+        ratings: c.ratings,
+      },
+    }));
+    const { error: candErr } = await supabase.from('identification_candidates').insert(rows);
+    if (candErr) return NextResponse.json({ error: candErr.message }, { status: 500 });
+  }
+
+  await supabase
+    .from('identification_queries')
+    .update({ status: 'ready', completed_at: new Date().toISOString() })
+    .eq('id', queryId);
+
+  return NextResponse.json({ query_id: queryId, candidate_count: persisted.length });
+}
+
 async function handleSamplePgn(
   supabase: ReturnType<typeof createAdminClient>,
   sample_pgn: string,
   federationPlayerId: string | null,
+  adHocPlayerId: string | null,
 ): Promise<NextResponse> {
   const games = parsePgnToGameRows(sample_pgn);
   if (games.length === 0) {
@@ -177,10 +281,10 @@ async function handleSamplePgn(
     );
   }
 
-  // If we have an anchor, look up the federation player so the match
-  // page header reads "Online accounts for Gelfand, Boris" instead of
-  // "(unknown subject)".
+  // If we have an anchor, look up the player so the match page header
+  // reads "Online accounts for Gelfand, Boris" instead of "(unknown subject)".
   let anchorPlayer: FederationPlayerLite | null = null;
+  let adHocAnchor: AdHocPlayerLite | null = null;
   if (federationPlayerId) {
     const { data, error } = await supabase
       .from('federation_players')
@@ -191,6 +295,16 @@ async function handleSamplePgn(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
     if (data) anchorPlayer = data as FederationPlayerLite;
+  } else if (adHocPlayerId) {
+    const { data, error } = await supabase
+      .from('ad_hoc_players')
+      .select('id, name, country')
+      .eq('id', adHocPlayerId)
+      .maybeSingle();
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    if (data) adHocAnchor = data as AdHocPlayerLite;
   }
 
   // Insert query row first so we have an id even on error.
@@ -207,10 +321,17 @@ async function handleSamplePgn(
               fide_rating: anchorPlayer.rating_standard,
               title: anchorPlayer.title,
             }
-          : {}),
+          : adHocAnchor
+            ? {
+                ad_hoc_player_id: adHocAnchor.id,
+                name: adHocAnchor.name,
+                country: adHocAnchor.country,
+              }
+            : {}),
       },
       input_method: 'sample_game',
       sample_pgn,
+      ad_hoc_player_id: adHocAnchor?.id ?? null,
       status: 'pending',
     })
     .select('id')
@@ -240,6 +361,7 @@ async function handleSamplePgn(
       query_id: queryId,
       rank: i + 1,
       federation_player_id: anchorPlayer?.id ?? null,
+      ad_hoc_player_id: adHocAnchor?.id ?? null,
       platform: m.platform,
       handle: m.handle,
       confidence_label:

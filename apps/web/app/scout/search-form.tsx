@@ -1,6 +1,7 @@
 'use client';
 
 import { useId } from 'react';
+import { COUNTRIES } from '@/lib/scout/countries';
 
 type Initial = {
   q: string;
@@ -11,124 +12,53 @@ type Initial = {
   max: string;
 };
 
-const COMMON_COUNTRIES: { code: string; label: string }[] = [
-  { code: '', label: 'Any country' },
-  { code: 'ISR', label: 'Israel (ISR)' },
-  { code: 'USA', label: 'United States (USA)' },
-  { code: 'GBR', label: 'England (GBR)' },
-  { code: 'GER', label: 'Germany (GER)' },
-  { code: 'FRA', label: 'France (FRA)' },
-  { code: 'ESP', label: 'Spain (ESP)' },
-  { code: 'ITA', label: 'Italy (ITA)' },
-  { code: 'NOR', label: 'Norway (NOR)' },
-  { code: 'NED', label: 'Netherlands (NED)' },
-  { code: 'POL', label: 'Poland (POL)' },
-  { code: 'IND', label: 'India (IND)' },
-  { code: 'CHN', label: 'China (CHN)' },
-  { code: 'RUS', label: 'Russia (RUS)' },
-  { code: 'UKR', label: 'Ukraine (UKR)' },
-  { code: 'ARM', label: 'Armenia (ARM)' },
-  { code: 'AZE', label: 'Azerbaijan (AZE)' },
-  { code: 'GEO', label: 'Georgia (GEO)' },
-  { code: 'CAN', label: 'Canada (CAN)' },
-  { code: 'AUS', label: 'Australia (AUS)' },
-  { code: 'BRA', label: 'Brazil (BRA)' },
-  { code: 'ARG', label: 'Argentina (ARG)' },
-];
-
 const TITLES: { code: string; label: string }[] = [
   { code: '', label: 'Any title' },
-  { code: 'GM', label: 'Grandmaster (GM)' },
-  { code: 'WGM', label: 'Women GM (WGM)' },
-  { code: 'IM', label: 'Int. Master (IM)' },
-  { code: 'WIM', label: 'Women IM (WIM)' },
-  { code: 'FM', label: 'FIDE Master (FM)' },
-  { code: 'WFM', label: 'Women FM (WFM)' },
-  { code: 'CM', label: 'Candidate Master (CM)' },
-  { code: 'WCM', label: 'Women CM (WCM)' },
+  { code: 'GM', label: 'GM' },
+  { code: 'WGM', label: 'WGM' },
+  { code: 'IM', label: 'IM' },
+  { code: 'WIM', label: 'WIM' },
+  { code: 'FM', label: 'FM' },
+  { code: 'WFM', label: 'WFM' },
+  { code: 'CM', label: 'CM' },
+  { code: 'WCM', label: 'WCM' },
 ];
 
 export function SearchForm({ initial }: { initial: Initial }) {
   const id = useId();
+  const hasAdvanced =
+    initial.fed.length > 0 ||
+    initial.title.length > 0 ||
+    initial.min.length > 0 ||
+    initial.max.length > 0;
 
   return (
     <form method="GET" action="/scout" className="space-y-4">
-      <div>
+      {/* Primary: country flag + name */}
+      <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+        <select
+          name="country"
+          defaultValue={initial.country}
+          aria-label="Country"
+          className="rounded-md border border-border bg-background px-2 py-2 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+        >
+          <option value="">🌐 Any</option>
+          {COUNTRIES.map((c) => (
+            <option key={c.code3} value={c.code3}>
+              {c.flag} {c.name}
+            </option>
+          ))}
+        </select>
+
         <input
           name="q"
           type="search"
           autoFocus
           defaultValue={initial.q}
-          placeholder="Search by name — e.g. magnus carlsen, kasparov, telem"
-          className="block w-full rounded-lg border border-border bg-background px-4 py-3 text-base placeholder:text-muted-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          placeholder="Name — e.g. carlsen, gelfand, your friend's name"
+          className="block w-full rounded-md border border-border bg-background px-3 py-2 text-base placeholder:text-muted-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
         />
-      </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Field label="Country" htmlFor={`${id}-country`}>
-          <select
-            id={`${id}-country`}
-            name="country"
-            defaultValue={initial.country}
-            className={selectClass}
-          >
-            {COMMON_COUNTRIES.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field label="Title" htmlFor={`${id}-title`}>
-          <select
-            id={`${id}-title`}
-            name="title"
-            defaultValue={initial.title}
-            className={selectClass}
-          >
-            {TITLES.map((t) => (
-              <option key={t.code} value={t.code}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field label="Min rating" htmlFor={`${id}-min`}>
-          <input
-            id={`${id}-min`}
-            name="min"
-            type="number"
-            min={0}
-            max={3000}
-            step={50}
-            defaultValue={initial.min}
-            placeholder="e.g. 2000"
-            className={inputClass}
-          />
-        </Field>
-
-        <Field label="Max rating" htmlFor={`${id}-max`}>
-          <input
-            id={`${id}-max`}
-            name="max"
-            type="number"
-            min={0}
-            max={3000}
-            step={50}
-            defaultValue={initial.max}
-            placeholder="e.g. 2400"
-            className={inputClass}
-          />
-        </Field>
-      </div>
-
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground">
-          Trigram fuzzy match — typos and partial names work. Country codes are 3-letter FIDE (NOR,
-          USA, ISR…).
-        </p>
         <button
           type="submit"
           className="rounded-md bg-accent px-5 py-2 text-sm font-semibold text-accent-foreground hover:opacity-90"
@@ -136,6 +66,71 @@ export function SearchForm({ initial }: { initial: Initial }) {
           Search
         </button>
       </div>
+
+      {/* Advanced: federation / title / rating range */}
+      <details
+        open={hasAdvanced}
+        className="rounded-md border border-border/60 bg-card/40 px-4 py-3"
+      >
+        <summary className="cursor-pointer text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Advanced filters
+        </summary>
+        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <Field label="Title" htmlFor={`${id}-title`}>
+            <select
+              id={`${id}-title`}
+              name="title"
+              defaultValue={initial.title}
+              className={selectClass}
+            >
+              {TITLES.map((t) => (
+                <option key={t.code} value={t.code}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Federation" htmlFor={`${id}-fed`}>
+            <input
+              id={`${id}-fed`}
+              name="fed"
+              type="text"
+              defaultValue={initial.fed}
+              placeholder="FIDE / ICF / …"
+              className={inputClass}
+            />
+          </Field>
+
+          <Field label="Min rating" htmlFor={`${id}-min`}>
+            <input
+              id={`${id}-min`}
+              name="min"
+              type="number"
+              min={0}
+              max={3000}
+              step={50}
+              defaultValue={initial.min}
+              placeholder="2000"
+              className={inputClass}
+            />
+          </Field>
+
+          <Field label="Max rating" htmlFor={`${id}-max`}>
+            <input
+              id={`${id}-max`}
+              name="max"
+              type="number"
+              min={0}
+              max={3000}
+              step={50}
+              defaultValue={initial.max}
+              placeholder="2800"
+              className={inputClass}
+            />
+          </Field>
+        </div>
+      </details>
     </form>
   );
 }

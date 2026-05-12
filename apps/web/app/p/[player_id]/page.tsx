@@ -61,6 +61,25 @@ export default async function PlayerProfilePage({
 
   const history = (snapshots ?? []).slice().reverse(); // chronological for the chart
 
+  // Confirmed online accounts for this FIDE player (user_confirmed = true).
+  // Confirm/reject buttons come in a follow-up; the section is wired now.
+  const { data: confirmedAccounts } = (await supabase
+    .from('identification_candidates')
+    .select('platform, handle, combined_score, evidence')
+    .eq('federation_player_id', player_id)
+    .eq('user_confirmed', true)
+    .order('combined_score', { ascending: false })
+    .limit(10)) as {
+    data:
+      | {
+          platform: 'lichess' | 'chess.com';
+          handle: string;
+          combined_score: number;
+          evidence: { country?: string | null; title?: string | null } | null;
+        }[]
+      | null;
+  };
+
   const ratings: Array<[string, number | null]> = [
     ['Standard', player.rating_standard],
     ['Rapid', player.rating_rapid],
@@ -136,6 +155,43 @@ export default async function PlayerProfilePage({
             <div className="mt-3 rounded-lg border border-border bg-card p-5">
               <RatingChart history={history} />
             </div>
+          </section>
+        )}
+
+        {confirmedAccounts && confirmedAccounts.length > 0 && (
+          <section className="mt-10">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              Known online accounts
+            </h2>
+            <ul className="mt-3 space-y-2">
+              {confirmedAccounts.map((a) => (
+                <li
+                  key={`${a.platform}-${a.handle}`}
+                  className="flex items-center justify-between rounded-md border border-emerald-500/30 bg-emerald-500/5 px-4 py-3"
+                >
+                  <div>
+                    <a
+                      href={
+                        a.platform === 'lichess'
+                          ? `https://lichess.org/@/${a.handle}`
+                          : `https://www.chess.com/member/${a.handle}`
+                      }
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="font-display font-semibold tracking-tight hover:text-accent"
+                    >
+                      {a.handle}
+                    </a>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      {a.platform}
+                    </p>
+                  </div>
+                  <span className="text-xs font-medium uppercase tracking-wider text-emerald-500">
+                    Confirmed
+                  </span>
+                </li>
+              ))}
+            </ul>
           </section>
         )}
 
