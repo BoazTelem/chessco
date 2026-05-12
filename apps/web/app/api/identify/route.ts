@@ -13,6 +13,7 @@
  */
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getUser } from '@/lib/auth';
 import { parsePgnToGameRows } from '@/lib/scout/pgn';
 import { rankBySampleGames, type Stage3Match } from '@/lib/scout/stage3';
 import { runStage2Cached } from '@/lib/scout/stage2';
@@ -74,6 +75,8 @@ export async function POST(req: Request): Promise<NextResponse> {
   }
 
   const supabase = createAdminClient();
+  const user = await getUser();
+  const requestedBy = user?.id ?? null;
 
   // -- Stage 3 branch: sample-game stylometric matching ---------------------
   // Anchored to federation_player_id OR ad_hoc_player_id when given, so the
@@ -84,12 +87,13 @@ export async function POST(req: Request): Promise<NextResponse> {
       body.sample_pgn,
       body.federation_player_id ?? null,
       body.ad_hoc_player_id ?? null,
+      requestedBy,
     );
   }
 
   // -- Ad-hoc Stage 2 branch: name search from a tracked ad-hoc player ------
   if (body.ad_hoc_player_id) {
-    return handleAdHocStage2(supabase, body.ad_hoc_player_id);
+    return handleAdHocStage2(supabase, body.ad_hoc_player_id, requestedBy);
   }
 
   // ---- Resolve federation_player if id provided -----------------------
@@ -133,6 +137,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       query_payload: queryPayload,
       input_method: 'name',
       status: 'pending',
+      requested_by: requestedBy,
     })
     .select('id')
     .single();
@@ -224,6 +229,7 @@ async function generateProseSafe(
 async function handleAdHocStage2(
   supabase: ReturnType<typeof createAdminClient>,
   adHocPlayerId: string,
+  requestedBy: string | null,
 ): Promise<NextResponse> {
   const { data: ah, error: ahErr } = await supabase
     .from('ad_hoc_players')
@@ -253,6 +259,7 @@ async function handleAdHocStage2(
       input_method: 'name',
       ad_hoc_player_id: adHoc.id,
       status: 'pending',
+      requested_by: requestedBy,
     })
     .select('id')
     .single();
@@ -323,6 +330,7 @@ async function handleSamplePgn(
   sample_pgn: string,
   federationPlayerId: string | null,
   adHocPlayerId: string | null,
+  requestedBy: string | null,
 ): Promise<NextResponse> {
   const games = parsePgnToGameRows(sample_pgn);
   if (games.length === 0) {
@@ -384,6 +392,7 @@ async function handleSamplePgn(
       sample_pgn,
       ad_hoc_player_id: adHocAnchor?.id ?? null,
       status: 'pending',
+      requested_by: requestedBy,
     })
     .select('id')
     .single();

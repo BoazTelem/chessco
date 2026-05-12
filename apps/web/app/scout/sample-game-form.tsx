@@ -60,6 +60,47 @@ function validateSlot(raw: string): SlotIssue {
 }
 
 /**
+ * Identity fingerprint for dedupe across slots. Same game pasted twice
+ * skews the Stage 3 fingerprint (every GameRow contributes equally), so
+ * we block submit on dups.
+ *
+ * Strategy: extract a stable subset of headers (players, date, result,
+ * round, site URL) — handles same-export-twice and same-game-from-
+ * different-formats. Falls back to a moves-text hash so games without a
+ * Site/Link tag still get caught.
+ */
+function fingerprintSlot(raw: string): string | null {
+  const text = raw.trim();
+  if (text.length === 0) return null;
+  const tags: Record<string, string> = {};
+  for (const m of text.matchAll(TAG_RE)) tags[m[1]!] = m[2]!;
+
+  const headerKey = [
+    (tags.White ?? '').toLowerCase().trim(),
+    (tags.Black ?? '').toLowerCase().trim(),
+    tags.UTCDate ?? tags.Date ?? '',
+    tags.UTCTime ?? '',
+    tags.Result ?? '',
+    tags.Round ?? '',
+    tags.Site ?? tags.Link ?? '',
+  ].join('|');
+
+  // If header key has no players AND no site, fall back to moves hash so
+  // a header-stripped paste still dedupes.
+  const hasHeaderIdentity =
+    (tags.White || tags.Black) && (tags.UTCDate || tags.Date || tags.Site || tags.Link);
+  if (hasHeaderIdentity) return `h:${headerKey}`;
+
+  // Moves fallback: strip tag lines, collapse whitespace, lowercase.
+  const moves = text
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  return moves.length > 0 ? `m:${moves}` : null;
+}
+
+/**
  * Paste-a-PGN form. POSTs sample_pgn to /api/identify, redirects to
  * /scout/match/[query_id]. AI stylometric matching runs in ~1s server-
  * side; we show an inline loading state rather than a polling page since
@@ -137,6 +178,27 @@ export function SampleGameForm({
       s.missing.some((m) => !m.includes('recommended')),
   ).length;
 
+  /** Map slot index → 1-based group number when its PGN matches another slot. */
+  const dupGroups = useMemo(() => {
+    const byFp = new Map<string, number[]>();
+    pgns.forEach((p, i) => {
+      const fp = fingerprintSlot(p);
+      if (!fp) return;
+      const arr = byFp.get(fp);
+      if (arr) arr.push(i);
+      else byFp.set(fp, [i]);
+    });
+    const groups = new Map<number, number>();
+    let g = 0;
+    for (const indices of byFp.values()) {
+      if (indices.length < 2) continue;
+      g++;
+      for (const idx of indices) groups.set(idx, g);
+    }
+    return groups;
+  }, [pgns]);
+  const dupCount = dupGroups.size;
+
   function updateSlot(i: number, val: string) {
     setPgns((cur) => cur.map((p, idx) => (idx === i ? val : p)));
   }
@@ -203,14 +265,17 @@ export function SampleGameForm({
             issue.kind === 'invalid' ? issue.missing.filter((m) => !m.includes('recommended')) : [];
           const softMissing =
             issue.kind === 'invalid' ? issue.missing.filter((m) => m.includes('recommended')) : [];
+          const dupGroup = dupGroups.get(i);
           const borderClass =
             issue.kind === 'empty'
               ? 'border-border'
-              : hardMissing.length > 0
+              : dupGroup !== undefined
                 ? 'border-rose-500/60'
-                : softMissing.length > 0
-                  ? 'border-amber-500/60'
-                  : 'border-emerald-500/40';
+                : hardMissing.length > 0
+                  ? 'border-rose-500/60'
+                  : softMissing.length > 0
+                    ? 'border-amber-500/60'
+                    : 'border-emerald-500/40';
           return (
             <div
               key={i}
@@ -219,13 +284,18 @@ export function SampleGameForm({
               <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
                 <span className="text-xs font-medium text-muted-foreground">
                   Game {i + 1}
-                  {issue.kind === 'ok' && (
+                  {dupGroup !== undefined && (
+                    <span className="ml-2 text-rose-500">
+                      duplicate of another slot{dupCount > 2 ? ` (group ${dupGroup})` : ''}
+                    </span>
+                  )}
+                  {dupGroup === undefined && issue.kind === 'ok' && (
                     <span className="ml-2 text-emerald-500">✓ valid PGN</span>
                   )}
-                  {hardMissing.length > 0 && (
+                  {dupGroup === undefined && hardMissing.length > 0 && (
                     <span className="ml-2 text-rose-500">missing {hardMissing.join(', ')}</span>
                   )}
-                  {hardMissing.length === 0 && softMissing.length > 0 && (
+                  {dupGroup === undefined && hardMissing.length === 0 && softMissing.length > 0 && (
                     <span className="ml-2 text-amber-500">missing {softMissing.join(', ')}</span>
                   )}
                 </span>
@@ -291,7 +361,7 @@ export function SampleGameForm({
       <div className="flex items-center gap-3 pt-1">
         <button
           type="submit"
-          disabled={loading || nonEmptyCount === 0 || invalidCount > 0}
+          disabled={loading || nonEmptyCount === 0 || invalidCount > 0 || dupCount > 0}
           className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition hover:opacity-90 disabled:opacity-50"
         >
           {loading
@@ -308,6 +378,12 @@ export function SampleGameForm({
         <p className="text-xs text-rose-500">
           {invalidCount} game{invalidCount === 1 ? '' : 's'} missing required PGN tags — paste the
           full PGN export (with the bracketed headers on top), not just the moves.
+        </p>
+      )}
+      {dupCount > 0 && (
+        <p className="text-xs text-rose-500">
+          {dupCount} slot{dupCount === 1 ? '' : 's'} contain the same game — remove the duplicates
+          so each PGN is counted once in the fingerprint.
         </p>
       )}
       {error && <p className="text-xs text-rose-500">{error}</p>}

@@ -59,6 +59,12 @@ export default async function DashboardPage() {
             Scout players
           </Link>
           <Link
+            href="/scout/history"
+            className="rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-muted"
+          >
+            History
+          </Link>
+          <Link
             href="/account"
             className="rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-muted"
           >
