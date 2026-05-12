@@ -114,9 +114,7 @@ export const ALL_TITLES: ChesscomTitle[] = [
 
 /** /pub/country/{ISO}/players → { players: string[] } */
 export async function fetchCountryPlayers(iso: string): Promise<string[]> {
-  const data = await fetchJson<{ players: string[] }>(
-    `/country/${iso.toUpperCase()}/players`,
-  );
+  const data = await fetchJson<{ players: string[] }>(`/country/${iso.toUpperCase()}/players`);
   return data?.players ?? [];
 }
 
@@ -149,9 +147,7 @@ export interface ChesscomStats {
 }
 
 export async function fetchPlayerStats(handle: string): Promise<ChesscomStats | null> {
-  return fetchJson<ChesscomStats>(
-    `/player/${encodeURIComponent(handle.toLowerCase())}/stats`,
-  );
+  return fetchJson<ChesscomStats>(`/player/${encodeURIComponent(handle.toLowerCase())}/stats`);
 }
 
 /**

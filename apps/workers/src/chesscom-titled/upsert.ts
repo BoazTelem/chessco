@@ -30,10 +30,7 @@ export async function upsertChesscomTitled(
 
   // First, bulk-insert (or no-op) the bare handle + title in one round trip.
   // postgres-js v3.4 row-helper types reject readonly column tuples; cast.
-  const insert = sql as unknown as (
-    rows: object[],
-    ...cols: string[]
-  ) => postgres.Helper<object[]>;
+  const insert = sql as unknown as (rows: object[], ...cols: string[]) => postgres.Helper<object[]>;
   if (handles.length > 0) {
     const rows = handles.map((h) => {
       const normalized = h.trim().toLowerCase();

@@ -36,9 +36,7 @@ function parseArgs(argv: string[]): Args {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  console.log(
-    `[chesscom-titled] titles=[${args.titles.join(',')}] enrich=${args.enrich}`,
-  );
+  console.log(`[chesscom-titled] titles=[${args.titles.join(',')}] enrich=${args.enrich}`);
 
   const { client } = getDb();
   try {
@@ -65,9 +63,7 @@ async function main() {
           enrich: args.enrich,
         });
         const dt = ((Date.now() - t0) / 1000).toFixed(1);
-        console.log(
-          `  upserted=${r.upserted} enriched=${r.enriched} errors=${r.errors} (${dt}s)`,
-        );
+        console.log(`  upserted=${r.upserted} enriched=${r.enriched} errors=${r.errors} (${dt}s)`);
 
         totalUpserted += r.upserted;
         totalEnriched += r.enriched;
