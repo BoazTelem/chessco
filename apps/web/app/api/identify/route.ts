@@ -1,22 +1,20 @@
 /**
- * POST /api/identify — Stage 2 identification endpoint.
+ * POST /api/identify — name-anchored Stage 2 OR sample-game Stage 3.
  *
  * Body (one of):
- *   { federation_player_id: uuid }   // anchor to a federation player
+ *   { federation_player_id: uuid }
  *   { name: string, country?: string, fide_rating?: number, title?: string }
+ *   { sample_pgn: string }    // Stage 3 — paste 1+ PGNs of the target
  *
- * Behavior:
- *   1. Insert an identification_queries row (status='pending')
- *   2. Run Stage 2 cached match against platform_players
- *   3. Insert top N candidates as identification_candidates
- *   4. Mark query status='ready'
- *   5. Return { query_id }
- *
- * Stage 2 cached runs in <1s typically; we do it synchronously here.
- * Stage 3 (sample-game stylometric, W5) will move to Inngest + polling.
+ * Stage 3 takes 1-3s end-to-end (parse PGN + extract features + cosine
+ * across ~1,400 cached fingerprints). Stage 2 cached: <1s. Both run
+ * synchronously here — async polling moves in when corpus growth pushes
+ * Stage 3 past ~5s.
  */
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { parsePgnToGameRows } from '@/lib/scout/pgn';
+import { rankBySampleGames, type Stage3Match } from '@/lib/scout/stage3';
 import { runStage2Cached } from '@/lib/scout/stage2';
 
 interface FederationPlayerLite {
@@ -34,6 +32,8 @@ interface ReqBody {
   country?: string;
   fide_rating?: number;
   title?: string;
+  /** Stage 3: paste of 1+ PGN(s) — triggers stylometric matching. */
+  sample_pgn?: string;
 }
 
 const MAX_CANDIDATES_PERSISTED = 15;
@@ -52,14 +52,19 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: 'invalid JSON body' }, { status: 400 });
   }
 
-  if (!body.federation_player_id && !body.name) {
+  if (!body.federation_player_id && !body.name && !body.sample_pgn) {
     return NextResponse.json(
-      { error: 'must provide federation_player_id or name' },
+      { error: 'must provide federation_player_id, name, or sample_pgn' },
       { status: 400 },
     );
   }
 
   const supabase = createAdminClient();
+
+  // -- Stage 3 branch: sample-game stylometric matching ---------------------
+  if (body.sample_pgn) {
+    return handleSamplePgn(supabase, body.sample_pgn);
+  }
 
   // ---- Resolve federation_player if id provided -----------------------
   let federationPlayer: FederationPlayerLite | null = null;
@@ -155,4 +160,89 @@ export async function POST(req: Request): Promise<NextResponse> {
     .eq('id', queryId);
 
   return NextResponse.json({ query_id: queryId, candidate_count: persisted.length });
+}
+
+async function handleSamplePgn(
+  supabase: ReturnType<typeof createAdminClient>,
+  sample_pgn: string,
+): Promise<NextResponse> {
+  const games = parsePgnToGameRows(sample_pgn);
+  if (games.length === 0) {
+    return NextResponse.json(
+      { error: 'no valid games parsed from sample_pgn — check the PGN format' },
+      { status: 400 },
+    );
+  }
+
+  // Insert query row first so we have an id even on error.
+  const { data: queryRow, error: insertErr } = await supabase
+    .from('identification_queries')
+    .insert({
+      query_payload: { games_pasted: games.length },
+      input_method: 'sample_game',
+      sample_pgn,
+      status: 'pending',
+    })
+    .select('id')
+    .single();
+  if (insertErr || !queryRow) {
+    return NextResponse.json(
+      { error: insertErr?.message ?? 'failed to create query' },
+      { status: 500 },
+    );
+  }
+  const queryId = (queryRow as { id: string }).id;
+
+  let matches: Stage3Match[];
+  try {
+    const result = await rankBySampleGames(games, { topK: 15, minGamesWindow: 10 });
+    matches = result.matches;
+  } catch (err) {
+    await supabase.from('identification_queries').update({ status: 'failed' }).eq('id', queryId);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'stage 3 failed' },
+      { status: 500 },
+    );
+  }
+
+  if (matches.length > 0) {
+    const rows = matches.map((m, i) => ({
+      query_id: queryId,
+      rank: i + 1,
+      platform: m.platform,
+      handle: m.handle,
+      confidence_label:
+        m.combined_score >= 0.7 ? 'high' : m.combined_score >= 0.5 ? 'medium' : ('low' as const),
+      combined_score: m.combined_score,
+      style_score: m.combined_score,
+      evidence: {
+        components: m.components,
+        games_window: m.games_window,
+        reasons: [
+          `eco-W ${(m.components.eco_white * 100).toFixed(0)}%`,
+          `eco-B ${(m.components.eco_black * 100).toFixed(0)}%`,
+          `time-class ${(m.components.time_class * 100).toFixed(0)}%`,
+          `opp-rating ${(m.components.opp_rating * 100).toFixed(0)}%`,
+        ],
+        country: null,
+        title: null,
+        ratings: { bullet: null, blitz: null, rapid: null, classical: null },
+      },
+    }));
+    const { error: candErr } = await supabase.from('identification_candidates').insert(rows);
+    if (candErr) {
+      return NextResponse.json({ error: candErr.message }, { status: 500 });
+    }
+  }
+
+  await supabase
+    .from('identification_queries')
+    .update({ status: 'ready', completed_at: new Date().toISOString() })
+    .eq('id', queryId);
+
+  return NextResponse.json({
+    query_id: queryId,
+    candidate_count: matches.length,
+    games_parsed: games.length,
+  });
 }
