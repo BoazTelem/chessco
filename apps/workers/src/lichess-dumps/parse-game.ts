@@ -9,10 +9,10 @@
  */
 import { Chess } from 'chess.js';
 import { fenHash } from './fen-hash';
-import type { GameResult, ParsedGame, TimeClass } from './types';
+import type { GameResult, ParsedGame, PgnHeaders, TimeClass } from './types';
 
 export interface GameRow {
-  source: 'lichess';
+  source: 'lichess' | 'chess.com';
   source_game_id: string;
   white_handle_snapshot: string | null;
   black_handle_snapshot: string | null;
@@ -179,7 +179,7 @@ export function processGame(g: ParsedGame): ProcessedGame | null {
       black_handle_snapshot: h.Black ?? null,
       white_rating: parseIntOrNull(h.WhiteElo),
       black_rating: parseIntOrNull(h.BlackElo),
-      pgn: '', // Filled in by ingest layer if we keep full PGN (cheap to skip for now).
+      pgn: rebuildPgn(h, g.moveText),
       initial_fen: initialFen,
       result,
       termination: h.Termination ?? null,
@@ -193,6 +193,22 @@ export function processGame(g: ParsedGame): ProcessedGame | null {
     positions,
     moves,
   };
+}
+
+/**
+ * Re-emit a PGN string from parsed headers + raw moveText. We preserve
+ * Lichess `%eval` and `%clk` comments verbatim (they ride inside moveText)
+ * so a downstream Stockfish-or-eval extractor can recover engine evals
+ * without re-analyzing the game. Header values get their inner double
+ * quotes backslash-escaped per PGN spec.
+ */
+function rebuildPgn(headers: PgnHeaders, moveText: string): string {
+  const lines: string[] = [];
+  for (const [key, value] of Object.entries(headers)) {
+    if (value === undefined || value === null || value === '') continue;
+    lines.push(`[${key} "${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`);
+  }
+  return lines.length > 0 ? `${lines.join('\n')}\n\n${moveText}` : moveText;
 }
 
 function canonicalResult(r: string | undefined): GameResult | null {
