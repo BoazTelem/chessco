@@ -12,7 +12,7 @@
 import 'dotenv/config';
 import { getGamesDb } from '../db';
 import { BATCH, dumpUrl } from './config';
-import { openDumpStream } from './download';
+import { downloadAndOpenDumpStream } from './download';
 import { emptyFilterStats, shouldIngest } from './filter';
 import { ingestBatch } from './ingest';
 import { processGame } from './parse-game';
@@ -63,7 +63,7 @@ async function main() {
   console.log(`[lichess-dumps] dump=${args.dumpId} url=${url}`);
   console.log(`[lichess-dumps] max-games=${args.maxGames ?? '∞'} dry-run=${args.dryRun}`);
 
-  const dump = await openDumpStream(url);
+  const dump = await downloadAndOpenDumpStream(url, args.dumpId);
   console.log(
     `[lichess-dumps] connected. total_bytes=${dump.totalBytes ? fmtBytes(dump.totalBytes) : 'unknown'}`,
   );
