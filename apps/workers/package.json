@@ -16,6 +16,7 @@
     "features:run": "tsx src/features/run.ts",
     "features:card": "tsx src/features/cardinality.ts",
     "features:inspect": "tsx src/features/inspect.ts",
+    "stage3": "tsx src/stage3/run.ts",
     "games-db:migrate": "tsx src/games-db-migrate.ts",
     "games-db:verify": "tsx src/games-db-verify.ts",
     "typecheck": "tsc --noEmit",
