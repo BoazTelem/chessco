@@ -13,13 +13,24 @@ const GRID: ReadonlyArray<ReadonlyArray<number>> = [
   [0, 1, 2, 3, 2, 3, 2, 1],
 ];
 
+type MarkVariant = 'solid' | 'float';
+
 type MarkProps = {
   className?: string;
   title?: string;
   decorative?: boolean;
+  // 'solid' renders the full 8x8 board. 'float' drops palette 0/1 (the dim
+  // surround) so only the C strokes render — useful at hero size where the
+  // dim cells turn to mud against the page background.
+  variant?: MarkVariant;
 };
 
-function MarkSvg({ className, title = 'Chessco', decorative = false }: MarkProps) {
+function MarkSvg({
+  className,
+  title = 'Chessco',
+  decorative = false,
+  variant = 'solid',
+}: MarkProps) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -32,23 +43,30 @@ function MarkSvg({ className, title = 'Chessco', decorative = false }: MarkProps
     >
       {!decorative && <title>{title}</title>}
       {GRID.flatMap((row, y) =>
-        row.map((c, x) => (
-          <rect
-            key={`${x}-${y}`}
-            x={x * 32}
-            y={y * 32}
-            width={32}
-            height={32}
-            fill={COLORS[c]}
-          />
-        )),
+        row.map((c, x) => {
+          if (variant === 'float' && c < 2) return null;
+          return (
+            <rect
+              key={`${x}-${y}`}
+              x={x * 32}
+              y={y * 32}
+              width={32}
+              height={32}
+              fill={COLORS[c]}
+            />
+          );
+        }),
       )}
     </svg>
   );
 }
 
-export function ChesscoMark(props: { className?: string; title?: string }) {
-  return <MarkSvg className={props.className} title={props.title} />;
+export function ChesscoMark(props: {
+  className?: string;
+  title?: string;
+  variant?: MarkVariant;
+}) {
+  return <MarkSvg className={props.className} title={props.title} variant={props.variant} />;
 }
 
 export function ChesscoLockup({

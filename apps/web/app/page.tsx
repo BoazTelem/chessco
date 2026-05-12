@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { brand } from '@chessco/ui';
 import { getUser } from '@/lib/auth';
-import { ChesscoLockup } from '@/lib/logo';
+import { ChesscoMark } from '@/lib/logo';
 
 export default async function HomePage() {
   const user = await getUser();
@@ -9,10 +9,15 @@ export default async function HomePage() {
   return (
     <main className="container mx-auto flex min-h-screen flex-col items-center justify-center px-4 py-16">
       <div className="flex max-w-3xl flex-col items-center gap-8 text-center">
-        <ChesscoLockup
-          className="text-sm"
-          wordmarkClassName="font-display font-semibold uppercase tracking-[0.3em] text-accent"
-        />
+        <div className="flex flex-col items-center gap-3">
+          <ChesscoMark
+            variant="float"
+            className="h-[200px] w-[200px] md:h-[240px] md:w-[240px]"
+          />
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-accent">
+            {brand.name}
+          </p>
+        </div>
 
         <h1 className="font-display text-5xl font-bold tracking-tight md:text-7xl">
           {brand.slogan}
@@ -63,7 +68,7 @@ export default async function HomePage() {
         <div className="mt-8 flex flex-col gap-3 text-sm">
           <div className="rounded-lg border border-border bg-card px-6 py-4 text-muted-foreground">
             <span className="font-medium text-foreground">755,081 FIDE players indexed.</span> Try
-            the scout above — no sign-up needed. Prep reports next.
+            the scout — no sign-up needed. Prep reports next.
           </div>
           <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
             <span>Scout</span>
