@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { brand } from '@chessco/ui';
 import { getUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
-import { ChesscoLockup } from '@/lib/logo';
+import { ChesscoMark } from '@/lib/logo';
 import { CountryBadge, FederationBadge, TitleBadge } from '../../scout/result-card';
 import { IdentifyButton } from './identify-button';
 
@@ -70,12 +70,19 @@ export default async function PlayerProfilePage({
     <div className="min-h-screen">
       <header className="border-b border-border bg-card/50">
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <div className="flex items-center gap-3">
-            <Link href="/" aria-label={brand.name} className="text-sm hover:opacity-80">
-              <ChesscoLockup wordmarkClassName="font-display font-semibold uppercase tracking-[0.3em] text-accent" />
+          <div className="flex items-center gap-2 text-sm">
+            <Link
+              href="/"
+              aria-label={brand.name}
+              className="inline-flex items-center gap-2 hover:opacity-80"
+            >
+              <ChesscoMark className="h-4 w-4 shrink-0" />
+              <span className="font-display font-semibold uppercase tracking-[0.3em] text-accent">
+                {brand.name}
+              </span>
             </Link>
             <span className="text-muted-foreground">/</span>
-            <Link href="/scout" className="text-sm text-muted-foreground hover:text-foreground">
+            <Link href="/scout" className="text-muted-foreground hover:text-foreground">
               Scout
             </Link>
           </div>
