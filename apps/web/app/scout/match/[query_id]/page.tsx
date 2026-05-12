@@ -146,6 +146,7 @@ export default async function MatchPage({ params }: { params: Promise<{ query_id
 
         {query.status === 'ready' && candidates && candidates.length > 0 && (
           <section className="mt-8 space-y-3">
+            <DiscriminationNote candidates={candidates} />
             <p className="text-xs text-muted-foreground">
               Showing top {candidates.length}. Confidence is computed from handle similarity,
               country, rating-band, and title alignment.
@@ -174,6 +175,38 @@ export default async function MatchPage({ params }: { params: Promise<{ query_id
           </div>
         </section>
       </main>
+    </div>
+  );
+}
+
+/**
+ * If the top 5 candidates' confidences are all within 0.05 of each other,
+ * name + country can't pick a winner. Tell the user the limit was reached
+ * and point them to sample-game matching (Phase 1 W5).
+ *
+ * Also surfaces when nothing reaches the "medium" confidence floor — the
+ * search is grasping; honest about it.
+ */
+function DiscriminationNote({ candidates }: { candidates: Candidate[] }) {
+  if (candidates.length === 0) return null;
+  const top = candidates.slice(0, 5).map((c) => c.combined_score);
+  const max = top[0] ?? 0;
+  const min = top[top.length - 1] ?? max;
+  const tied = top.length >= 3 && max - min <= 0.05;
+  const allLow = max < 0.6;
+  if (!tied && !allLow) return null;
+  return (
+    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+      <p className="text-xs font-semibold uppercase tracking-wider text-amber-500">
+        Low discrimination
+      </p>
+      <p className="mt-1 text-sm">
+        {tied
+          ? `Name + country matched ${candidates.length} handles with nearly identical confidence — we can't pick a winner from this signal alone.`
+          : `No candidate reached a confident match. The strongest signal we have is fuzzy name match plus country.`}{' '}
+        Phase 1 W5 adds <em>sample-game</em> matching — paste one of the target&apos;s games and AI
+        finds them by play style.
+      </p>
     </div>
   );
 }
