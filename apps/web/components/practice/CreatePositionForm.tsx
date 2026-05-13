@@ -5,11 +5,15 @@ import { useRouter } from 'next/navigation';
 import { PositionEditor } from './PositionEditor';
 import { STANDARD_START_FEN } from '@/lib/practice/fen';
 
-const TIME_CONTROLS: Array<{
+type TimeClass = 'bullet' | 'blitz' | 'rapid' | 'classical';
+
+interface TimeControl {
   tc: string;
-  tclass: 'bullet' | 'blitz' | 'rapid' | 'classical';
+  tclass: TimeClass;
   label: string;
-}> = [
+}
+
+const TIME_CONTROLS: TimeControl[] = [
   { tc: '1+0', tclass: 'bullet', label: '1+0 bullet' },
   { tc: '3+0', tclass: 'blitz', label: '3+0 blitz' },
   { tc: '3+2', tclass: 'blitz', label: '3+2 blitz' },
@@ -17,7 +21,22 @@ const TIME_CONTROLS: Array<{
   { tc: '10+0', tclass: 'rapid', label: '10+0 rapid' },
   { tc: '15+10', tclass: 'rapid', label: '15+10 rapid' },
   { tc: '30+0', tclass: 'classical', label: '30+0 classical' },
+  { tc: '50+10', tclass: 'classical', label: '50+10 classical' },
+  { tc: '90+30', tclass: 'classical', label: '90+30 classical' },
 ];
+
+/**
+ * Classify a custom time control by chess.com's convention: total estimated
+ * time = base_seconds + 40 * increment_seconds. Bullet < 2 min, blitz < 10,
+ * rapid < 30, otherwise classical.
+ */
+function classifyCustom(baseMin: number, incSec: number): TimeClass {
+  const totalSeconds = baseMin * 60 + 40 * incSec;
+  if (totalSeconds < 120) return 'bullet';
+  if (totalSeconds < 600) return 'blitz';
+  if (totalSeconds < 1800) return 'rapid';
+  return 'classical';
+}
 
 type SideChoice = 'w' | 'b' | 'random';
 
@@ -36,6 +55,9 @@ export function CreatePositionForm({ walletAvailableCents, userRating }: Props) 
   const [fenOk, setFenOk] = useState(true);
   const [fenError, setFenError] = useState<string | null>(null);
   const [tc, setTc] = useState(TIME_CONTROLS[DEFAULT_TC_INDEX]!);
+  const [customMode, setCustomMode] = useState(false);
+  const [customBaseMin, setCustomBaseMin] = useState(20);
+  const [customIncSec, setCustomIncSec] = useState(0);
   const [side, setSide] = useState<SideChoice>('random');
   const [feeUsd, setFeeUsd] = useState(0);
   const [games, setGames] = useState(1);
@@ -64,12 +86,22 @@ export function CreatePositionForm({ walletAvailableCents, userRating }: Props) 
       return;
     }
 
+    const effectiveBase = customMode ? Math.max(1, Math.floor(customBaseMin)) : null;
+    const effectiveInc = customMode ? Math.max(0, Math.floor(customIncSec)) : null;
+    if (customMode && (effectiveBase === null || effectiveBase < 1)) {
+      setError('Custom base time must be at least 1 minute.');
+      return;
+    }
+
+    const effectiveTcStr = customMode ? `${effectiveBase}+${effectiveInc}` : tc.tc;
+    const effectiveTcClass = customMode ? classifyCustom(effectiveBase!, effectiveInc!) : tc.tclass;
+
     const body = {
       fen,
       pgnPrefix: null,
       creatorColor: side === 'random' ? null : side,
-      timeControl: tc.tc,
-      timeClass: tc.tclass,
+      timeControl: effectiveTcStr,
+      timeClass: effectiveTcClass,
       feeCents: Math.round(feeUsd * 100),
       gamesRequested: games,
       ratingMin: ratingMin ? Number(ratingMin) : null,
@@ -123,9 +155,12 @@ export function CreatePositionForm({ walletAvailableCents, userRating }: Props) 
             <button
               key={t.tc}
               type="button"
-              onClick={() => setTc(t)}
+              onClick={() => {
+                setTc(t);
+                setCustomMode(false);
+              }}
               className={`rounded-full border px-3 py-1 text-xs ${
-                tc.tc === t.tc
+                !customMode && tc.tc === t.tc
                   ? 'border-accent bg-accent text-accent-foreground'
                   : 'border-border bg-background hover:bg-muted'
               }`}
@@ -133,7 +168,56 @@ export function CreatePositionForm({ walletAvailableCents, userRating }: Props) 
               {t.label}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => setCustomMode(true)}
+            className={`rounded-full border px-3 py-1 text-xs ${
+              customMode
+                ? 'border-accent bg-accent text-accent-foreground'
+                : 'border-border bg-background hover:bg-muted'
+            }`}
+          >
+            Custom
+          </button>
         </div>
+        {customMode && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+            <label className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={180}
+                step={1}
+                value={customBaseMin}
+                onChange={(e) =>
+                  setCustomBaseMin(Math.max(1, Math.min(180, Number(e.target.value) || 0)))
+                }
+                className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+              />
+              <span className="text-xs text-muted-foreground">minutes</span>
+            </label>
+            <span className="text-muted-foreground">+</span>
+            <label className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                max={60}
+                step={1}
+                value={customIncSec}
+                onChange={(e) =>
+                  setCustomIncSec(Math.max(0, Math.min(60, Number(e.target.value) || 0)))
+                }
+                className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+              />
+              <span className="text-xs text-muted-foreground">
+                seconds increment ·{' '}
+                <span className="text-foreground">
+                  {classifyCustom(customBaseMin, customIncSec)}
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
       </section>
 
       <section className="grid gap-6 md:grid-cols-2">

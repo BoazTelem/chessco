@@ -145,9 +145,12 @@ export function PositionEditor({ initialFen = STANDARD_START_FEN, onChange }: Pr
   const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Track whether a drop was accepted during the current drag, so onPieceDragEnd
-  // can distinguish "moved within the board" from "dragged off the board".
-  const dropAcceptedRef = useRef(false);
+  // Snap-back-free drag-to-remove. We optimistically remove the piece on
+  // drag start so the board re-renders empty *during* the drag; if the user
+  // drops on a board square, onPieceDrop re-adds it. If they drop off-board,
+  // neither onPieceDrop nor onSparePieceDrop fires — the piece simply stays
+  // gone. Avoids the visible "reappear then disappear" flash.
+  const dragSourceRef = useRef<{ piece: string; square: string } | null>(null);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -185,50 +188,45 @@ export function PositionEditor({ initialFen = STANDARD_START_FEN, onChange }: Pr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composedFen]);
 
-  // Drag from palette to board square. Returning true tells react-chessboard
-  // the drop is accepted.
+  // Palette-to-board: just add at target. No optimistic-removal bookkeeping
+  // needed since there's no board source square.
   const handleSparePieceDrop = useCallback((piece: Piece, targetSquare: Square): boolean => {
     setBoardMap((m) => ({ ...m, [targetSquare]: piece }));
-    dropAcceptedRef.current = true;
     return true;
   }, []);
 
-  // Drag within board: move piece from source to target (overwrites destination).
+  // Drag start (board pieces only): remember piece + source, and optimistically
+  // remove from the board so the source square renders empty during the drag.
+  const handlePieceDragBegin = useCallback((piece: Piece, sourceSquare: Square) => {
+    if (!/^[a-h][1-8]$/.test(sourceSquare)) {
+      dragSourceRef.current = null;
+      return;
+    }
+    dragSourceRef.current = { piece, square: sourceSquare };
+    setBoardMap((m) => {
+      const next = { ...m };
+      delete next[sourceSquare];
+      return next;
+    });
+  }, []);
+
+  // Board-to-board drop: source is already empty (we removed in dragBegin), so
+  // just place the piece at the target. Same-square drops re-place the piece
+  // (drag was cancelled / no movement).
   const handlePieceDrop = useCallback(
     (sourceSquare: Square, targetSquare: Square, piece: Piece): boolean => {
-      if (sourceSquare === targetSquare) return false;
-      setBoardMap((m) => {
-        const next = { ...m };
-        delete next[sourceSquare];
-        next[targetSquare] = piece;
-        return next;
-      });
-      dropAcceptedRef.current = true;
-      return true;
+      setBoardMap((m) => ({ ...m, [targetSquare]: piece }));
+      dragSourceRef.current = null;
+      return sourceSquare !== targetSquare;
     },
     [],
   );
 
-  // Drag end: if the drag started on a board square and no drop was accepted,
-  // the user dragged the piece off the board → remove the source piece.
-  const handlePieceDragBegin = useCallback(() => {
-    dropAcceptedRef.current = false;
-  }, []);
-  const handlePieceDragEnd = useCallback((_piece: Piece, sourceSquare: Square) => {
-    // Defer so onPieceDrop / onSparePieceDrop (which set dropAcceptedRef=true)
-    // have run first.
-    setTimeout(() => {
-      if (dropAcceptedRef.current) return;
-      // Drag ended without a drop — remove the piece if it came from the board.
-      // (sourceSquare is a board square, not 'spare', for board-piece drags.)
-      if (/^[a-h][1-8]$/.test(sourceSquare)) {
-        setBoardMap((m) => {
-          const next = { ...m };
-          delete next[sourceSquare];
-          return next;
-        });
-      }
-    }, 0);
+  // Drag end: if neither onPieceDrop nor onSparePieceDrop fired (i.e. the user
+  // released outside any valid square), dragSourceRef is still set → the piece
+  // was already removed in dragBegin and stays removed. Just clear the ref.
+  const handlePieceDragEnd = useCallback(() => {
+    dragSourceRef.current = null;
   }, []);
 
   const handleSquareRightClick = useCallback((square: Square) => {
