@@ -28,6 +28,7 @@ import {
 } from '../lib/chesscom-api';
 import { ingestBatch } from '../lichess-dumps/ingest';
 import type { ProcessedGame } from '../lichess-dumps/parse-game';
+import { enqueueOpponents } from './discover-opponents';
 import { emptyChesscomFilterStats, shouldIngestChesscom } from './filter';
 import { processChesscomGame } from './parse-game';
 import {
@@ -259,6 +260,10 @@ async function handleArchiveMonth(
   if (buffer.length > 0) {
     const result = await ingestBatch(sql, buffer);
     gamesInserted = result.games;
+    // Transitive discovery: enqueue this archive's opponents as new
+    // archives_list rows so the crawler eventually fetches their games
+    // too. Idempotent — ON CONFLICT handles already-known handles.
+    await enqueueOpponents(sql, buffer, item.handle);
   }
   await completeItem(sql, item.id, gamesInserted);
   return gamesInserted;

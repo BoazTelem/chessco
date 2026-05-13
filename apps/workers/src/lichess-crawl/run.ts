@@ -29,6 +29,7 @@ import { ingestBatch } from '../lichess-dumps/ingest';
 import { processGame } from '../lichess-dumps/parse-game';
 import type { ProcessedGame } from '../lichess-dumps/parse-game';
 import { streamGames } from '../lichess-dumps/pgn-stream';
+import { enqueueLichessOpponents } from './discover-opponents';
 import { emptyCrawlFilterStats, shouldIngestLichessCrawl } from './filter';
 import {
   claimNext,
@@ -217,12 +218,16 @@ async function handleUserGames(
     if (buffer.length >= BATCH.gamesPerBatch) {
       const r = await ingestBatch(sql, buffer);
       gamesInserted += r.games;
+      // Transitive discovery: enqueue opponents from this batch.
+      // Idempotent — ON CONFLICT (handle) handles already-known handles.
+      await enqueueLichessOpponents(sql, buffer, item.handle);
       buffer.length = 0;
     }
   }
   if (buffer.length > 0) {
     const r = await ingestBatch(sql, buffer);
     gamesInserted += r.games;
+    await enqueueLichessOpponents(sql, buffer, item.handle);
     buffer.length = 0;
   }
 
