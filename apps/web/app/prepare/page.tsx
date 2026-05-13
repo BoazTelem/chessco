@@ -6,7 +6,7 @@ import { PrepareEntryForm } from './entry-form';
 export const metadata = {
   title: 'Prepare — opening tree and leaks for any opponent',
   description:
-    "Paste your opponent's chess.com or Lichess handle to see their opening tree. Sign in to correlate their leaks against your repertoire.",
+    "Enter your opponent's chess.com or Lichess username to see their opening tree. Sign in to correlate their leaks against your repertoire.",
 };
 
 export default async function PreparePage() {
@@ -22,7 +22,7 @@ export default async function PreparePage() {
             Prepare against an opponent
           </h1>
           <p className="text-base text-muted-foreground md:text-lg">
-            Paste their chess.com or Lichess handle. The opening tree is free for everyone.
+            Enter their chess.com or Lichess username. The opening tree is free for everyone.
             {user
               ? ' Your imported games are used to correlate their leaks with your repertoire.'
               : ' Sign in to unlock personalized leak detection and surprise lines.'}
@@ -33,7 +33,7 @@ export default async function PreparePage() {
 
         <div className="flex flex-col items-center gap-2 text-xs text-muted-foreground">
           <p>
-            Don&rsquo;t have the handle yet?{' '}
+            Don&rsquo;t know their account yet?{' '}
             <Link href="/scout" className="text-accent hover:underline">
               Scout the player by name
             </Link>

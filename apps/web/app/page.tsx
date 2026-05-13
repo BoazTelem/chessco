@@ -57,7 +57,7 @@ export default async function HomePage() {
           <PillarTile
             index={2}
             title="Prepare against an opponent"
-            subtitle="You have their chess.com or Lichess handle. Free opening tree — sign in for personalized leaks and surprise lines."
+            subtitle="You know their chess.com or Lichess account. Free opening tree — sign in for personalized leaks and surprise lines."
             cta="Open prep"
             href="/prepare"
           />

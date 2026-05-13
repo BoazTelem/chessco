@@ -33,7 +33,7 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   if (!HANDLE_RE.test(handle)) {
     return NextResponse.json(
-      { error: 'handle must be 2–30 chars (letters, digits, _ or -)' },
+      { error: 'username must be 2–30 chars (letters, digits, _ or -)' },
       { status: 400 },
     );
   }
