@@ -4,7 +4,7 @@ interface PillarTileProps {
   index: number;
   title: string;
   subtitle: string;
-  cta: string;
+  cta?: string;
   href?: string;
   badge?: string;
   children?: React.ReactNode;
@@ -45,9 +45,11 @@ export function PillarTile({
       <h2 className="mt-3 font-display text-xl font-semibold text-foreground">{title}</h2>
       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{subtitle}</p>
       {children ? <div className="mt-4">{children}</div> : null}
-      <div className="mt-5 inline-flex items-center gap-1 text-sm font-semibold text-accent">
-        {cta} <span aria-hidden>→</span>
-      </div>
+      {cta ? (
+        <div className="mt-5 inline-flex items-center gap-1 text-sm font-semibold text-accent">
+          {cta} <span aria-hidden>→</span>
+        </div>
+      ) : null}
     </>
   );
 

@@ -4,7 +4,6 @@ import { getUser } from '@/lib/auth';
 import { ChesscoMark } from '@/lib/logo';
 import { getIndexStats } from '@/lib/index-stats';
 import { PillarTile } from '@/components/home/pillar-tile';
-import { PositionWaitlistForm } from '@/components/home/position-waitlist-form';
 
 // Refresh the indexed-player count once a day. Federation crons run
 // monthly and the chess.com crawler is continuous, so daily cadence
@@ -64,12 +63,9 @@ export default async function HomePage() {
           <PillarTile
             index={3}
             title="Practice from a position"
-            subtitle="Publish a FEN, set a per-game budget, pick bullet / blitz / rapid / classical, get matched with a verified opponent."
-            cta="Get notified"
+            subtitle="Set up the position you want to drill on the board — or paste a FEN — pick a time class, and publish it with a per-game budget. A verified opponent plays it through with you. Or list yourself to help others prepare and earn per completed game."
             badge="Coming soon"
-          >
-            <PositionWaitlistForm />
-          </PillarTile>
+          />
         </div>
 
         <div className="flex flex-col items-center gap-3 text-sm">
