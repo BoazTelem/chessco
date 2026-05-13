@@ -18,10 +18,18 @@ import { Readable } from 'node:stream';
 export const LICHESS_API_BASE = 'https://lichess.org/api';
 const USER_AGENT = 'chessco-worker/0.1 (+https://chessco.org)';
 
-/** Conservative inner gap. Lichess docs ask for at least ~1s on this
- *  endpoint when anonymous; we add headroom. The outer crawler loop's
- *  --rate-ms sits on top of this. */
-const MIN_REQUEST_GAP_MS = 1500;
+/** Optional Lichess personal API token (created at
+ *  lichess.org/account/oauth/token/create). When set, we send it as a
+ *  Bearer header and Lichess raises the rate cap from ~30 req/min to
+ *  ~300 req/min for the user-export endpoint. No scope required for
+ *  public games. */
+const LICHESS_API_TOKEN = process.env.LICHESS_API_TOKEN ?? null;
+
+/** Inner gap differs by auth mode:
+ *  - Anonymous: 1500ms (Lichess docs ask for >=1s on user-export)
+ *  - Authenticated: 250ms (4 req/sec; well under the 5 req/sec
+ *    authenticated tier, leaves headroom for bursts). */
+const MIN_REQUEST_GAP_MS = LICHESS_API_TOKEN ? 250 : 1500;
 const MAX_RETRIES = 5;
 
 let lastRequestAt = 0;
@@ -89,12 +97,12 @@ export async function fetchUserGamesPgn(
 
     let res: Response;
     try {
-      res = await fetch(url, {
-        headers: {
-          'User-Agent': USER_AGENT,
-          Accept: 'application/x-chess-pgn',
-        },
-      });
+      const headers: Record<string, string> = {
+        'User-Agent': USER_AGENT,
+        Accept: 'application/x-chess-pgn',
+      };
+      if (LICHESS_API_TOKEN) headers.Authorization = `Bearer ${LICHESS_API_TOKEN}`;
+      res = await fetch(url, { headers });
     } catch (err) {
       lastErr = err as Error;
       continue;
