@@ -68,6 +68,7 @@ export function CreatePositionForm({ walletAvailableCents, userRating }: Props) 
   );
   const [notes, setNotes] = useState('');
   const [openingName, setOpeningName] = useState('');
+  const [anonymous, setAnonymous] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -110,6 +111,7 @@ export function CreatePositionForm({ walletAvailableCents, userRating }: Props) 
       ratingMax: ratingMax ? Number(ratingMax) : null,
       notes: notes.trim() || null,
       openingName: openingName.trim() || null,
+      anonymous,
     };
 
     setSubmitting(true);
@@ -368,6 +370,24 @@ export function CreatePositionForm({ walletAvailableCents, userRating }: Props) 
           placeholder="e.g. play the most principled lines, no quick draws"
           className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
         />
+      </section>
+
+      <section>
+        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-card p-3">
+          <input
+            type="checkbox"
+            checked={anonymous}
+            onChange={(e) => setAnonymous(e.target.checked)}
+            className="mt-0.5 h-4 w-4"
+          />
+          <div>
+            <p className="text-sm font-medium">Publish anonymously</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Hide your name. Your rating still shows so opponents can gauge the matchup. Uncheck to
+              let people open your profile and see your games.
+            </p>
+          </div>
+        </label>
       </section>
 
       {error && (

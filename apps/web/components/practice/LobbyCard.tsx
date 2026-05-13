@@ -31,6 +31,8 @@ export interface LobbyChallenge {
   games_completed: number;
   notes: string | null;
   opening_name: string | null;
+  anonymous: boolean;
+  creator_rating: number | null;
   created_at: string;
 }
 
@@ -49,7 +51,11 @@ export function LobbyCard({
   const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const creatorLabel = challenge.creator_display_name ?? challenge.creator_username ?? 'A player';
+  const creatorLabel = challenge.anonymous
+    ? 'Anonymous'
+    : (challenge.creator_display_name ?? challenge.creator_username ?? 'A player');
+  const creatorRatingLabel =
+    challenge.creator_rating != null ? `· ${challenge.creator_rating}` : '';
 
   async function accept() {
     if (!signedIn) {
@@ -116,7 +122,12 @@ export function LobbyCard({
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-foreground">{creatorLabel}</p>
+              <p className="text-sm font-medium text-foreground">
+                {creatorLabel}{' '}
+                {creatorRatingLabel && (
+                  <span className="text-muted-foreground">{creatorRatingLabel}</span>
+                )}
+              </p>
               <p className="mt-0.5 text-[11px] text-muted-foreground">
                 {challenge.time_control} {challenge.time_class} · you {oppositeColorLabel}
                 {ratingBand ? ` · opponent rating ${ratingBand}` : ''}

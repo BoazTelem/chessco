@@ -28,6 +28,7 @@ const Input = z.object({
   notes: z.string().max(500).optional().nullable(),
   openingName: z.string().max(80).optional().nullable(),
   ecoCode: z.string().max(5).optional().nullable(),
+  anonymous: z.boolean().optional(),
 });
 
 export type PracticeChallengeInput = z.infer<typeof Input>;
@@ -67,6 +68,31 @@ export async function POST(req: Request): Promise<NextResponse> {
   const totalCents = parsed.feeCents * parsed.gamesRequested;
   const sql = getPracticeDb();
 
+  // Snapshot the creator's best-known rating at publish time, so the lobby
+  // can render a rating next to "Anonymous" (or alongside the name) without
+  // joining external_accounts at query time. Best rapid > blitz > classical
+  // across verified online accounts; falls back to ratings.skill_rating.
+  const ratingSnapshotRows = (await sql`
+    SELECT
+      (
+        SELECT GREATEST(
+          COALESCE(MAX(rating_rapid), 0),
+          COALESCE(MAX(rating_blitz), 0),
+          COALESCE(MAX(rating_classical), 0)
+        )
+        FROM external_accounts
+        WHERE profile_id = ${user.id} AND verified = true
+      ) AS online_best,
+      (SELECT ROUND(skill_rating) FROM ratings WHERE profile_id = ${user.id}) AS skill
+  `) as Array<{ online_best: number | null; skill: number | null }>;
+  const snap = ratingSnapshotRows[0];
+  const creatorRating: number | null =
+    snap && snap.online_best && snap.online_best > 0
+      ? Number(snap.online_best)
+      : snap?.skill != null
+        ? Number(snap.skill)
+        : null;
+
   try {
     const result = (await sql.begin(async (tx) => {
       // Lock the wallet row; ensure sufficient available_cents.
@@ -92,13 +118,14 @@ export async function POST(req: Request): Promise<NextResponse> {
         INSERT INTO challenges (
           creator_id, fen, pgn_prefix, creator_color, time_control, time_class,
           fee_cents, currency, rating_min, rating_max, games_requested, notes,
-          opening_name, eco_code
+          opening_name, eco_code, anonymous, creator_rating
         ) VALUES (
           ${user.id}, ${fenCheck.fen}, ${parsed.pgnPrefix ?? null}, ${parsed.creatorColor},
           ${parsed.timeControl}, ${parsed.timeClass},
           ${parsed.feeCents}, 'USD', ${parsed.ratingMin}, ${parsed.ratingMax},
           ${parsed.gamesRequested}, ${parsed.notes ?? null},
-          ${parsed.openingName?.trim() || null}, ${parsed.ecoCode?.trim() || null}
+          ${parsed.openingName?.trim() || null}, ${parsed.ecoCode?.trim() || null},
+          ${parsed.anonymous ?? false}, ${creatorRating}
         )
         RETURNING id
       `) as Array<{ id: string }>;

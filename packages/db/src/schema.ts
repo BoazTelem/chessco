@@ -418,6 +418,8 @@ export const challenges = pgTable('challenges', {
   notes: text('notes'),
   openingName: text('opening_name'),
   ecoCode: text('eco_code'),
+  anonymous: boolean('anonymous').notNull().default(false),
+  creatorRating: integer('creator_rating'),
   createdAt: timestamptz('created_at').notNull().defaultNow(),
   updatedAt: timestamptz('updated_at').notNull().defaultNow(),
 });
