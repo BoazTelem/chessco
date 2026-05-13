@@ -104,22 +104,25 @@ export async function POST(_req: Request, ctx: RouteContext): Promise<NextRespon
       await tx`UPDATE matches SET game_id = ${lg.id} WHERE id = ${match.id}`;
 
       // Escrow this game's fee: D creator user_wallet, C escrow.
-      const txnId = crypto.randomUUID();
-      await tx`
-        INSERT INTO ledger_entries (
-          transaction_id, account_type, account_id, direction, amount_cents,
-          currency, category, reference_type, reference_id
-        ) VALUES
-          (${txnId}, 'user_wallet', ${ch.creator_id}, 'D', ${ch.fee_cents}, 'USD', 'match_escrow', 'match', ${match.id}),
-          (${txnId}, 'escrow', NULL, 'C', ${ch.fee_cents}, 'USD', 'match_escrow', 'match', ${match.id})
-      `;
-      // Move money off the creator's reserved bucket; available_cents
-      // already debited at challenge-create time, so just pending_cents--.
-      await tx`
-        UPDATE wallets
-        SET pending_cents = pending_cents - ${ch.fee_cents}
-        WHERE profile_id = ${ch.creator_id}
-      `;
+      // Skip when fee_cents = 0 (free game) — ledger has CHECK (amount_cents > 0).
+      if (ch.fee_cents > 0) {
+        const txnId = crypto.randomUUID();
+        await tx`
+          INSERT INTO ledger_entries (
+            transaction_id, account_type, account_id, direction, amount_cents,
+            currency, category, reference_type, reference_id
+          ) VALUES
+            (${txnId}, 'user_wallet', ${ch.creator_id}, 'D', ${ch.fee_cents}, 'USD', 'match_escrow', 'match', ${match.id}),
+            (${txnId}, 'escrow', NULL, 'C', ${ch.fee_cents}, 'USD', 'match_escrow', 'match', ${match.id})
+        `;
+        // Move money off the creator's reserved bucket; available_cents
+        // already debited at challenge-create time, so just pending_cents--.
+        await tx`
+          UPDATE wallets
+          SET pending_cents = pending_cents - ${ch.fee_cents}
+          WHERE profile_id = ${ch.creator_id}
+        `;
+      }
 
       // Decide whether the challenge stays open for more games or closes.
       const newCompleted = ch.games_completed + 1;

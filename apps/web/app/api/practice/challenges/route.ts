@@ -21,7 +21,7 @@ const Input = z.object({
   creatorColor: z.enum(['w', 'b']).nullable(),
   timeControl: z.string().regex(TIME_CONTROL_RE, 'time_control must look like "5+0"'),
   timeClass: z.enum(TIME_CLASS),
-  feeCents: z.number().int().min(50).max(50_000), // $0.50 .. $500
+  feeCents: z.number().int().min(0).max(50_000), // $0 (free) .. $500
   gamesRequested: z.number().int().min(1).max(5),
   ratingMin: z.number().int().min(0).max(3500).nullable(),
   ratingMax: z.number().int().min(0).max(3500).nullable(),

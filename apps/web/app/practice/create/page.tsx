@@ -16,11 +16,28 @@ export default async function PracticeCreatePage() {
   const user = await requireUser();
   const supabase = await createClient();
 
-  const { data: wallet } = await supabase
-    .from('wallets')
-    .select('available_cents')
-    .eq('profile_id', user.id)
-    .maybeSingle();
+  // Three parallel reads: wallet + the user's linked online ratings + their
+  // Chessco internal skill rating. We use the highest rapid rating across
+  // verified online accounts as the default rating-band center; if none are
+  // linked, fall back to skill_rating (Chessco's Glicko, default 1500).
+  const [{ data: wallet }, { data: linked }, { data: ratingRow }] = await Promise.all([
+    supabase.from('wallets').select('available_cents').eq('profile_id', user.id).maybeSingle(),
+    supabase
+      .from('external_accounts')
+      .select('rating_rapid, rating_blitz, rating_classical')
+      .eq('profile_id', user.id)
+      .eq('verified', true),
+    supabase.from('ratings').select('skill_rating').eq('profile_id', user.id).maybeSingle(),
+  ]);
+
+  const onlineBest = (linked ?? []).reduce<number | null>((best, row) => {
+    const r = row.rating_rapid ?? row.rating_blitz ?? row.rating_classical ?? null;
+    if (r == null) return best;
+    return best == null || r > best ? r : best;
+  }, null);
+  const skillFallback =
+    ratingRow?.skill_rating != null ? Math.round(Number(ratingRow.skill_rating)) : null;
+  const userRating = onlineBest ?? skillFallback;
 
   return (
     <div className="min-h-screen">
@@ -62,7 +79,10 @@ export default async function PracticeCreatePage() {
           </p>
         </div>
 
-        <CreatePositionForm walletAvailableCents={wallet?.available_cents ?? 0} />
+        <CreatePositionForm
+          walletAvailableCents={wallet?.available_cents ?? 0}
+          userRating={userRating}
+        />
       </main>
     </div>
   );

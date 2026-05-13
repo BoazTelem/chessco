@@ -21,23 +21,35 @@ const TIME_CONTROLS: Array<{
 
 type SideChoice = 'w' | 'b' | 'random';
 
-export function CreatePositionForm({ walletAvailableCents }: { walletAvailableCents: number }) {
+interface Props {
+  walletAvailableCents: number;
+  /** Best-known rating for the user (from linked online accounts or Chessco skill). */
+  userRating: number | null;
+}
+
+const DEFAULT_TC_INDEX = 4; // 10+0 rapid — most common online time class
+const RATING_BAND_ABOVE = 200; // default opponent ceiling = user rating + 200
+
+export function CreatePositionForm({ walletAvailableCents, userRating }: Props) {
   const router = useRouter();
   const [fen, setFen] = useState(STANDARD_START_FEN);
   const [fenOk, setFenOk] = useState(true);
   const [fenError, setFenError] = useState<string | null>(null);
-  const [tc, setTc] = useState(TIME_CONTROLS[3]!); // 5+0 default
+  const [tc, setTc] = useState(TIME_CONTROLS[DEFAULT_TC_INDEX]!);
   const [side, setSide] = useState<SideChoice>('random');
-  const [feeUsd, setFeeUsd] = useState(2);
+  const [feeUsd, setFeeUsd] = useState(0);
   const [games, setGames] = useState(1);
-  const [ratingMin, setRatingMin] = useState<string>('');
-  const [ratingMax, setRatingMax] = useState<string>('');
+  const [ratingMin, setRatingMin] = useState<string>(userRating != null ? String(userRating) : '');
+  const [ratingMax, setRatingMax] = useState<string>(
+    userRating != null ? String(userRating + RATING_BAND_ABOVE) : '',
+  );
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const totalCents = Math.round(feeUsd * 100) * games;
   const insufficient = totalCents > walletAvailableCents;
+  const isFree = totalCents === 0;
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -183,15 +195,15 @@ export function CreatePositionForm({ walletAvailableCents }: { walletAvailableCe
             <span className="text-lg">$</span>
             <input
               type="number"
-              min={0.5}
+              min={0}
               max={500}
               step={0.5}
               value={feeUsd}
-              onChange={(e) => setFeeUsd(Math.max(0.5, Number(e.target.value) || 0))}
+              onChange={(e) => setFeeUsd(Math.max(0, Number(e.target.value) || 0))}
               className="w-24 rounded-md border border-border bg-background px-2 py-1.5 text-base"
             />
             <span className="text-xs text-muted-foreground">
-              total ${(totalCents / 100).toFixed(2)}
+              {isFree ? 'free game' : `total $${(totalCents / 100).toFixed(2)}`}
             </span>
           </div>
           {insufficient && (
@@ -256,10 +268,16 @@ export function CreatePositionForm({ walletAvailableCents }: { walletAvailableCe
           disabled={submitting || !fenOk || insufficient}
           className="rounded-md bg-accent px-6 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-60"
         >
-          {submitting ? 'Publishing…' : `Publish — $${(totalCents / 100).toFixed(2)}`}
+          {submitting
+            ? 'Publishing…'
+            : isFree
+              ? 'Publish (free)'
+              : `Publish — $${(totalCents / 100).toFixed(2)}`}
         </button>
         <span className="text-xs text-muted-foreground">
-          The deposit is refunded if no one accepts and the challenge expires.
+          {isFree
+            ? 'No fee — opponents play for fun.'
+            : 'The deposit is refunded if no one accepts and the challenge expires.'}
         </span>
       </div>
     </form>

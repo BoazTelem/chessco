@@ -87,60 +87,67 @@ export async function POST(req: Request): Promise<NextResponse> {
       const txnId = crypto.randomUUID();
 
       if (body.termination === 'opponent_abandoned') {
-        // Refund the creator.
-        await tx`
-          INSERT INTO ledger_entries (
-            transaction_id, account_type, account_id, direction, amount_cents,
-            currency, category, reference_type, reference_id
-          ) VALUES
-            (${txnId}, 'escrow', NULL, 'D', ${m.fee_cents}, 'USD', 'refund', 'match', ${m.id}),
-            (${txnId}, 'user_wallet', ${m.creator_id}, 'C', ${m.fee_cents}, 'USD', 'refund', 'match', ${m.id})
-        `;
-        await tx`
-          UPDATE wallets SET available_cents = available_cents + ${m.fee_cents}
-          WHERE profile_id = ${m.creator_id}
-        `;
-        await tx`
-          INSERT INTO refund_requests (
-            match_id, requester_id, respondent_id, reason_code, status, amount_cents,
-            auto_resolution_rule, resolved_at
-          ) VALUES (
-            ${m.id}, ${m.creator_id}, ${m.opponent_id}, 'opponent_abandoned',
-            'auto_approved', ${m.fee_cents}, 'opponent_abandoned_auto_refund', NOW()
-          )
-        `;
+        // Refund the creator (skip ledger ops when fee was 0 — free game).
+        if (m.fee_cents > 0) {
+          await tx`
+            INSERT INTO ledger_entries (
+              transaction_id, account_type, account_id, direction, amount_cents,
+              currency, category, reference_type, reference_id
+            ) VALUES
+              (${txnId}, 'escrow', NULL, 'D', ${m.fee_cents}, 'USD', 'refund', 'match', ${m.id}),
+              (${txnId}, 'user_wallet', ${m.creator_id}, 'C', ${m.fee_cents}, 'USD', 'refund', 'match', ${m.id})
+          `;
+          await tx`
+            UPDATE wallets SET available_cents = available_cents + ${m.fee_cents}
+            WHERE profile_id = ${m.creator_id}
+          `;
+          await tx`
+            INSERT INTO refund_requests (
+              match_id, requester_id, respondent_id, reason_code, status, amount_cents,
+              auto_resolution_rule, resolved_at
+            ) VALUES (
+              ${m.id}, ${m.creator_id}, ${m.opponent_id}, 'opponent_abandoned',
+              'auto_approved', ${m.fee_cents}, 'opponent_abandoned_auto_refund', NOW()
+            )
+          `;
+        }
         await tx`
           UPDATE ratings SET paid_games_abandoned = paid_games_abandoned + 1
           WHERE profile_id = ${m.opponent_id}
         `;
       } else if (body.termination === 'aborted') {
-        // No play happened. Return escrow to the creator, no rating change.
-        await tx`
-          INSERT INTO ledger_entries (
-            transaction_id, account_type, account_id, direction, amount_cents,
-            currency, category, reference_type, reference_id
-          ) VALUES
-            (${txnId}, 'escrow', NULL, 'D', ${m.fee_cents}, 'USD', 'reversal', 'match', ${m.id}),
-            (${txnId}, 'user_wallet', ${m.creator_id}, 'C', ${m.fee_cents}, 'USD', 'reversal', 'match', ${m.id})
-        `;
-        await tx`
-          UPDATE wallets SET available_cents = available_cents + ${m.fee_cents}
-          WHERE profile_id = ${m.creator_id}
-        `;
+        // No play happened. Return escrow to the creator (skip if free), no rating change.
+        if (m.fee_cents > 0) {
+          await tx`
+            INSERT INTO ledger_entries (
+              transaction_id, account_type, account_id, direction, amount_cents,
+              currency, category, reference_type, reference_id
+            ) VALUES
+              (${txnId}, 'escrow', NULL, 'D', ${m.fee_cents}, 'USD', 'reversal', 'match', ${m.id}),
+              (${txnId}, 'user_wallet', ${m.creator_id}, 'C', ${m.fee_cents}, 'USD', 'reversal', 'match', ${m.id})
+          `;
+          await tx`
+            UPDATE wallets SET available_cents = available_cents + ${m.fee_cents}
+            WHERE profile_id = ${m.creator_id}
+          `;
+        }
       } else {
         // Clean ending (including creator_abandoned): opponent gets paid.
-        await tx`
-          INSERT INTO ledger_entries (
-            transaction_id, account_type, account_id, direction, amount_cents,
-            currency, category, reference_type, reference_id
-          ) VALUES
-            (${txnId}, 'escrow', NULL, 'D', ${m.opponent_payout_cents}, 'USD', 'match_payout', 'match', ${m.id}),
-            (${txnId}, 'user_wallet', ${m.opponent_id}, 'C', ${m.opponent_payout_cents}, 'USD', 'match_payout', 'match', ${m.id})
-        `;
-        await tx`
-          UPDATE wallets SET available_cents = available_cents + ${m.opponent_payout_cents}
-          WHERE profile_id = ${m.opponent_id}
-        `;
+        // Skip the ledger/wallet move when the game was free.
+        if (m.opponent_payout_cents > 0) {
+          await tx`
+            INSERT INTO ledger_entries (
+              transaction_id, account_type, account_id, direction, amount_cents,
+              currency, category, reference_type, reference_id
+            ) VALUES
+              (${txnId}, 'escrow', NULL, 'D', ${m.opponent_payout_cents}, 'USD', 'match_payout', 'match', ${m.id}),
+              (${txnId}, 'user_wallet', ${m.opponent_id}, 'C', ${m.opponent_payout_cents}, 'USD', 'match_payout', 'match', ${m.id})
+          `;
+          await tx`
+            UPDATE wallets SET available_cents = available_cents + ${m.opponent_payout_cents}
+            WHERE profile_id = ${m.opponent_id}
+          `;
+        }
         await tx`
           UPDATE ratings SET paid_games_completed = paid_games_completed + 1
           WHERE profile_id = ${m.creator_id}
