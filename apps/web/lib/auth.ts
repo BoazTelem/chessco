@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { createClient } from './supabase/server';
 
 /**
@@ -29,4 +29,21 @@ export async function getUser() {
     data: { user },
   } = await supabase.auth.getUser();
   return user;
+}
+
+// Returns the authenticated user only if their email matches SUPER_ADMIN_EMAIL.
+// Otherwise renders a 404 — we deliberately don't reveal that /admin/super exists.
+export async function requireSuperAdmin() {
+  const user = await requireUser();
+  const expected = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase();
+  const actual = user.email?.trim().toLowerCase();
+  if (!expected || !actual || actual !== expected) {
+    notFound();
+  }
+  return user;
+}
+
+export function isSuperAdminEmail(email: string | null | undefined): boolean {
+  const expected = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase();
+  return !!expected && !!email && email.trim().toLowerCase() === expected;
 }

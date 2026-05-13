@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { requireUser } from '@/lib/auth';
+import { isSuperAdminEmail, requireUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { signOut } from '../(auth)/actions';
 
@@ -31,6 +31,7 @@ export default async function DashboardPage() {
   const linked = accounts ?? [];
   const lichess = linked.find((a) => a.platform === 'lichess');
   const chesscom = linked.find((a) => a.platform === 'chess.com');
+  const isSuperAdmin = isSuperAdminEmail(user.email);
 
   return (
     <div className="container mx-auto max-w-3xl space-y-10 px-4 py-12">
@@ -52,6 +53,14 @@ export default async function DashboardPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {isSuperAdmin && (
+            <Link
+              href="/admin/super"
+              className="rounded-md border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/20"
+            >
+              Super admin
+            </Link>
+          )}
           <Link
             href="/scout"
             className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-accent-foreground hover:opacity-90"
