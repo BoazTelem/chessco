@@ -63,31 +63,21 @@ export default async function PracticeGamePage({ params }: RouteProps) {
   const initialWsUrl = `${wsBase}/game/${matchId}?ticket=${encodeURIComponent(ticket)}`;
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-border bg-card/50">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <div className="flex items-center gap-2 text-sm">
-            <Link
-              href="/"
-              aria-label={brand.name}
-              className="inline-flex items-center gap-2 hover:opacity-80"
-            >
-              <ChesscoMark className="h-4 w-4 shrink-0" />
-              <span className="font-display font-semibold uppercase tracking-[0.3em] text-accent">
-                {brand.name}
-              </span>
-            </Link>
-            <span className="text-muted-foreground">/</span>
-            <Link href="/practice" className="text-muted-foreground hover:text-foreground">
-              Practice
-            </Link>
-            <span className="text-muted-foreground">/</span>
-            <span>Game</span>
-          </div>
-          <nav className="text-sm text-muted-foreground">{lg.time_control}</nav>
-        </div>
-      </header>
-      <main className="container mx-auto max-w-6xl px-4 py-6">
+    <div className="flex min-h-screen flex-col">
+      {/* Minimal floating brand chip — keeps the board immersive but leaves a
+          one-click route home if the player needs to bail. */}
+      <Link
+        href="/"
+        aria-label={brand.name}
+        className="fixed left-4 top-4 z-40 inline-flex items-center gap-2 rounded-full border border-border bg-card/80 px-3 py-1 text-xs backdrop-blur hover:bg-card"
+      >
+        <ChesscoMark className="h-3.5 w-3.5 shrink-0" />
+        <span className="font-display font-semibold uppercase tracking-[0.25em] text-accent">
+          {brand.name}
+        </span>
+        <span className="text-muted-foreground">· {lg.time_control}</span>
+      </Link>
+      <main className="container mx-auto max-w-6xl flex-1 px-4 py-12 md:py-16">
         <GamePlayer
           matchId={matchId}
           initialWsUrl={initialWsUrl}

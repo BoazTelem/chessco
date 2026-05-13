@@ -3,7 +3,8 @@ import { Inter } from 'next/font/google';
 import { GeistSans } from 'geist/font/sans';
 import { GeistMono } from 'geist/font/mono';
 import { brand } from '@chessco/ui';
-import { SiteFooter } from '@/components/site/footer';
+import { ConditionalFooter } from '@/components/site/ConditionalFooter';
+import { PracticePresence } from '@/components/practice/PracticePresence';
 import './globals.css';
 
 const inter = Inter({
@@ -40,7 +41,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     >
       <body className="flex min-h-screen flex-col bg-background font-sans text-foreground antialiased">
         <div className="flex-1">{children}</div>
-        <SiteFooter />
+        <ConditionalFooter />
+        <PracticePresence />
       </body>
     </html>
   );

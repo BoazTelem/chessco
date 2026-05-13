@@ -1,0 +1,118 @@
+'use client';
+
+/**
+ * PracticePresence — the publisher's lifeline while their challenge sits in
+ * the lobby. Mounted globally so the user can navigate to /prepare or /scout
+ * (etc.) while waiting and still:
+ *   1. Be auto-redirected to /practice/g/[matchId] the moment an opponent
+ *      accepts (Realtime postgres_changes on `matches` INSERT, RLS-filtered).
+ *   2. Keep their challenge alive via a 20 s heartbeat ping. The lobby hides
+ *      anything whose heartbeat is older than 45 s, so opponents never get
+ *      stranded waiting for an offline creator.
+ *   3. Cancel their open challenges on tab close (best-effort sendBeacon).
+ *      Crashes / kills still fall through to the heartbeat-staleness path.
+ *
+ * Renders a small "Waiting for opponent" chip only when there's at least one
+ * open challenge to wait on (server tells us via { bumped }).
+ */
+
+import { useEffect, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
+import type { RealtimeChannel } from '@supabase/supabase-js';
+
+const HEARTBEAT_MS = 20_000;
+
+export function PracticePresence() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [openCount, setOpenCount] = useState(0);
+
+  useEffect(() => {
+    const supabase = createClient();
+    let cancelled = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    let channel: RealtimeChannel | null = null;
+
+    async function ping(): Promise<void> {
+      try {
+        const res = await fetch('/api/practice/heartbeat', { method: 'POST' });
+        if (!res.ok) return;
+        const json = (await res.json()) as { bumped?: number };
+        if (!cancelled) setOpenCount(json.bumped ?? 0);
+      } catch {
+        /* ignore network blips — next tick will retry */
+      }
+    }
+
+    async function init(): Promise<void> {
+      const { data } = await supabase.auth.getUser();
+      if (cancelled || !data.user) return;
+
+      channel = supabase
+        .channel('practice-presence')
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'matches' },
+          (payload) => {
+            const row = payload.new as { id?: string } | null;
+            if (!row?.id) return;
+            // Don't yank the user out of a game already in progress.
+            if (window.location.pathname.startsWith('/practice/g/')) return;
+            router.push(`/practice/g/${row.id}`);
+          },
+        )
+        .subscribe();
+
+      await ping();
+      timer = setInterval(() => void ping(), HEARTBEAT_MS);
+    }
+    void init();
+
+    function onPageHide(): void {
+      // sendBeacon ignores the auth header path but cookies ride along, so the
+      // route-handler sees the same auth session.
+      try {
+        navigator.sendBeacon('/api/practice/challenges/cancel-all');
+      } catch {
+        /* ignore */
+      }
+    }
+    window.addEventListener('pagehide', onPageHide);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('pagehide', onPageHide);
+      if (timer) clearInterval(timer);
+      if (channel) void supabase.removeChannel(channel);
+    };
+  }, [router]);
+
+  // Hide the chip while the user is on the lobby (the inline cards already
+  // show their challenge) or in a live game.
+  const hideChip =
+    openCount === 0 ||
+    pathname === '/practice' ||
+    pathname.startsWith('/practice/g/') ||
+    pathname.startsWith('/practice/create');
+
+  if (hideChip) return null;
+
+  return (
+    <Link
+      href="/practice"
+      className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-full border border-accent/40 bg-card/95 px-3 py-1.5 text-xs shadow-lg backdrop-blur hover:bg-card"
+    >
+      <span className="relative flex h-2 w-2">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75"></span>
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-accent"></span>
+      </span>
+      <span className="font-medium">
+        Waiting for opponent
+        {openCount > 1 ? ` (${openCount})` : ''}
+      </span>
+      <span className="text-muted-foreground">→</span>
+    </Link>
+  );
+}

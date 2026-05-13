@@ -45,7 +45,7 @@ export async function POST(_req: Request, ctx: RouteContext): Promise<NextRespon
       // Lock the challenge row.
       const challenges = (await tx`
         SELECT id, creator_id, fen, creator_color, time_control, time_class, fee_cents,
-               games_requested, games_completed, status
+               games_requested, games_completed, status, last_heartbeat
         FROM challenges
         WHERE id = ${challengeId}
         FOR UPDATE
@@ -60,12 +60,21 @@ export async function POST(_req: Request, ctx: RouteContext): Promise<NextRespon
         games_requested: number;
         games_completed: number;
         status: string;
+        last_heartbeat: string;
       }>;
       const ch = challenges[0];
       if (!ch) throw new HttpError(404, 'challenge not found');
       if (ch.status !== 'open') throw new HttpError(409, 'challenge no longer open');
       if (ch.creator_id === user.id)
         throw new HttpError(400, "you can't accept your own challenge");
+
+      // Reject if the creator's heartbeat is stale — the lobby already
+      // filters these out, but a race or a direct API call could still
+      // land us here. Treats anything older than 45 s as offline.
+      const heartbeatAgeMs = Date.now() - new Date(ch.last_heartbeat).getTime();
+      if (heartbeatAgeMs > 45_000) {
+        throw new HttpError(409, 'creator is offline');
+      }
 
       // Decide colors. NULL creator_color = random.
       const creatorColor: 'w' | 'b' = ch.creator_color ?? (Math.random() < 0.5 ? 'w' : 'b');
