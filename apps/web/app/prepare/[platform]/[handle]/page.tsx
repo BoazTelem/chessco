@@ -1,14 +1,15 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { OpeningTreeSection } from './OpeningTreeSection';
 import { getUser } from '@/lib/auth';
 import { probeChesscomOne, probeLichess, upsertProbeHits } from '@/lib/scout/lazy-probe';
 import { createAdminClient } from '@/lib/supabase/admin';
 
-// Stub renderer for the standalone Preparation entry. Real opening tree +
-// leak detection ship in Phase 1 W6–W9. This page exists to anchor the
-// `/prepare` URL space, verify the handle, and show the right CTA based on
-// auth state. Refresh aggressively while the stub is up; long cache once
-// real aggregates land.
+// Standalone Preparation entry. The opening tree is a client-side
+// on-demand build (Phase 1 W2 wedge): the browser streams games from the
+// platform API and aggregates a recency-weighted tree. Personalized leak
+// detection ships in W7; the W6 corpus-backed builder replaces this
+// client-side version with persisted aggregates.
 export const revalidate = 0;
 
 const PLATFORM_SLUGS: Record<string, 'chess.com' | 'lichess'> = {
@@ -54,14 +55,14 @@ export default async function PrepareStubPage({ params }: { params: Promise<Rout
 
   return (
     <main className="container mx-auto flex min-h-screen flex-col px-4 py-10">
-      <div className="mx-auto w-full max-w-3xl space-y-8">
-        <nav className="text-xs text-muted-foreground">
+      <div className="mx-auto w-full max-w-6xl space-y-8">
+        <nav className="mx-auto w-full max-w-3xl text-xs text-muted-foreground">
           <Link href="/prepare" className="hover:text-foreground">
             ← Prepare against a different opponent
           </Link>
         </nav>
 
-        <header className="space-y-2">
+        <header className="mx-auto w-full max-w-3xl space-y-2">
           <p className="font-display text-xs uppercase tracking-[0.3em] text-accent">Prep target</p>
           <h1 className="font-display text-3xl font-bold tracking-tight md:text-4xl">
             {hit.handle}
@@ -87,19 +88,9 @@ export default async function PrepareStubPage({ params }: { params: Promise<Rout
           ) : null}
         </header>
 
-        <section className="rounded-xl border border-border bg-card p-6">
-          <h2 className="font-display text-xl font-semibold">Opening tree</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            The interactive opening tree for {hit.handle} ships in Phase 1 W6 — we&rsquo;re building
-            the games corpus this week. Tree + frequency, win rate, and average centipawn loss per
-            node, with embedded board widgets. Free for everyone.
-          </p>
-          <div className="mt-4 rounded-md border border-dashed border-border bg-background/60 px-4 py-6 text-center text-xs uppercase tracking-wider text-muted-foreground">
-            Tree placeholder — coming W6
-          </div>
-        </section>
+        <OpeningTreeSection platform={platform} handle={hit.handle} />
 
-        <section className="rounded-xl border border-border bg-card p-6">
+        <section className="mx-auto w-full max-w-3xl rounded-xl border border-border bg-card p-6">
           <h2 className="font-display text-xl font-semibold">Personalized leaks</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             Positions where {hit.handle} has played poorly that you can reach from your own
