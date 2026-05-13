@@ -35,13 +35,16 @@ export default async function PracticeLobbyPage({
   const user = await getUser();
   const supabase = await createClient();
 
-  // Main query for the visible cards.
+  // Main query for the visible cards. Stale-heartbeat rows are hidden so
+  // accepters never end up stranded waiting for an offline creator.
+  const liveCutoff = new Date(Date.now() - 45_000).toISOString();
   let query = supabase
     .from('challenges')
     .select(
-      'id, creator_id, fen, creator_color, time_control, time_class, fee_cents, rating_min, rating_max, games_requested, games_completed, notes, opening_name, anonymous, creator_rating, created_at, profiles:profiles!challenges_creator_id_fkey(display_name, username)',
+      'id, creator_id, fen, creator_color, time_control, time_class, fee_cents, rating_min, rating_max, games_requested, games_completed, notes, opening_name, anonymous, creator_rating, created_at, profiles:profiles!challenges_creator_id_fkey(display_name, username, profile_visibility)',
     )
     .eq('status', 'open')
+    .gt('last_heartbeat', liveCutoff)
     .order('created_at', { ascending: false })
     .limit(60);
 
@@ -57,12 +60,20 @@ export default async function PracticeLobbyPage({
       .from('challenges')
       .select('opening_name')
       .eq('status', 'open')
+      .gt('last_heartbeat', liveCutoff)
       .not('opening_name', 'is', null)
       .order('opening_name', { ascending: true }),
   ]);
 
-  type RawProfile = { display_name: string | null; username: string | null };
-  type Raw = Omit<LobbyChallenge, 'creator_display_name' | 'creator_username'> & {
+  type RawProfile = {
+    display_name: string | null;
+    username: string | null;
+    profile_visibility: 'public' | 'private' | 'coach_public_player_private';
+  };
+  type Raw = Omit<
+    LobbyChallenge,
+    'creator_display_name' | 'creator_username' | 'creator_visibility'
+  > & {
     profiles: RawProfile | RawProfile[] | null;
   };
 
@@ -72,6 +83,7 @@ export default async function PracticeLobbyPage({
       ...c,
       creator_display_name: p?.display_name ?? null,
       creator_username: p?.username ?? null,
+      creator_visibility: p?.profile_visibility ?? 'public',
     };
   });
 

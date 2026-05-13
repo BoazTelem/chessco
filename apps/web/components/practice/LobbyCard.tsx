@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { BOARD_BORDER, BOARD_DARK_SQUARE, BOARD_LIGHT_SQUARE } from '../prepare/board-theme';
 
@@ -20,6 +21,7 @@ export interface LobbyChallenge {
   creator_id: string;
   creator_display_name: string | null;
   creator_username: string | null;
+  creator_visibility: 'public' | 'private' | 'coach_public_player_private';
   fen: string;
   creator_color: 'w' | 'b' | null;
   time_control: string;
@@ -56,6 +58,12 @@ export function LobbyCard({
     : (challenge.creator_display_name ?? challenge.creator_username ?? 'A player');
   const creatorRatingLabel =
     challenge.creator_rating != null ? `· ${challenge.creator_rating}` : '';
+  // Name links to /u/<username> only when the creator's profile is public AND
+  // they haven't anonymized this specific challenge AND we have a username.
+  const creatorProfileHref =
+    !challenge.anonymous && challenge.creator_visibility === 'public' && challenge.creator_username
+      ? `/u/${challenge.creator_username}`
+      : null;
 
   async function accept() {
     if (!signedIn) {
@@ -123,7 +131,13 @@ export function LobbyCard({
           <header className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-foreground">
-                {creatorLabel}{' '}
+                {creatorProfileHref ? (
+                  <Link href={creatorProfileHref} className="hover:text-accent hover:underline">
+                    {creatorLabel}
+                  </Link>
+                ) : (
+                  creatorLabel
+                )}{' '}
                 {creatorRatingLabel && (
                   <span className="text-muted-foreground">{creatorRatingLabel}</span>
                 )}

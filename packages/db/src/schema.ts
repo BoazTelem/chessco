@@ -58,11 +58,17 @@ export const profiles = pgTable('profiles', {
     .default('none'),
   stripeAccountId: text('stripe_account_id'),
   stripeCustomerId: text('stripe_customer_id'),
+  profileVisibility: text('profile_visibility')
+    .$type<'public' | 'private' | 'coach_public_player_private'>()
+    .notNull()
+    .default('public'),
   createdAt: timestamptz('created_at').notNull().defaultNow(),
   updatedAt: timestamptz('updated_at').notNull().defaultNow(),
   lastSeenAt: timestamptz('last_seen_at'),
   deletedAt: timestamptz('deleted_at'),
 });
+
+export type ProfileVisibility = 'public' | 'private' | 'coach_public_player_private';
 
 export const externalAccounts = pgTable(
   'external_accounts',

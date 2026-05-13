@@ -77,6 +77,12 @@ export default async function AccountPage({
 
         <div className="flex items-center gap-2">
           <Link
+            href="/account/privacy"
+            className="rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-muted"
+          >
+            Privacy
+          </Link>
+          <Link
             href="/dashboard"
             className="rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-muted"
           >
