@@ -154,9 +154,11 @@ export default async function TrustPage() {
                 </table>
               </div>
               <p className="mt-3 text-xs text-muted-foreground">
-                Stronger players are easier to identify — their opening repertoires and time
-                preferences are more distinctive. Sub-1500 amateurs are the hardest case and the
-                main reason we&apos;re adding Stockfish-derived features next.
+                Per-band accuracy depends on candidate density much more than on signal quality. The
+                2100+ band now contains ~2,200 indexed strong-player handles whose opening
+                repertoires overlap heavily (everyone plays mainlines), so the matcher faces a
+                harder discrimination problem there than in the sparser 1800-2099 band. We publish
+                raw numbers, not curated ones.
               </p>
             </section>
 

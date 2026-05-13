@@ -1,41 +1,51 @@
 {
-  "run_at": "2026-05-12T19:23:14.737Z",
-  "methodology": "leave-K-out cosine over V0 fingerprint",
-  "features_version": "v0",
-  "features_used": ["eco_white", "eco_black", "time_class", "avg_opponent_rating"],
+  "run_at": "2026-05-13T05:29:25.098Z",
+  "methodology": "leave-K-out cosine over V3 fingerprint (opening sequence + Stockfish cp-loss)",
+  "features_version": "v3",
+  "features_used": [
+    "eco_white",
+    "eco_black",
+    "move_seq_white",
+    "move_seq_black",
+    "time_class",
+    "avg_opponent_rating",
+    "mean_cp_loss"
+  ],
   "k_test_games": 5,
   "min_handle_games": 15,
-  "total_handles_qualified": 1213,
+  "total_handles_qualified": 3459,
+  "cp_loss_coverage": 0.8317432784041631,
+  "cp_loss_handles_with_signal": 2877,
   "overall": {
-    "top1": 0.20610057708161583,
-    "top5": 0.42044517724649627,
-    "top10": 0.5259686727122836,
-    "mrr": 0.31182193734303026
+    "top1": 0.14599595258745302,
+    "top5": 0.3044232437120555,
+    "top10": 0.388551604509974,
+    "mrr": 0.22693359118744003
   },
   "by_band": [
     {
       "band": "1500-1799",
-      "n": 1033,
-      "top1": 0.1819941916747338,
-      "top5": 0.3998063891577928,
-      "top10": 0.505324298160697,
-      "mrr": 0.28947841988189604
+      "n": 1032,
+      "top1": 0.13662790697674418,
+      "top5": 0.35755813953488375,
+      "top10": 0.47771317829457366,
+      "mrr": 0.2452691156042016
     },
     {
       "band": "1800-2099",
-      "n": 142,
-      "top1": 0.2887323943661972,
-      "top5": 0.4859154929577465,
-      "top10": 0.5985915492957746,
-      "mrr": 0.382574107270488
+      "n": 146,
+      "top1": 0.23972602739726026,
+      "top5": 0.4452054794520548,
+      "top10": 0.5547945205479452,
+      "mrr": 0.33528973611669133
     },
     {
       "band": "2100+",
-      "n": 38,
-      "top1": 0.5526315789473685,
-      "top5": 0.7368421052631579,
-      "top10": 0.8157894736842105,
-      "mrr": 0.6548231322812705
+      "n": 2281,
+      "top1": 0.1442349846558527,
+      "top5": 0.2713722051731697,
+      "top10": 0.3375712406839106,
+      "mrr": 0.21170243890433116
     }
   ]
 }

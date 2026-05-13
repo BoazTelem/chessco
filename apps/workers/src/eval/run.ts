@@ -281,11 +281,13 @@ async function main() {
 
     const summary = {
       run_at: new Date().toISOString(),
-      methodology: 'leave-K-out cosine over V0 fingerprint + Stockfish cp-loss',
-      features_version: 'v0',
+      methodology: 'leave-K-out cosine over V3 fingerprint (opening sequence + Stockfish cp-loss)',
+      features_version: 'v3',
       features_used: [
         'eco_white',
         'eco_black',
+        'move_seq_white',
+        'move_seq_black',
         'time_class',
         'avg_opponent_rating',
         'mean_cp_loss',
