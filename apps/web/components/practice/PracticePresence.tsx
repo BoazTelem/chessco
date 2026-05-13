@@ -16,7 +16,7 @@
  * open challenge to wait on (server tells us via { bumped }).
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -28,6 +28,9 @@ export function PracticePresence() {
   const router = useRouter();
   const pathname = usePathname();
   const [openCount, setOpenCount] = useState(0);
+  // Tracks the most recent matchId we've already routed to, so the heartbeat
+  // fallback doesn't keep re-pushing the same route on every 20 s tick.
+  const lastJoinedRef = useRef<string | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -35,12 +38,30 @@ export function PracticePresence() {
     let timer: ReturnType<typeof setInterval> | null = null;
     let channel: RealtimeChannel | null = null;
 
+    function maybeJoin(matchId: string | null): void {
+      if (!matchId) return;
+      if (lastJoinedRef.current === matchId) return;
+      // Don't yank the user out of a game already in progress.
+      if (window.location.pathname.startsWith('/practice/g/')) {
+        lastJoinedRef.current = matchId;
+        return;
+      }
+      lastJoinedRef.current = matchId;
+      router.push(`/practice/g/${matchId}`);
+    }
+
     async function ping(): Promise<void> {
       try {
         const res = await fetch('/api/practice/heartbeat', { method: 'POST' });
         if (!res.ok) return;
-        const json = (await res.json()) as { bumped?: number };
-        if (!cancelled) setOpenCount(json.bumped ?? 0);
+        const json = (await res.json()) as {
+          bumped?: number;
+          latestLiveMatchId?: string | null;
+        };
+        if (cancelled) return;
+        setOpenCount(json.bumped ?? 0);
+        // Fallback: catches anything Realtime missed (max ~20 s lag).
+        maybeJoin(json.latestLiveMatchId ?? null);
       } catch {
         /* ignore network blips — next tick will retry */
       }
@@ -57,10 +78,7 @@ export function PracticePresence() {
           { event: 'INSERT', schema: 'public', table: 'matches' },
           (payload) => {
             const row = payload.new as { id?: string } | null;
-            if (!row?.id) return;
-            // Don't yank the user out of a game already in progress.
-            if (window.location.pathname.startsWith('/practice/g/')) return;
-            router.push(`/practice/g/${row.id}`);
+            maybeJoin(row?.id ?? null);
           },
         )
         .subscribe();

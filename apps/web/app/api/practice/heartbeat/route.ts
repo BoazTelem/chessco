@@ -4,8 +4,13 @@
  * only while its heartbeat is fresh (see migration 0027), so the publisher's
  * client must call this every ~20 s while a tab is open.
  *
- * Returns { bumped } so the client can render "Waiting" only when there's
- * at least one row to wait on.
+ * Returns:
+ *   - bumped: how many open challenges the caller still has (drives the
+ *     "Waiting for opponent" chip)
+ *   - latestLiveMatchId: id of the most recent still-live match the caller
+ *     is a participant in. Acts as a polling fallback so the publisher gets
+ *     auto-routed to their game even if a Realtime postgres_changes event is
+ *     dropped (worst case ~20 s lag instead of forever).
  */
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
@@ -17,7 +22,7 @@ export async function POST(): Promise<NextResponse> {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 
-  const { data, error } = await supabase
+  const { data: bumpedRows, error } = await supabase
     .from('challenges')
     .update({ last_heartbeat: new Date().toISOString() })
     .eq('creator_id', user.id)
@@ -27,5 +32,19 @@ export async function POST(): Promise<NextResponse> {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ bumped: data?.length ?? 0 });
+
+  // Look up any in-flight match this user is in (creator or opponent) so the
+  // client can route them in even if Realtime didn't deliver.
+  const { data: matchRows } = await supabase
+    .from('matches')
+    .select('id, accepted_at')
+    .or(`creator_id.eq.${user.id},opponent_id.eq.${user.id}`)
+    .in('status', ['accepted', 'starting', 'live'])
+    .order('accepted_at', { ascending: false })
+    .limit(1);
+
+  return NextResponse.json({
+    bumped: bumpedRows?.length ?? 0,
+    latestLiveMatchId: matchRows?.[0]?.id ?? null,
+  });
 }

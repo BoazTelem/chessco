@@ -81,12 +81,16 @@ export async function POST(_req: Request, ctx: RouteContext): Promise<NextRespon
       const whiteUserId = creatorColor === 'w' ? ch.creator_id : user.id;
       const blackUserId = creatorColor === 'w' ? user.id : ch.creator_id;
 
-      // Insert match.
+      // Insert match. creator_id is denormalized from challenges so Realtime
+      // can authorize delivery to the publisher without a cross-table join
+      // (see migration 0030).
       const matchRows = (await tx`
         INSERT INTO matches (
-          challenge_id, opponent_id, fee_cents, platform_fee_cents, opponent_payout_cents, status
+          challenge_id, opponent_id, creator_id, fee_cents,
+          platform_fee_cents, opponent_payout_cents, status
         ) VALUES (
-          ${ch.id}, ${user.id}, ${ch.fee_cents}, 0, ${ch.fee_cents}, 'accepted'
+          ${ch.id}, ${user.id}, ${ch.creator_id}, ${ch.fee_cents},
+          0, ${ch.fee_cents}, 'accepted'
         )
         RETURNING id
       `) as Array<{ id: string }>;
