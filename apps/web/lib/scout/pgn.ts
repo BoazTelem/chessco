@@ -74,9 +74,15 @@ function splitGames(text: string): PgnBlock[] {
 }
 
 function classifyTimeControl(tc: string | undefined): string | null {
-  if (!tc || tc === '-') return null;
+  // OTB tournament PGNs (e.g., pgnmentor, TWIC) often omit [TimeControl] or
+  // mark it "-" — those are inherently classical games played at standard
+  // tournament rates. Returning null here silences the time_class component
+  // entirely, which we discovered was the right call for online corpora but
+  // costs the OTB sample-game path a usable signal. Default to 'classical'
+  // when the header is absent or unparseable.
+  if (!tc || tc === '-' || tc === '?') return 'classical';
   const m = /^(\d+)(?:\+(\d+))?$/.exec(tc);
-  if (!m) return tc === 'correspondence' ? 'correspondence' : null;
+  if (!m) return tc === 'correspondence' ? 'correspondence' : 'classical';
   const base = Number.parseInt(m[1]!, 10);
   const inc = Number.parseInt(m[2] ?? '0', 10);
   const est = base + 40 * inc;

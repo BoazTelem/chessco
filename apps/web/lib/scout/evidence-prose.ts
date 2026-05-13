@@ -140,7 +140,8 @@ ${lines.join('\n')}
 
 Reasoning guidelines:
 - Strong name + country match dominates when present. ECO/opening-sequence overlap is highly identifying; cp-loss disagreement with claimed rating (e.g. claimed GM but cp-loss 100) is a red flag for fake accounts.
-- When the algorithm's top candidate is a runaway leader, agree with it. When the top 2-3 are close, use the structured signals to break the tie.
+- The candidates are pre-sorted by algorithmic_confidence (highest first). Default to that ordering and only override it when you have a SPECIFIC structured-signal reason — a unique strong signal one candidate has that another lacks (e.g., "rank #2 has seq-W=80% while rank #1 has 0%"). Do NOT swap candidates whose algorithmic scores are within 0.05 of each other unless you can point to a concrete signal that justifies it.
+- A higher percentage is always better than a lower one. Higher algorithmic_confidence means a better algorithmic match. When in doubt, trust the higher number.
 - Be honest about weak matches. If nothing looks right, set verdict.confidence = "low" and explain why.
 
 Return STRICT JSON in this exact shape — no prose outside the JSON, no markdown:
