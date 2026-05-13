@@ -123,17 +123,23 @@ export async function failItem(
  * archives_list row with one archive_month row per URL returned.
  * The parent row is marked done in the same transaction.
  *
- * Each archive_month row inherits the priority of the parent.
+ * archive_month rows always go in at priority=ARCHIVE_MONTH_PRIORITY
+ * (above the archives_list default of 0) so workers drain them
+ * preferentially over the backlog of unexpanded archives_lists. This
+ * keeps games flowing continuously instead of waiting for the queue
+ * expansion phase to complete.
  *
  * `monthsBack` limits how far back we enqueue per handle (e.g. 12 = the
  * most recent 12 months). null means all months returned.
  */
+const ARCHIVE_MONTH_PRIORITY = 10;
+
 export async function expandArchivesList(
   sql: postgres.Sql,
   parentId: string,
   handle: string,
   archiveUrls: string[],
-  priority: number,
+  _priority: number,
   monthsBack: number | null,
 ): Promise<number> {
   // Sort by year/month descending so monthsBack truncates the oldest.
@@ -172,7 +178,7 @@ export async function expandArchivesList(
       archive_url: m.url,
       archive_year: m.year,
       archive_month: m.month,
-      priority,
+      priority: ARCHIVE_MONTH_PRIORITY,
     }));
     const inserted = await tx<{ id: string }[]>`
       INSERT INTO chesscom_crawl_queue
