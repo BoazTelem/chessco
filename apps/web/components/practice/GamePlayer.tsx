@@ -15,6 +15,7 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Chess } from 'chess.js';
 import type { Piece, Square } from 'react-chessboard/dist/chessboard/types';
 import type { ClientMsg, Color, Result, ServerMsg, Termination } from '@/lib/practice/protocol';
 import { sounds } from '@/lib/practice/sounds';
@@ -65,6 +66,10 @@ interface GameState {
 const MAX_BOARD = 560;
 const MIN_BOARD = 280;
 const RECONNECT_DELAYS_MS = [500, 1500, 3000, 6000, 12000];
+
+function sideToMoveFromFen(fen: string): Color {
+  return fen.split(' ')[1] === 'b' ? 'black' : 'white';
+}
 
 function fmtClock(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -225,7 +230,9 @@ export function GamePlayer({ matchId, initialWsUrl, initialRole, prefs }: Props)
                 fen: msg.fen,
                 whiteMs: msg.whiteTimeMs,
                 blackMs: msg.blackTimeMs,
-                sideToMove: s.sideToMove === 'white' ? 'black' : 'white',
+                // Derive from FEN — otherwise an own optimistic flip + this
+                // unconditional flip would cancel out and stick on our color.
+                sideToMove: sideToMoveFromFen(msg.fen),
                 lastMove: { uci: msg.uci, san: msg.san },
               }
             : s,
@@ -285,8 +292,40 @@ export function GamePlayer({ matchId, initialWsUrl, initialRole, prefs }: Props)
           ? piece[1]!.toLowerCase()
           : undefined;
       const uci = `${sourceSquare}${targetSquare}${promotion ?? ''}`;
+
+      // Optimistic local apply: without this the piece visibly snaps back to
+      // its source square between the drop and the server's `move` echo,
+      // because `position` is still bound to the pre-move FEN. Validate with
+      // chess.js so an illegal drop is rejected here (cheaper than a round
+      // trip) and rendered as a snap-back.
+      const chess = new Chess(state.fen);
+      let applied: { san: string; after: string } | null = null;
+      try {
+        const mv = chess.move({
+          from: sourceSquare,
+          to: targetSquare,
+          promotion: promotion ?? 'q',
+        });
+        if (!mv) return false;
+        applied = { san: mv.san, after: chess.fen() };
+      } catch {
+        return false;
+      }
+
       const ok = sendMsg({ type: 'move', uci, clientTs: Date.now() });
-      return ok;
+      if (!ok) return false;
+
+      setState((s) =>
+        s
+          ? {
+              ...s,
+              fen: applied!.after,
+              sideToMove: s.sideToMove === 'white' ? 'black' : 'white',
+              lastMove: { uci, san: applied!.san },
+            }
+          : s,
+      );
+      return true;
     },
     [role, sendMsg, state],
   );
