@@ -61,7 +61,8 @@ export default async function HomePage() {
             index={3}
             title="Practice from a position"
             subtitle="Set up the position you want to drill, or paste a FEN. Pick a time class and publish it with a per-game budget. A verified opponent plays it through with you. Or list yourself to help others prepare, and earn per completed game."
-            badge="Coming soon"
+            cta="Open lobby"
+            href="/practice"
           />
         </div>
 
