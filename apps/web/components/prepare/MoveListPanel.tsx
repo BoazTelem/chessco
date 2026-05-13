@@ -17,9 +17,11 @@ interface Props {
 
 type SortMode = 'weighted' | 'raw';
 
-function winPct(stats: NextMoveStats): number {
+const MIN_GAMES_FOR_WIN_PCT = 3;
+
+function winPct(stats: NextMoveStats): number | null {
   const total = stats.gamesCount;
-  if (total === 0) return 0;
+  if (total < MIN_GAMES_FOR_WIN_PCT) return null;
   return Math.round(((stats.wins + 0.5 * stats.draws) / total) * 100);
 }
 
@@ -134,10 +136,21 @@ export function MoveListPanel({
                 </span>
                 <span
                   className={`text-right font-mono ${
-                    wp >= 55 ? 'text-emerald-400' : wp <= 45 ? 'text-rose-400' : 'text-foreground'
+                    wp === null
+                      ? 'text-muted-foreground/50'
+                      : wp >= 55
+                        ? 'text-emerald-400'
+                        : wp <= 45
+                          ? 'text-rose-400'
+                          : 'text-foreground'
                   }`}
+                  title={
+                    wp === null
+                      ? `Sample too small for a meaningful win rate (${m.gamesCount} game${m.gamesCount === 1 ? '' : 's'})`
+                      : undefined
+                  }
                 >
-                  {wp}%
+                  {wp === null ? '—' : `${wp}%`}
                 </span>
                 <button
                   type="button"

@@ -32,9 +32,19 @@ interface Props {
   onPieceDrop: (sourceSquare: string, targetSquare: string) => boolean;
 }
 
+const MIN_GAMES_FOR_PERF_COLOR = 3;
+
 function winRateOf(m: NextMoveStats): number {
   if (m.gamesCount === 0) return 0.5;
   return (m.wins + 0.5 * m.draws) / m.gamesCount;
+}
+
+function arrowColor(m: NextMoveStats, alpha: number): string {
+  if (m.gamesCount < MIN_GAMES_FOR_PERF_COLOR) {
+    // Neutral gold for sample sizes too small to color-encode performance.
+    return `hsla(45, 95%, 45%, ${alpha.toFixed(2)})`;
+  }
+  return performanceColor(winRateOf(m), alpha);
 }
 
 const MAX_BOARD = 640;
@@ -75,18 +85,14 @@ export function OpeningTreeBoard({
       top.forEach((m, idx) => {
         const ratio = m.weightedScore / maxWeighted;
         const alpha = idx === 0 ? 1 : Math.max(0.45, ratio);
-        out.push([
-          m.fromSquare as Square,
-          m.toSquare as Square,
-          performanceColor(winRateOf(m), alpha),
-        ]);
+        out.push([m.fromSquare as Square, m.toSquare as Square, arrowColor(m, alpha)]);
       });
     }
     if (hoveredMove && !top.some((m) => m.uci === hoveredMove.uci)) {
       out.push([
         hoveredMove.fromSquare as Square,
         hoveredMove.toSquare as Square,
-        performanceColor(winRateOf(hoveredMove), 0.9),
+        arrowColor(hoveredMove, 0.9),
       ]);
     }
     return out;
