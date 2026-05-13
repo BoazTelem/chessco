@@ -1,0 +1,45 @@
+# Cloud Run job image for USCF Playwright ingest.
+#
+# Why a dedicated image vs the generic Inngest server:
+# - Playwright + Chromium adds ~400 MB to the image. Keeping it isolated
+#   lets the Inngest service stay lean and cold-start fast.
+# - The job runs ~once a month for a few minutes, then exits. Cloud Run
+#   jobs (not services) bill only for execution time.
+#
+# Build + push (run from monorepo root):
+#   docker build -f apps/workers/Dockerfile.uscf -t gcr.io/<PROJECT>/chessco-uscf-ingest:latest .
+#   docker push gcr.io/<PROJECT>/chessco-uscf-ingest:latest
+#
+# Deploy as Cloud Run job (one-time setup, then execute on each cron tick):
+#   gcloud run jobs create chessco-uscf-ingest \
+#     --image gcr.io/<PROJECT>/chessco-uscf-ingest:latest \
+#     --region europe-west3 \
+#     --task-timeout 60m \
+#     --memory 2Gi --cpu 2 \
+#     --set-secrets DATABASE_URL=DATABASE_URL:latest
+#   gcloud run jobs execute chessco-uscf-ingest --region europe-west3
+#
+# The Inngest function in apps/workers/src/inngest/federations.ts invokes
+# this job via the Cloud Run Jobs API (added in a follow-up patch — for
+# now the cron function runs the worker inline, which works locally but
+# not on Vercel Edge / serverless hosts).
+
+FROM mcr.microsoft.com/playwright:v1.49.0-jammy
+
+WORKDIR /app
+
+# Workspace setup — copy only the parts needed for the workers package.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/workers/package.json ./apps/workers/
+COPY packages/db/package.json ./packages/db/
+# packages/types/db migrations are referenced by some types; copy minimal set.
+
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+RUN pnpm install --filter @chessco/workers... --frozen-lockfile
+
+COPY apps/workers ./apps/workers
+COPY packages/db ./packages/db
+
+# Cloud Run Jobs honor the container ENTRYPOINT.
+WORKDIR /app/apps/workers
+ENTRYPOINT ["pnpm", "uscf:ingest"]

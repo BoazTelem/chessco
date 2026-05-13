@@ -23,7 +23,7 @@ export function ResultCard({ result }: { result: SearchResult }) {
           </div>
           <p className="mt-2 truncate text-base font-medium text-foreground">{result.name}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            FIDE ID {result.federation_player_id}
+            {result.federation_id} ID {result.federation_player_id}
             {result.birth_year && <> · born {result.birth_year}</>}
           </p>
         </div>

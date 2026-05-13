@@ -8,6 +8,12 @@
     "fide:ingest:test": "tsx src/fide/run.ts --max-players 100",
     "icf:ingest": "tsx src/icf/run.ts",
     "icf:ingest:test": "tsx src/icf/run.ts --max-pages 2",
+    "icf:enrich": "tsx src/icf/enrich-run.ts",
+    "icf:enrich:test": "tsx src/icf/enrich-run.ts --max 5",
+    "uscf:ingest": "tsx src/uscf/run.ts",
+    "uscf:ingest:test": "tsx src/uscf/run.ts --max-categories 1",
+    "inngest:serve": "tsx src/inngest/serve.ts",
+    "inngest:dev": "INNGEST_DEV=1 tsx src/inngest/serve.ts",
     "lichess:dump": "tsx src/lichess-dumps/run.ts",
     "lichess:dump:dry": "tsx src/lichess-dumps/run.ts --dry-run",
     "chesscom:titled": "tsx src/chesscom-titled/run.ts",
@@ -34,7 +40,12 @@
     "chess.js": "^1.4.0",
     "drizzle-orm": "^0.36.4",
     "fzstd": "^0.1.1",
+    "google-auth-library": "^9.15.0",
+    "inngest": "^3.27.0",
+    "playwright-core": "^1.49.0",
+    "playwright-extra": "^4.3.6",
     "postgres": "^3.4.5",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "sax": "^1.4.1",
     "stockfish": "^18.0.7",
     "unzipper": "^0.12.3"
@@ -44,6 +55,7 @@
     "@types/sax": "^1.2.7",
     "@types/unzipper": "^0.10.10",
     "dotenv": "^16.4.7",
+    "playwright": "1.49.0",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   }

@@ -2,9 +2,19 @@ import Link from 'next/link';
 import { brand } from '@chessco/ui';
 import { getUser } from '@/lib/auth';
 import { ChesscoMark } from '@/lib/logo';
+import { getIndexStats } from '@/lib/index-stats';
+
+// Refresh the indexed-player count once a day. Federation crons run
+// monthly and the chess.com crawler is continuous, so daily cadence
+// keeps the hero banner honest without hammering the DB.
+export const revalidate = 86_400;
 
 export default async function HomePage() {
-  const user = await getUser();
+  const [user, stats] = await Promise.all([getUser(), getIndexStats()]);
+  const federations: string[] = ['FIDE'];
+  if (stats.uscf > 0) federations.push('USCF');
+  if (stats.icf > 0) federations.push('ICF');
+  const federationsLabel = federations.join(' + ');
 
   return (
     <main className="container mx-auto flex min-h-screen flex-col items-center justify-center px-4 py-16">
@@ -64,8 +74,12 @@ export default async function HomePage() {
 
         <div className="mt-8 flex flex-col gap-3 text-sm">
           <div className="rounded-lg border border-border bg-card px-6 py-4 text-muted-foreground">
-            <span className="font-medium text-foreground">868,194 players indexed</span> across
-            chess.com and Lichess. Try the scout, no sign-up needed.
+            <span className="font-medium text-foreground">
+              {stats.total.toLocaleString()} players indexed
+            </span>{' '}
+            — {stats.federationTotal.toLocaleString()} OTB-rated ({federationsLabel}) plus{' '}
+            {stats.platformTotal.toLocaleString()} on chess.com and Lichess. Try the scout, no
+            sign-up needed.
           </div>
           <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
             <span>Scout</span>

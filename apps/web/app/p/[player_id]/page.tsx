@@ -252,12 +252,7 @@ export default async function PlayerProfilePage({
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
             Coming soon
           </h2>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <PlaceholderCard
-              label="Phase 1 W5"
-              title="By sample game"
-              body="Paste 1+ PGNs of the target player and run AI stylometric matching across millions of profiles."
-            />
+          <div className="mt-3 grid gap-3">
             <PlaceholderCard
               label="Phase 1 W7-W9"
               title="Build prep report"

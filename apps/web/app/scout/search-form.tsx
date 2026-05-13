@@ -9,7 +9,15 @@ type Initial = {
   title: string;
   min: string;
   max: string;
+  federation: string;
 };
+
+const FEDERATIONS: { code: string; label: string }[] = [
+  { code: '', label: 'All federations' },
+  { code: 'FIDE', label: 'FIDE' },
+  { code: 'USCF', label: 'USCF (US)' },
+  { code: 'ICF', label: 'ICF (Israel)' },
+];
 
 const TITLES: { code: string; label: string }[] = [
   { code: '', label: 'Any title' },
@@ -25,7 +33,11 @@ const TITLES: { code: string; label: string }[] = [
 
 export function SearchForm({ initial }: { initial: Initial }) {
   const id = useId();
-  const hasAdvanced = initial.title.length > 0 || initial.min.length > 0 || initial.max.length > 0;
+  const hasAdvanced =
+    initial.title.length > 0 ||
+    initial.min.length > 0 ||
+    initial.max.length > 0 ||
+    initial.federation.length > 0;
 
   return (
     <form method="GET" action="/scout" className="space-y-4">
@@ -70,7 +82,22 @@ export function SearchForm({ initial }: { initial: Initial }) {
         <summary className="cursor-pointer text-xs font-medium uppercase tracking-wider text-muted-foreground">
           Advanced filters
         </summary>
-        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">
+        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <Field label="Federation" htmlFor={`${id}-fed`}>
+            <select
+              id={`${id}-fed`}
+              name="federation"
+              defaultValue={initial.federation}
+              className={selectClass}
+            >
+              {FEDERATIONS.map((f) => (
+                <option key={f.code} value={f.code}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+
           <Field label="Title" htmlFor={`${id}-title`}>
             <select
               id={`${id}-title`}

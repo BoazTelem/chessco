@@ -8,11 +8,13 @@ import { HandleResultCard, ResultCard, type HandleResult } from './result-card';
 import { TrackPersonCTA } from './track-person-cta';
 import { normalizeCountry } from '@/lib/scout/country-code';
 import { searchLichessHandlesByName } from '@/lib/scout/lichess-handles';
+import { getIndexStats } from '@/lib/index-stats';
 import type { SearchResult } from './types';
 
 export const metadata = {
   title: 'Scout — find a player',
-  description: 'Search 755k+ FIDE-rated chess players by name, country, and rating.',
+  description:
+    'Search FIDE, USCF, and Israeli Chess Federation players by name, country, and rating.',
 };
 
 const PAGE_SIZE = 20;
@@ -24,22 +26,29 @@ type SearchParams = {
   min?: string;
   max?: string;
   page?: string;
+  federation?: string;
 };
+
+const ALLOWED_FEDERATIONS = new Set(['FIDE', 'USCF', 'ICF']);
+
+export const revalidate = 3600;
 
 export default async function ScoutPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
-  const user = await getUser();
-  const supabase = await createClient();
+  const [user, supabase, stats] = await Promise.all([getUser(), createClient(), getIndexStats()]);
 
   const q = (params.q ?? '').trim();
   const country = params.country?.trim() || null;
   const title = params.title?.trim() || null;
   const min = params.min ? parseInt(params.min, 10) : null;
   const max = params.max ? parseInt(params.max, 10) : null;
+  const federationRaw = params.federation?.trim().toUpperCase() || '';
+  const federation = ALLOWED_FEDERATIONS.has(federationRaw) ? federationRaw : null;
   const page = Math.max(1, parseInt(params.page ?? '1', 10) || 1);
   const offset = (page - 1) * PAGE_SIZE;
 
-  const hasQuery = q.length > 0 || country || title || min !== null || max !== null;
+  const hasQuery =
+    q.length > 0 || country || title || min !== null || max !== null || federation !== null;
 
   let results: SearchResult[] = [];
   let handleResults: HandleResult[] = [];
@@ -61,7 +70,7 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
         country_filter: country,
         rating_min: Number.isFinite(min) ? min : null,
         rating_max: Number.isFinite(max) ? max : null,
-        federation_filter: null,
+        federation_filter: federation,
         title_filter: title,
         page_size: PAGE_SIZE,
         page_offset: offset,
@@ -104,6 +113,7 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
   if (title) nextQs.set('title', title);
   if (min !== null && Number.isFinite(min)) nextQs.set('min', String(min));
   if (max !== null && Number.isFinite(max)) nextQs.set('max', String(max));
+  if (federation) nextQs.set('federation', federation);
   if (page > 1) nextQs.set('page', String(page));
   const nextPath = nextQs.toString() ? `/scout?${nextQs.toString()}` : '/scout';
 
@@ -155,9 +165,11 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
             Find any chess player
           </h1>
           <p className="text-sm text-muted-foreground md:text-base">
-            Search {(755_081).toLocaleString()} rated players from 200+ federations plus indexed
-            Lichess and chess.com handles — amateurs are findable too. Open a profile to identify
-            their other online accounts.
+            FIDE ({stats.fide.toLocaleString()})
+            {stats.uscf > 0 && <> + USCF ({stats.uscf.toLocaleString()})</>}
+            {stats.icf > 0 && <> + ICF ({stats.icf.toLocaleString()})</>}, with Lichess and
+            chess.com handles searched alongside — amateurs are findable too. Open a profile to
+            identify their other online accounts.
           </p>
         </div>
 
@@ -169,6 +181,7 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
               title: title ?? '',
               min: min?.toString() ?? '',
               max: max?.toString() ?? '',
+              federation: federation ?? '',
             }}
           />
         </div>
@@ -216,7 +229,7 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
                     <Pagination
                       page={page}
                       totalPages={totalPages}
-                      params={{ q, country, title, min, max }}
+                      params={{ q, country, title, min, max, federation }}
                     />
                   )}
                 </>
@@ -271,6 +284,7 @@ function EmptyState() {
         <SampleQuery label="magnus carlsen" />
         <SampleQuery label="kasparov" />
         <SampleQuery label="GM ISR" query="" country="ISR" title="GM" />
+        <SampleQuery label="GM USA" query="" country="USA" title="GM" />
         <SampleQuery label="2700+" query="" min="2700" />
       </div>
     </div>
@@ -320,6 +334,7 @@ function Pagination({
     title: string | null;
     min: number | null;
     max: number | null;
+    federation: string | null;
   };
 }) {
   function pageHref(p: number): string {
@@ -329,6 +344,7 @@ function Pagination({
     if (params.title) sp.set('title', params.title);
     if (params.min !== null) sp.set('min', String(params.min));
     if (params.max !== null) sp.set('max', String(params.max));
+    if (params.federation) sp.set('federation', params.federation);
     if (p > 1) sp.set('page', String(p));
     return `/scout?${sp.toString()}`;
   }

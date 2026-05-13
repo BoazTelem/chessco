@@ -119,7 +119,7 @@ export default async function DashboardPage() {
             href="/scout"
             label="Live"
             title="Scout players"
-            body="755k+ FIDE players. Search by name, country, title, rating range."
+            body="755k+ FIDE + 6.8k Israeli (ICF) players. Search by name, country, title, rating range."
           />
           <LiveCard
             href="/account"
@@ -142,8 +142,8 @@ export default async function DashboardPage() {
           />
           <PlaceholderCard
             label="Phase 0 W7"
-            title="USCF + Israeli CF"
-            body="Expand /scout to cover US and Israeli OTB-rated players."
+            title="USCF coverage"
+            body="Add US Chess Federation top-list players to /scout (ICF already live)."
           />
           <PlaceholderCard
             label="Phase 1"
