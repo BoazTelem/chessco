@@ -112,11 +112,8 @@ export default function TermsPage() {
             <strong className="text-foreground">Scout</strong> identifies likely chess.com and
             Lichess accounts for a named player using public rating-list data and statistical match
             against the games we have indexed. Scout output is a best-guess ranked list, not a
-            determination of identity. Accuracy figures are published at{' '}
-            <Link href="/trust" className="text-foreground underline">
-              /trust
-            </Link>
-            ; you should consult them before relying on a match.
+            determination of identity, and should not be relied on as proof of who controls an
+            account.
           </p>
           <p>
             <strong className="text-foreground">Prepare</strong> fetches public games for an account

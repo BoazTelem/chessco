@@ -190,13 +190,7 @@ export default function PrivacyPage() {
           <ul className="ml-5 list-disc space-y-1">
             <li>To create and operate your account.</li>
             <li>To produce prep reports, opening trees, and Scout matches you request.</li>
-            <li>
-              To measure and publish the accuracy of our Scout matcher (see{' '}
-              <Link href="/trust" className="text-foreground underline">
-                /trust
-              </Link>
-              ).
-            </li>
+            <li>To measure and improve the accuracy of our Scout matcher.</li>
             <li>To send transactional emails (account, security, important service notices).</li>
             <li>To detect, investigate, and prevent abuse, fraud, and cheating.</li>
             <li>To comply with legal obligations.</li>

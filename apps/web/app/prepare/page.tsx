@@ -15,7 +15,9 @@ export default async function PreparePage() {
   return (
     <main className="container mx-auto flex min-h-screen flex-col items-center px-4 py-16">
       <div className="flex w-full max-w-2xl flex-col items-center gap-8 text-center">
-        <ChesscoMark variant="float" className="h-[140px] w-[140px]" />
+        <Link href="/" aria-label="Chessco home" className="transition hover:opacity-80">
+          <ChesscoMark variant="float" className="h-[140px] w-[140px]" />
+        </Link>
 
         <div className="space-y-3">
           <h1 className="font-display text-4xl font-bold tracking-tight md:text-5xl">
