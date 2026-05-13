@@ -416,6 +416,8 @@ export const challenges = pgTable('challenges', {
     .default('open'),
   expiresAt: timestamptz('expires_at'),
   notes: text('notes'),
+  openingName: text('opening_name'),
+  ecoCode: text('eco_code'),
   createdAt: timestamptz('created_at').notNull().defaultNow(),
   updatedAt: timestamptz('updated_at').notNull().defaultNow(),
 });

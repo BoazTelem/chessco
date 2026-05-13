@@ -26,6 +26,8 @@ const Input = z.object({
   ratingMin: z.number().int().min(0).max(3500).nullable(),
   ratingMax: z.number().int().min(0).max(3500).nullable(),
   notes: z.string().max(500).optional().nullable(),
+  openingName: z.string().max(80).optional().nullable(),
+  ecoCode: z.string().max(5).optional().nullable(),
 });
 
 export type PracticeChallengeInput = z.infer<typeof Input>;
@@ -89,12 +91,14 @@ export async function POST(req: Request): Promise<NextResponse> {
       const inserted = (await tx`
         INSERT INTO challenges (
           creator_id, fen, pgn_prefix, creator_color, time_control, time_class,
-          fee_cents, currency, rating_min, rating_max, games_requested, notes
+          fee_cents, currency, rating_min, rating_max, games_requested, notes,
+          opening_name, eco_code
         ) VALUES (
           ${user.id}, ${fenCheck.fen}, ${parsed.pgnPrefix ?? null}, ${parsed.creatorColor},
           ${parsed.timeControl}, ${parsed.timeClass},
           ${parsed.feeCents}, 'USD', ${parsed.ratingMin}, ${parsed.ratingMax},
-          ${parsed.gamesRequested}, ${parsed.notes ?? null}
+          ${parsed.gamesRequested}, ${parsed.notes ?? null},
+          ${parsed.openingName?.trim() || null}, ${parsed.ecoCode?.trim() || null}
         )
         RETURNING id
       `) as Array<{ id: string }>;

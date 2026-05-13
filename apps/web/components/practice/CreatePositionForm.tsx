@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PositionEditor } from './PositionEditor';
 import { STANDARD_START_FEN } from '@/lib/practice/fen';
+import { COMMON_OPENINGS } from '@/lib/practice/openings';
 
 type TimeClass = 'bullet' | 'blitz' | 'rapid' | 'classical';
 
@@ -66,6 +67,7 @@ export function CreatePositionForm({ walletAvailableCents, userRating }: Props) 
     userRating != null ? String(userRating + RATING_BAND_ABOVE) : '',
   );
   const [notes, setNotes] = useState('');
+  const [openingName, setOpeningName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -107,6 +109,7 @@ export function CreatePositionForm({ walletAvailableCents, userRating }: Props) 
       ratingMin: ratingMin ? Number(ratingMin) : null,
       ratingMax: ratingMax ? Number(ratingMax) : null,
       notes: notes.trim() || null,
+      openingName: openingName.trim() || null,
     };
 
     setSubmitting(true);
@@ -324,6 +327,33 @@ export function CreatePositionForm({ walletAvailableCents, userRating }: Props) 
             />
           </div>
         </div>
+      </section>
+
+      <section>
+        <label
+          htmlFor="opening-input"
+          className="mb-2 block text-sm font-semibold uppercase tracking-wider text-muted-foreground"
+        >
+          Opening (optional)
+        </label>
+        <input
+          id="opening-input"
+          type="text"
+          list="practice-openings"
+          value={openingName}
+          onChange={(e) => setOpeningName(e.target.value)}
+          maxLength={80}
+          placeholder="e.g. Sicilian Defense, Lucena position"
+          className="w-full max-w-md rounded-md border border-border bg-background px-3 py-2 text-sm"
+        />
+        <datalist id="practice-openings">
+          {COMMON_OPENINGS.map((o) => (
+            <option key={o} value={o} />
+          ))}
+        </datalist>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Helps people filter the lobby by what they want to practice.
+        </p>
       </section>
 
       <section>

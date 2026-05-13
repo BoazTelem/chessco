@@ -1,7 +1,19 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { BOARD_BORDER, BOARD_DARK_SQUARE, BOARD_LIGHT_SQUARE } from '../prepare/board-theme';
+
+const Chessboard = dynamic(() => import('react-chessboard').then((m) => m.Chessboard), {
+  ssr: false,
+  loading: () => (
+    <div
+      className="aspect-square w-full rounded-md border bg-muted/30"
+      style={{ borderColor: BOARD_BORDER }}
+    />
+  ),
+});
 
 export interface LobbyChallenge {
   id: string;
@@ -18,8 +30,11 @@ export interface LobbyChallenge {
   games_requested: number;
   games_completed: number;
   notes: string | null;
+  opening_name: string | null;
   created_at: string;
 }
+
+const MINI_BOARD = 160;
 
 export function LobbyCard({
   challenge,
@@ -61,6 +76,10 @@ export function LobbyCard({
     }
   }
 
+  // Show the board from the opponent's perspective: if the creator plays White,
+  // the opponent plays Black, so flip the board to Black-on-bottom.
+  const orientation: 'white' | 'black' = challenge.creator_color === 'w' ? 'black' : 'white';
+
   const oppositeColorLabel =
     challenge.creator_color === 'w'
       ? 'play Black'
@@ -74,53 +93,88 @@ export function LobbyCard({
       : null;
 
   const remaining = challenge.games_requested - challenge.games_completed;
+  const isFree = challenge.fee_cents === 0;
 
   return (
     <article className="rounded-lg border border-border bg-card p-4">
-      <header className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-foreground">{creatorLabel}</p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            {challenge.time_control} {challenge.time_class} · you {oppositeColorLabel}
-            {ratingBand ? ` · opponent rating ${ratingBand}` : ''}
-          </p>
+      <div className="flex items-start gap-4">
+        <div
+          className="shrink-0 overflow-hidden rounded-md"
+          style={{ width: MINI_BOARD, border: `2px solid ${BOARD_BORDER}` }}
+        >
+          <Chessboard
+            position={challenge.fen}
+            boardWidth={MINI_BOARD - 4}
+            boardOrientation={orientation}
+            arePiecesDraggable={false}
+            customDarkSquareStyle={{ backgroundColor: BOARD_DARK_SQUARE }}
+            customLightSquareStyle={{ backgroundColor: BOARD_LIGHT_SQUARE }}
+            showBoardNotation={false}
+          />
         </div>
-        <div className="shrink-0 text-right">
-          <p className="font-display text-2xl font-bold tabular-nums">
-            ${(challenge.fee_cents / 100).toFixed(2)}
-          </p>
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">per game</p>
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-foreground">{creatorLabel}</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                {challenge.time_control} {challenge.time_class} · you {oppositeColorLabel}
+                {ratingBand ? ` · opponent rating ${ratingBand}` : ''}
+              </p>
+              {challenge.opening_name && (
+                <p className="mt-1 text-[11px] font-medium uppercase tracking-wider text-accent">
+                  {challenge.opening_name}
+                </p>
+              )}
+            </div>
+            <div className="shrink-0 text-right">
+              <p
+                className={`font-display text-2xl font-bold tabular-nums ${
+                  isFree ? 'text-muted-foreground' : ''
+                }`}
+              >
+                {isFree ? 'Free' : `$${(challenge.fee_cents / 100).toFixed(2)}`}
+              </p>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                {isFree ? '' : 'per game'}
+              </p>
+            </div>
+          </header>
+
+          {challenge.notes && (
+            <p className="mt-2 rounded bg-muted/40 p-2 text-xs italic text-muted-foreground">
+              “{challenge.notes}”
+            </p>
+          )}
+
+          <footer className="mt-auto flex items-center justify-between gap-3 pt-3">
+            <p className="text-[11px] text-muted-foreground">
+              {remaining === challenge.games_requested
+                ? `${remaining} game${remaining === 1 ? '' : 's'} requested`
+                : `${remaining} of ${challenge.games_requested} games left`}
+            </p>
+            {isOwn ? (
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                your challenge
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={accept}
+                disabled={accepting}
+                className="rounded-md bg-accent px-4 py-1.5 text-xs font-semibold text-accent-foreground disabled:opacity-60"
+              >
+                {accepting
+                  ? 'Accepting…'
+                  : isFree
+                    ? 'Accept · play free'
+                    : `Accept · earn $${(challenge.fee_cents / 100).toFixed(2)}`}
+              </button>
+            )}
+          </footer>
+          {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
         </div>
-      </header>
-
-      {challenge.notes && (
-        <p className="mt-2 rounded bg-muted/40 p-2 text-xs italic text-muted-foreground">
-          “{challenge.notes}”
-        </p>
-      )}
-
-      <footer className="mt-3 flex items-center justify-between gap-3">
-        <p className="text-[11px] text-muted-foreground">
-          {remaining === challenge.games_requested
-            ? `${remaining} game${remaining === 1 ? '' : 's'} requested`
-            : `${remaining} of ${challenge.games_requested} games left`}
-        </p>
-        {isOwn ? (
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
-            your challenge
-          </span>
-        ) : (
-          <button
-            type="button"
-            onClick={accept}
-            disabled={accepting}
-            className="rounded-md bg-accent px-4 py-1.5 text-xs font-semibold text-accent-foreground disabled:opacity-60"
-          >
-            {accepting ? 'Accepting…' : `Accept · earn $${(challenge.fee_cents / 100).toFixed(2)}`}
-          </button>
-        )}
-      </footer>
-      {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
+      </div>
     </article>
   );
 }
