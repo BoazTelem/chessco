@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import { GeistSans } from 'geist/font/sans';
 import { GeistMono } from 'geist/font/mono';
 import { brand } from '@chessco/ui';
+import { SiteFooter } from '@/components/site/footer';
 import './globals.css';
 
 const inter = Inter({
@@ -37,8 +38,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`dark ${inter.variable} ${GeistSans.variable} ${GeistMono.variable}`}
       suppressHydrationWarning
     >
-      <body className="min-h-screen bg-background font-sans text-foreground antialiased">
-        {children}
+      <body className="flex min-h-screen flex-col bg-background font-sans text-foreground antialiased">
+        <div className="flex-1">{children}</div>
+        <SiteFooter />
       </body>
     </html>
   );
