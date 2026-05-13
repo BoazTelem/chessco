@@ -23,12 +23,28 @@
  *   pnpm --filter @chessco/workers exec tsx src/eval/run.ts --k 5 --min-games 15
  */
 import 'dotenv/config';
+import { Chess } from 'chess.js';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve as pathResolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractFeaturesV0, type GameRow } from '../features/extract';
 import { compareFingerprints } from '../stage3/match';
 import { getGamesDb } from '../db';
+
+const MOVE_SEQ_PLY_COUNT = 12;
+
+function pgnToMoveSeqPrefix(pgn: string | null): string {
+  if (!pgn || pgn.length === 0) return '';
+  const chess = new Chess();
+  try {
+    chess.loadPgn(pgn, { strict: false });
+  } catch {
+    return '';
+  }
+  const history = chess.history();
+  if (history.length === 0) return '';
+  return history.slice(0, MOVE_SEQ_PLY_COUNT).join(' ');
+}
 
 interface CliArgs {
   k: number;
@@ -83,6 +99,7 @@ interface RawGameRow {
   mean_cp_loss_black: string | null;
   blunder_count: number | null;
   plies_analyzed: number | null;
+  pgn: string | null;
 }
 
 function numOrNull(v: string | null): number | null {
@@ -124,7 +141,8 @@ async function main() {
              white_rating, black_rating,
              result, time_class, opening_eco, ply_count, termination, played_at,
              mean_cp_loss, mean_cp_loss_white, mean_cp_loss_black,
-             blunder_count, plies_analyzed
+             blunder_count, plies_analyzed,
+             pgn
       FROM games
       WHERE source IN ('lichess', 'chess.com')
     `;
@@ -132,13 +150,15 @@ async function main() {
       `[eval] loaded ${rows.length.toLocaleString()} games in ${((Date.now() - t0) / 1000).toFixed(1)}s`,
     );
 
-    // Group games by (source, handle).
+    // Group games by (source, handle). Parse PGN once per game to extract
+    // the move-sequence prefix; reused on both color rows.
     const byHandle = new Map<string, GameRow[]>();
     for (const r of rows) {
       const playedAt = new Date(r.played_at);
       const meanCp = numOrNull(r.mean_cp_loss);
       const meanCpW = numOrNull(r.mean_cp_loss_white);
       const meanCpB = numOrNull(r.mean_cp_loss_black);
+      const moveSeq = pgnToMoveSeqPrefix(r.pgn);
       if (r.white_handle_snapshot) {
         const k = groupKey(r.source, r.white_handle_snapshot.toLowerCase());
         const list = byHandle.get(k) ?? [];
@@ -156,6 +176,7 @@ async function main() {
           mean_cp_loss_black: meanCpB,
           blunder_count: r.blunder_count,
           plies_analyzed: r.plies_analyzed,
+          move_seq_prefix: moveSeq,
         });
         byHandle.set(k, list);
       }
@@ -176,6 +197,7 @@ async function main() {
           mean_cp_loss_black: meanCpB,
           blunder_count: r.blunder_count,
           plies_analyzed: r.plies_analyzed,
+          move_seq_prefix: moveSeq,
         });
         byHandle.set(k, list);
       }
