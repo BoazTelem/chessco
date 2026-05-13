@@ -151,6 +151,18 @@ export default async function DashboardPage() {
             body="755k+ FIDE + 6.8k Israeli (ICF) players. Search by name, country, title, rating range."
           />
           <LiveCard
+            href="/prepare"
+            label="Live"
+            title="Prep against an opponent"
+            body="Enter a chess.com or Lichess username to see their opening tree and leaks against your repertoire."
+          />
+          <LiveCard
+            href="/practice"
+            label="Live"
+            title="Practice from any position"
+            body="Browse open challenges and earn for playing, or publish your own position for paid practice."
+          />
+          <LiveCard
             href="/account"
             label="Live"
             title="Manage linked accounts"
@@ -165,24 +177,14 @@ export default async function DashboardPage() {
         </h2>
         <ul className="grid gap-3 sm:grid-cols-2">
           <PlaceholderCard
-            label="Phase 0 W6"
+            label="Phase 1 W10"
             title="Import your games"
             body="Pull your last 200 games from each linked account into Chessco for analysis."
           />
           <PlaceholderCard
-            label="Phase 0 W7"
+            label="Post-Phase 1"
             title="USCF coverage"
             body="Add US Chess Federation top-list players to /scout (ICF already live)."
-          />
-          <PlaceholderCard
-            label="Phase 1"
-            title="Build a prep report"
-            body="Generate a per-opponent battle plan from their public games."
-          />
-          <PlaceholderCard
-            label="Phase 3"
-            title="Publish a challenge"
-            body="Practice the positions that matter — match with a verified opponent."
           />
         </ul>
       </section>
