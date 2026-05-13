@@ -1,0 +1,58 @@
+# Cloud Run job image for the Lichess per-handle crawler.
+#
+# Pillar D of the production-scale plan. Companion to
+# Dockerfile.chesscom-crawl with two key differences:
+#
+#  - --rate-ms 1000 (vs 500): Lichess user-export endpoint is stricter
+#    than chess.com per their docs. Lower limit only safe when paired
+#    with an authenticated bearer token (LICHESS_API_TOKEN secret),
+#    which the inner client uses to drop MIN_REQUEST_GAP_MS to 250ms.
+#
+#  - LICHESS_API_TOKEN must be set per-region. The token raises Lichess
+#    rate cap from ~30 req/min to ~300 req/min. Mint one per Cloud Run
+#    region for traceability (lichess.org/account/oauth/token/create).
+#
+# Build + push (from monorepo root):
+#   docker build -f apps/workers/Dockerfile.lichess-crawl \
+#     -t gcr.io/<PROJECT>/chessco-lichess-crawl:latest .
+#   docker push gcr.io/<PROJECT>/chessco-lichess-crawl:latest
+#
+# Deploy as Cloud Run jobs (one per region):
+#   gcloud run jobs create chessco-lichess-crawl-us \
+#     --image gcr.io/<PROJECT>/chessco-lichess-crawl:latest \
+#     --region us-central1 \
+#     --task-timeout 86400s \
+#     --memory 512Mi --cpu 1 \
+#     --max-retries 0 \
+#     --set-secrets GAMES_DATABASE_HOST=GAMES_DB_HOST:latest,\
+#                   GAMES_DATABASE_PORT=GAMES_DB_PORT:latest,\
+#                   GAMES_DATABASE_USER=GAMES_DB_USER:latest,\
+#                   GAMES_DATABASE_PASSWORD=GAMES_DB_PASSWORD:latest,\
+#                   GAMES_DATABASE_NAME=GAMES_DB_NAME:latest,\
+#                   LICHESS_API_TOKEN=LICHESS_API_TOKEN_US:latest \
+#     --set-env-vars WORKER_ID=cloud-us
+#
+# Repeat for europe-west1 with WORKER_ID=cloud-eu and a distinct token
+# (LICHESS_API_TOKEN_EU secret).
+
+FROM node:22-slim
+
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/workers/package.json ./apps/workers/
+COPY packages/db/package.json ./packages/db/
+
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+RUN pnpm install --filter @chessco/workers... --frozen-lockfile
+
+COPY apps/workers ./apps/workers
+COPY packages/db ./packages/db
+
+WORKDIR /app/apps/workers
+
+# --rate-ms 1000 outer; inner client drops to 250ms when token is set.
+ENTRYPOINT ["pnpm", "lichess:crawl", "--", \
+            "--rate-ms", "1000", \
+            "--idle-sleep-sec", "300", \
+            "--exit-when-empty"]

@@ -16,13 +16,19 @@ import { serve } from 'inngest/node';
 import { inngest } from './client.js';
 import { corpusCountsHourly } from './corpus-counts.js';
 import { crawlRefreshFunctions } from './crawl-refresh.js';
+import { crawlerWatchdog } from './crawler-watchdog.js';
 import { federationFunctions } from './federations.js';
 
 const PORT = parseInt(process.env.PORT ?? '3030', 10);
 
 const handler = serve({
   client: inngest,
-  functions: [...federationFunctions, ...crawlRefreshFunctions, corpusCountsHourly],
+  functions: [
+    ...federationFunctions,
+    ...crawlRefreshFunctions,
+    corpusCountsHourly,
+    crawlerWatchdog,
+  ],
 });
 
 const server = http.createServer((req, res) => {
@@ -42,7 +48,12 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`[inngest] serving on :${PORT}/api/inngest`);
   console.log(`[inngest] registered functions:`);
-  for (const fn of [...federationFunctions, ...crawlRefreshFunctions, corpusCountsHourly]) {
+  for (const fn of [
+    ...federationFunctions,
+    ...crawlRefreshFunctions,
+    corpusCountsHourly,
+    crawlerWatchdog,
+  ]) {
     console.log(`  - ${fn.id()}`);
   }
 });

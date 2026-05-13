@@ -1,0 +1,56 @@
+# Cloud Run job image for the chess.com per-handle crawler.
+#
+# Pillar D of the production-scale plan: parallelize across multiple
+# Cloud Run regions so each instance gets a distinct egress IP, multi-
+# plying our effective per-IP rate budget against chess.com's API.
+#
+# Build + push (from monorepo root):
+#   docker build -f apps/workers/Dockerfile.chesscom-crawl \
+#     -t gcr.io/<PROJECT>/chessco-chesscom-crawl:latest .
+#   docker push gcr.io/<PROJECT>/chessco-chesscom-crawl:latest
+#
+# Deploy as Cloud Run jobs (one per region — repeat for each):
+#   gcloud run jobs create chessco-chesscom-crawl-us \
+#     --image gcr.io/<PROJECT>/chessco-chesscom-crawl:latest \
+#     --region us-central1 \
+#     --task-timeout 86400s \
+#     --memory 512Mi --cpu 1 \
+#     --max-retries 0 \
+#     --set-secrets GAMES_DATABASE_HOST=GAMES_DB_HOST:latest,\
+#                   GAMES_DATABASE_PORT=GAMES_DB_PORT:latest,\
+#                   GAMES_DATABASE_USER=GAMES_DB_USER:latest,\
+#                   GAMES_DATABASE_PASSWORD=GAMES_DB_PASSWORD:latest,\
+#                   GAMES_DATABASE_NAME=GAMES_DB_NAME:latest \
+#     --set-env-vars WORKER_ID=cloud-us
+#
+# Repeat for europe-west1 / asia-east1 / australia-southeast1 with
+# distinct WORKER_ID values (cloud-eu / cloud-asia / cloud-au).
+#
+# The crawler-watchdog Inngest function (apps/workers/src/inngest/
+# crawler-watchdog.ts) dispatches executions every 15 minutes when the
+# queue has pending work and no recent heartbeat from that region.
+
+FROM node:22-slim
+
+WORKDIR /app
+
+# Workspace setup — copy only what the workers package needs.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/workers/package.json ./apps/workers/
+COPY packages/db/package.json ./packages/db/
+
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+RUN pnpm install --filter @chessco/workers... --frozen-lockfile
+
+COPY apps/workers ./apps/workers
+COPY packages/db ./packages/db
+
+WORKDIR /app/apps/workers
+
+# Default flags; WORKER_ID overridable via env (Cloud Run --set-env-vars).
+# --exit-when-empty so the task ends cleanly when the queue is drained;
+# the watchdog re-dispatches when the refresh cron re-queues work.
+ENTRYPOINT ["pnpm", "chesscom:crawl", "--", \
+            "--rate-ms", "500", \
+            "--idle-sleep-sec", "300", \
+            "--exit-when-empty"]
