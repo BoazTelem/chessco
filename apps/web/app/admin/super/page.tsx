@@ -103,7 +103,7 @@ export default async function OverviewPage({
             { key: 'Principal', label: 'Deposit principal', color: '#60A5FA' },
             { key: 'Fee', label: 'Platform fee', color: '#F59E0B' },
           ]}
-          yFormatter={(v) => `$${(v / 100).toFixed(0)}`}
+          valueFormat="cents"
         />
       </SectionCard>
 

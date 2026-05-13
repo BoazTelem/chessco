@@ -19,17 +19,25 @@ export type TrendSeries = {
 
 export type TrendPoint = Record<string, string | number> & { date: string };
 
+export type ValueFormat = 'count' | 'cents';
+
+const FORMATTERS: Record<ValueFormat, (v: number) => string> = {
+  count: (v) => new Intl.NumberFormat('en-US').format(v),
+  cents: (v) => `$${(v / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })}`,
+};
+
 export function TrendChart({
   data,
   series,
-  yFormatter,
+  valueFormat = 'count',
   height = 240,
 }: {
   data: TrendPoint[];
   series: TrendSeries[];
-  yFormatter?: (v: number) => string;
+  valueFormat?: ValueFormat;
   height?: number;
 }) {
+  const yFormatter = FORMATTERS[valueFormat];
   if (!data.length) {
     return (
       <div className="flex h-[240px] items-center justify-center rounded border border-dashed border-border text-sm text-muted-foreground">
@@ -69,7 +77,7 @@ export function TrendChart({
             borderRadius: 8,
             fontSize: 12,
           }}
-          formatter={(v) => (yFormatter ? yFormatter(Number(v)) : v)}
+          formatter={(v) => yFormatter(Number(v))}
         />
         <Legend wrapperStyle={{ fontSize: 11 }} />
         {series.map((s) => (

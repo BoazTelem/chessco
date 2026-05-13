@@ -34,8 +34,8 @@ export default async function DashboardPage() {
   const isSuperAdmin = isSuperAdminEmail(user.email);
 
   return (
-    <div className="container mx-auto max-w-3xl space-y-10 px-4 py-12">
-      <header className="flex items-start justify-between gap-6">
+    <div className="container mx-auto max-w-4xl space-y-10 px-4 py-12">
+      <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-accent">Dashboard</p>
           <h1 className="font-display text-3xl font-bold tracking-tight">
@@ -52,43 +52,63 @@ export default async function DashboardPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {isSuperAdmin && (
             <Link
               href="/admin/super"
-              className="rounded-md border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/20"
+              className="whitespace-nowrap rounded-md bg-amber-500 px-4 py-1.5 text-sm font-semibold text-slate-950 shadow-[0_0_0_1px_rgba(245,158,11,0.4)] transition hover:bg-amber-400"
             >
-              Super admin
+              ★ Super admin
             </Link>
           )}
           <Link
             href="/scout"
-            className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-accent-foreground hover:opacity-90"
+            className="whitespace-nowrap rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-accent-foreground hover:opacity-90"
           >
             Scout players
           </Link>
           <Link
             href="/scout/history"
-            className="rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-muted"
+            className="whitespace-nowrap rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-muted"
           >
             History
           </Link>
           <Link
             href="/account"
-            className="rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-muted"
+            className="whitespace-nowrap rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-muted"
           >
             Account
           </Link>
           <form action={signOut}>
             <button
               type="submit"
-              className="rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-muted"
+              className="whitespace-nowrap rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-muted"
             >
               Sign out
             </button>
           </form>
         </div>
       </header>
+
+      {isSuperAdmin && (
+        <Link
+          href="/admin/super"
+          className="block rounded-lg border border-amber-500/40 bg-gradient-to-r from-amber-500/10 to-amber-500/5 p-5 transition hover:border-amber-500/70 hover:from-amber-500/15"
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-amber-400">
+                ★ Super admin
+              </p>
+              <p className="mt-1 font-medium">Open the operations dashboard</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Users, revenue, games, prep, moderation & system health.
+              </p>
+            </div>
+            <span className="text-amber-400">→</span>
+          </div>
+        </Link>
+      )}
 
       <section className="space-y-3">
         <div className="flex items-baseline justify-between">
