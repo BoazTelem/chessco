@@ -95,7 +95,7 @@ export function SearchForm({ initial }: { initial: Initial }) {
               max={3000}
               step={50}
               defaultValue={initial.min}
-              placeholder="2000"
+              placeholder="1500"
               className={inputClass}
             />
           </Field>
@@ -109,7 +109,7 @@ export function SearchForm({ initial }: { initial: Initial }) {
               max={3000}
               step={50}
               defaultValue={initial.max}
-              placeholder="2800"
+              placeholder="2900"
               className={inputClass}
             />
           </Field>
