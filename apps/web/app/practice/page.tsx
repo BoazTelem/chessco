@@ -4,6 +4,7 @@ import { getUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { ChesscoMark } from '@/lib/logo';
 import { LobbyCard, type LobbyChallenge } from '@/components/practice/LobbyCard';
+import { LobbyLiveUpdates } from '@/components/practice/LobbyLiveUpdates';
 
 export const metadata = {
   title: 'Practice — paid play from any position',
@@ -110,6 +111,7 @@ export default async function PracticeLobbyPage({
 
   return (
     <div className="min-h-screen">
+      <LobbyLiveUpdates />
       <header className="border-b border-border bg-card/50">
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
           <Link
