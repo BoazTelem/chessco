@@ -5,11 +5,11 @@ import { ChesscoMark } from '@/lib/logo';
 import { getIndexStats } from '@/lib/index-stats';
 import { PillarTile } from '@/components/home/pillar-tile';
 
-// Refresh the indexed-player count hourly. The Inngest corpus-counts
-// cron writes a fresh snapshot every hour; we revalidate at the same
-// cadence so the homepage tracks crawler progress while it's bulk-
-// ingesting accounts.
-export const revalidate = 3_600;
+// The indexed-player count is cached hourly inside getIndexStats()
+// (unstable_cache), so the page can stay fully dynamic per-request —
+// necessary because getUser() reads cookies and mixing that with a
+// page-level `revalidate` made returning logged-in users see the
+// logged-out shell of this page.
 
 export default async function HomePage() {
   const [user, stats] = await Promise.all([getUser(), getIndexStats()]);

@@ -31,7 +31,10 @@ type SearchParams = {
 
 const ALLOWED_FEDERATIONS = new Set(['FIDE', 'USCF', 'ICF']);
 
-export const revalidate = 3600;
+// No page-level `revalidate`: getUser() reads cookies, and mixing
+// `cookies()` with `revalidate` was causing returning logged-in users
+// to see logged-out UI. The indexed-player count is cached hourly
+// inside getIndexStats() (unstable_cache) instead.
 
 export default async function ScoutPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;

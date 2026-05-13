@@ -2,14 +2,20 @@
  * Live aggregate counts of indexed players. Backed by the
  * `public_index_stats` Postgres RPC (SECURITY DEFINER, bypasses RLS).
  *
- * Callers should set `export const revalidate = N` on the route so the
- * count refreshes on a schedule rather than every request. The home
- * page revalidates daily; /scout revalidates hourly.
+ * Cached at the data layer via `unstable_cache` (1-hour TTL) rather than
+ * via route-level `revalidate`. This lets callers compose this with
+ * auth-dependent UI (e.g. the home page reads cookies for getUser());
+ * mixing `cookies()` + page-level `revalidate` was making logged-in
+ * users see the logged-out shell of the page on return visits.
+ *
+ * Uses a cookieless anon client because the RPC is SECURITY DEFINER —
+ * no auth context needed, and unstable_cache forbids cookies() inside.
  *
  * Falls back to a sensible static estimate if the RPC fails so the page
  * doesn't blank on a transient DB hiccup.
  */
-import { createClient } from '@/lib/supabase/server';
+import { unstable_cache } from 'next/cache';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
 export type IndexStats = {
   fide: number;
@@ -55,9 +61,14 @@ type RpcShape = {
   lichess_games?: number | null;
 };
 
-export async function getIndexStats(): Promise<IndexStats> {
+async function fetchIndexStats(): Promise<IndexStats> {
   try {
-    const supabase = await createClient();
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !key) return FALLBACK;
+    const supabase = createSupabaseClient(url, key, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
     const { data, error } = await supabase.rpc('public_index_stats');
     if (error || !data) return FALLBACK;
     const r = data as RpcShape;
@@ -77,3 +88,8 @@ export async function getIndexStats(): Promise<IndexStats> {
     return FALLBACK;
   }
 }
+
+export const getIndexStats = unstable_cache(fetchIndexStats, ['public-index-stats'], {
+  revalidate: 3600,
+  tags: ['index-stats'],
+});
