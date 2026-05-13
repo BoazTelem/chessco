@@ -60,7 +60,7 @@ export default async function HomePage() {
           <PillarTile
             index={3}
             title="Practice from a position"
-            subtitle="Set up the position you want to drill, or paste a FEN. Pick a time class and publish it with a per-game budget. A verified opponent plays it through with you. Or list yourself to help others prepare, and earn per completed game."
+            subtitle="You have a position to drill. Publish it with a time class and per-game fee. Or earn by playing one from the lobby."
             cta="Open lobby"
             href="/practice"
           />
