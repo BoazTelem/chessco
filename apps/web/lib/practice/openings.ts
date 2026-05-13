@@ -1,65 +1,37 @@
 /**
- * Common chess opening names — used as a datalist for the optional
- * "Opening" field on the create-challenge form, and shown as filter
- * options on the lobby when challenges tag themselves.
+ * Server-only opening detection. The board is the single source of truth —
+ * we never let users self-tag the opening on a Practice challenge. Instead,
+ * the API route looks the FEN up in a bundled EPD→name book at publish time
+ * and stores the result (or null if the position isn't a known book line).
  *
- * v1 is hand-curated (~40 most-played openings). The list is intentionally
- * short so the dropdown stays scannable; users can free-type anything that
- * isn't on the list. Auto-detection from the FEN/PGN is out of scope here.
+ * The book is generated from lichess-org/chess-openings via
+ * `data/build-opening-book.mjs`. ~3700 positions covering all common ECO
+ * lines; ~430KB JSON loaded once into the server process.
+ *
+ * Most user-published positions won't be book lines (custom middlegame
+ * studies, endgames, tactical puzzles) — they correctly return null.
  */
 
-export const COMMON_OPENINGS = [
-  // Open games (1.e4 e5)
-  'Italian Game',
-  'Ruy Lopez',
-  'Scotch Game',
-  'Petroff Defense',
-  'Philidor Defense',
-  "King's Gambit",
-  'Vienna Game',
-  'Four Knights Game',
+import book from './data/opening-book.json';
 
-  // Semi-open (1.e4 vs anything else)
-  'Sicilian Defense',
-  'French Defense',
-  'Caro-Kann Defense',
-  'Pirc Defense',
-  'Modern Defense',
-  'Scandinavian Defense',
-  'Alekhine Defense',
+type BookEntry = [eco: string, name: string];
+const BOOK = book as unknown as Record<string, BookEntry>;
 
-  // 1.d4 closed games
-  "Queen's Gambit Accepted",
-  "Queen's Gambit Declined",
-  'Slav Defense',
-  'Semi-Slav Defense',
-  'Catalan Opening',
+export interface DetectedOpening {
+  ecoCode: string;
+  /** Full Lichess-style name, e.g. "Sicilian Defense: Najdorf Variation". */
+  name: string;
+}
 
-  // 1.d4 Indian defenses
-  "King's Indian Defense",
-  'Nimzo-Indian Defense',
-  "Queen's Indian Defense",
-  'Grünfeld Defense',
-  'Benoni Defense',
-  'Dutch Defense',
-
-  // Flank openings
-  'English Opening',
-  'Réti Opening',
-  'Bird Opening',
-  'Larsen Opening',
-
-  // Endgames / studies
-  'King and Pawn endgame',
-  'Rook endgame',
-  'Knight and Bishop endgame',
-  'Queen vs Rook endgame',
-  'Lucena position',
-  'Philidor position',
-
-  // Generic buckets
-  'Middlegame study',
-  'Tactical puzzle',
-] as const;
-
-export type OpeningName = (typeof COMMON_OPENINGS)[number] | (string & {});
+/**
+ * Returns the opening that the FEN's position is reached by, or null if the
+ * position isn't in the book. Matches on the EPD (board + side + castling +
+ * ep) — move clocks are ignored, so transposition into a book position from
+ * a different move order still hits.
+ */
+export function detectOpening(fen: string): DetectedOpening | null {
+  const epd = fen.split(' ').slice(0, 4).join(' ');
+  const hit = BOOK[epd];
+  if (!hit) return null;
+  return { ecoCode: hit[0], name: hit[1] };
+}

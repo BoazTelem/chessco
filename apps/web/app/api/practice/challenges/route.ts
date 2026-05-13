@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { getPracticeDb } from '@/lib/practice/db';
 import { validateFen } from '@/lib/practice/fen';
+import { detectOpening } from '@/lib/practice/openings';
 
 const TIME_CONTROL_RE = /^\d+\+\d+$/;
 const TIME_CLASS = ['bullet', 'blitz', 'rapid', 'classical'] as const;
@@ -26,8 +27,6 @@ const Input = z.object({
   ratingMin: z.number().int().min(0).max(3500).nullable(),
   ratingMax: z.number().int().min(0).max(3500).nullable(),
   notes: z.string().max(500).optional().nullable(),
-  openingName: z.string().max(80).optional().nullable(),
-  ecoCode: z.string().max(5).optional().nullable(),
   anonymous: z.boolean().optional(),
 });
 
@@ -64,6 +63,11 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (!fenCheck.ok) {
     return NextResponse.json({ error: `position invalid: ${fenCheck.reason}` }, { status: 400 });
   }
+
+  // The board is the source of truth for the opening — derive name + ECO from
+  // the FEN against the bundled book. Most user-published positions aren't
+  // book lines and return null, which the lobby renders as no opening label.
+  const detected = detectOpening(fenCheck.fen);
 
   const totalCents = parsed.feeCents * parsed.gamesRequested;
   const sql = getPracticeDb();
@@ -124,7 +128,7 @@ export async function POST(req: Request): Promise<NextResponse> {
           ${parsed.timeControl}, ${parsed.timeClass},
           ${parsed.feeCents}, 'USD', ${parsed.ratingMin}, ${parsed.ratingMax},
           ${parsed.gamesRequested}, ${parsed.notes ?? null},
-          ${parsed.openingName?.trim() || null}, ${parsed.ecoCode?.trim() || null},
+          ${detected?.name ?? null}, ${detected?.ecoCode ?? null},
           ${parsed.anonymous ?? false}, ${creatorRating}
         )
         RETURNING id
