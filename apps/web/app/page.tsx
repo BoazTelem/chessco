@@ -5,10 +5,11 @@ import { ChesscoMark } from '@/lib/logo';
 import { getIndexStats } from '@/lib/index-stats';
 import { PillarTile } from '@/components/home/pillar-tile';
 
-// Refresh the indexed-player count once a day. Federation crons run
-// monthly and the chess.com crawler is continuous, so daily cadence
-// keeps the hero banner honest without hammering the DB.
-export const revalidate = 86_400;
+// Refresh the indexed-player count hourly. The Inngest corpus-counts
+// cron writes a fresh snapshot every hour; we revalidate at the same
+// cadence so the homepage tracks crawler progress while it's bulk-
+// ingesting accounts.
+export const revalidate = 3_600;
 
 export default async function HomePage() {
   const [user, stats] = await Promise.all([getUser(), getIndexStats()]);
@@ -71,6 +72,28 @@ export default async function HomePage() {
             </span>{' '}
             Try the scout, no sign-up needed.
           </div>
+          {(stats.chesscomHandles > 0 || stats.lichessHandles > 0) && (
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span>
+                chess.com:{' '}
+                <span className="text-foreground">{stats.chesscomHandles.toLocaleString()}</span>{' '}
+                accounts
+              </span>
+              <span aria-hidden>·</span>
+              <span>
+                Lichess:{' '}
+                <span className="text-foreground">{stats.lichessHandles.toLocaleString()}</span>{' '}
+                accounts
+              </span>
+              <span aria-hidden>·</span>
+              <span>
+                <span className="text-foreground">
+                  {(stats.chesscomGames + stats.lichessGames).toLocaleString()}
+                </span>{' '}
+                games
+              </span>
+            </div>
+          )}
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             {user ? (
               <Link href="/dashboard" className="hover:text-foreground">

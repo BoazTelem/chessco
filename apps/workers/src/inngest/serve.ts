@@ -14,6 +14,7 @@ import 'dotenv/config';
 import http from 'node:http';
 import { serve } from 'inngest/node';
 import { inngest } from './client.js';
+import { corpusCountsHourly } from './corpus-counts.js';
 import { crawlRefreshFunctions } from './crawl-refresh.js';
 import { federationFunctions } from './federations.js';
 
@@ -21,7 +22,7 @@ const PORT = parseInt(process.env.PORT ?? '3030', 10);
 
 const handler = serve({
   client: inngest,
-  functions: [...federationFunctions, ...crawlRefreshFunctions],
+  functions: [...federationFunctions, ...crawlRefreshFunctions, corpusCountsHourly],
 });
 
 const server = http.createServer((req, res) => {
@@ -41,7 +42,7 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`[inngest] serving on :${PORT}/api/inngest`);
   console.log(`[inngest] registered functions:`);
-  for (const fn of [...federationFunctions, ...crawlRefreshFunctions]) {
+  for (const fn of [...federationFunctions, ...crawlRefreshFunctions, corpusCountsHourly]) {
     console.log(`  - ${fn.id()}`);
   }
 });

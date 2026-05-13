@@ -18,6 +18,15 @@ export type IndexStats = {
   federationTotal: number;
   platformTotal: number;
   total: number;
+  /** Live distinct chess.com handles in the games-corpus (separate from
+   *  platform_players seed). Sourced from the latest corpus_index_counts
+   *  snapshot, written hourly by Inngest. */
+  chesscomHandles: number;
+  /** Live distinct Lichess handles, same source. */
+  lichessHandles: number;
+  /** Total games ingested per source, latest snapshot. */
+  chesscomGames: number;
+  lichessGames: number;
 };
 
 const FALLBACK: IndexStats = {
@@ -27,6 +36,10 @@ const FALLBACK: IndexStats = {
   federationTotal: 761_899,
   platformTotal: 106_296,
   total: 868_195,
+  chesscomHandles: 0,
+  lichessHandles: 0,
+  chesscomGames: 0,
+  lichessGames: 0,
 };
 
 type RpcShape = {
@@ -36,6 +49,10 @@ type RpcShape = {
   federation_total?: number;
   platform_total?: number;
   total?: number;
+  chesscom_handles?: number | null;
+  lichess_handles?: number | null;
+  chesscom_games?: number | null;
+  lichess_games?: number | null;
 };
 
 export async function getIndexStats(): Promise<IndexStats> {
@@ -51,6 +68,10 @@ export async function getIndexStats(): Promise<IndexStats> {
       federationTotal: r.federation_total ?? FALLBACK.federationTotal,
       platformTotal: r.platform_total ?? FALLBACK.platformTotal,
       total: r.total ?? FALLBACK.total,
+      chesscomHandles: r.chesscom_handles ?? FALLBACK.chesscomHandles,
+      lichessHandles: r.lichess_handles ?? FALLBACK.lichessHandles,
+      chesscomGames: r.chesscom_games ?? FALLBACK.chesscomGames,
+      lichessGames: r.lichess_games ?? FALLBACK.lichessGames,
     };
   } catch {
     return FALLBACK;
