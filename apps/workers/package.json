@@ -25,6 +25,8 @@
     "lichess:crawl": "tsx src/lichess-crawl/run.ts",
     "lichess:crawl:seed": "tsx src/lichess-crawl/seed.ts",
     "lichess:crawl:status": "tsx src/lichess-crawl/sanity.ts",
+    "lichess:crawl:refresh": "tsx src/lichess-crawl/refresh-stale.ts",
+    "chesscom:crawl:refresh": "tsx src/chesscom-crawl/refresh-stale.ts",
     "stage2": "tsx src/identification/run.ts",
     "features:run": "tsx src/features/run.ts",
     "features:card": "tsx src/features/cardinality.ts",

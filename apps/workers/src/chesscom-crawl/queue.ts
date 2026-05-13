@@ -79,6 +79,7 @@ export async function completeItem(
     UPDATE chesscom_crawl_queue
     SET status = 'done',
         completed_at = NOW(),
+        next_refresh_at = NOW() + INTERVAL '7 days',
         games_inserted = ${gamesInserted},
         last_error = NULL
     WHERE id = ${id}

@@ -14,13 +14,14 @@ import 'dotenv/config';
 import http from 'node:http';
 import { serve } from 'inngest/node';
 import { inngest } from './client.js';
+import { crawlRefreshFunctions } from './crawl-refresh.js';
 import { federationFunctions } from './federations.js';
 
 const PORT = parseInt(process.env.PORT ?? '3030', 10);
 
 const handler = serve({
   client: inngest,
-  functions: [...federationFunctions],
+  functions: [...federationFunctions, ...crawlRefreshFunctions],
 });
 
 const server = http.createServer((req, res) => {
@@ -40,7 +41,7 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`[inngest] serving on :${PORT}/api/inngest`);
   console.log(`[inngest] registered functions:`);
-  for (const fn of federationFunctions) {
+  for (const fn of [...federationFunctions, ...crawlRefreshFunctions]) {
     console.log(`  - ${fn.id()}`);
   }
 });
