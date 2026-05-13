@@ -338,14 +338,9 @@ export function OpeningTreeSection({ platform, handle }: Props) {
               Cancel
             </button>
           ) : null}
-          {hasData ? (
-            <span className="text-xs text-muted-foreground">
-              {filteredGameCount.toLocaleString()} games match current filters
-            </span>
-          ) : null}
         </div>
 
-        <FetchProgressBar progress={progress} />
+        <FetchProgressBar progress={progress} filteredGameCount={filteredGameCount} />
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
           <div className="space-y-3">
