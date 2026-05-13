@@ -127,10 +127,23 @@ export async function ingestBatch(sql: postgres.Sql, batch: ProcessedGame[]): Pr
     }
 
     // ---- 4. Insert games -----------------------------------------------
-    const gameRows: GameInsertRow[] = batch.map((b) => ({
-      ...b.game,
-      played_at: b.game.played_at.toISOString(),
-    }));
+    // Sort by the UNIQUE-key columns (source, source_game_id, played_at) for
+    // the same reason positions get sorted: two concurrent workers ingesting
+    // overlapping games (e.g., Alice's archive of Alice-vs-Bob AND Bob's
+    // archive of the same game) hit the same unique-index entries. Without
+    // a consistent insertion order their lock acquisitions cycle. Sorting
+    // eliminates the cycle.
+    const gameRows: GameInsertRow[] = batch
+      .map((b) => ({
+        ...b.game,
+        played_at: b.game.played_at.toISOString(),
+      }))
+      .sort((a, b) => {
+        if (a.source !== b.source) return a.source < b.source ? -1 : 1;
+        if (a.source_game_id !== b.source_game_id)
+          return a.source_game_id < b.source_game_id ? -1 : 1;
+        return a.played_at < b.played_at ? -1 : a.played_at > b.played_at ? 1 : 0;
+      });
     const inserted = await tx<{ id: string; source_game_id: string }[]>`
       INSERT INTO games
         ${insert(
