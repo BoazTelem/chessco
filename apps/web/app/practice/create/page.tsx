@@ -1,0 +1,69 @@
+import Link from 'next/link';
+import { brand } from '@chessco/ui';
+import { requireUser } from '@/lib/auth';
+import { createClient } from '@/lib/supabase/server';
+import { ChesscoMark } from '@/lib/logo';
+import { CreatePositionForm } from '@/components/practice/CreatePositionForm';
+
+export const metadata = {
+  title: 'Practice — create a position',
+};
+
+// No page-level `revalidate`: getUser() reads cookies, mixing them with
+// revalidate breaks the logged-in/out toggle (same gotcha as /scout).
+
+export default async function PracticeCreatePage() {
+  const user = await requireUser();
+  const supabase = await createClient();
+
+  const { data: wallet } = await supabase
+    .from('wallets')
+    .select('available_cents')
+    .eq('profile_id', user.id)
+    .maybeSingle();
+
+  return (
+    <div className="min-h-screen">
+      <header className="border-b border-border bg-card/50">
+        <div className="container mx-auto flex items-center justify-between px-4 py-4">
+          <div className="flex items-center gap-2 text-sm">
+            <Link
+              href="/"
+              aria-label={brand.name}
+              className="inline-flex items-center gap-2 hover:opacity-80"
+            >
+              <ChesscoMark className="h-4 w-4 shrink-0" />
+              <span className="font-display font-semibold uppercase tracking-[0.3em] text-accent">
+                {brand.name}
+              </span>
+            </Link>
+            <span className="text-muted-foreground">/</span>
+            <Link href="/practice" className="text-muted-foreground hover:text-foreground">
+              Practice
+            </Link>
+            <span className="text-muted-foreground">/</span>
+            <span>Create</span>
+          </div>
+          <nav className="text-sm text-muted-foreground">
+            Wallet: ${((wallet?.available_cents ?? 0) / 100).toFixed(2)}
+          </nav>
+        </div>
+      </header>
+
+      <main className="container mx-auto max-w-4xl px-4 py-8">
+        <div className="mb-6 space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-accent">Practice</p>
+          <h1 className="font-display text-3xl font-bold tracking-tight md:text-4xl">
+            Create a position
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Set up any FEN, choose a time control and fee. Strong opponents will pick it up from the
+            lobby and play it against you.
+          </p>
+        </div>
+
+        <CreatePositionForm walletAvailableCents={wallet?.available_cents ?? 0} />
+      </main>
+    </div>
+  );
+}

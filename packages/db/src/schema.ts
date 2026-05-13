@@ -692,6 +692,28 @@ export const adminUsers = pgTable('admin_users', {
 });
 
 // ============================================================================
+// PRACTICE PREFERENCES (per-user board/sound/piece settings for live games)
+// ============================================================================
+
+export type BoardTheme = 'classic' | 'wood' | 'green' | 'blue' | 'gray';
+export type PieceSet = 'cburnett' | 'merida' | 'alpha' | 'staunton';
+
+export const userPracticePrefs = pgTable('user_practice_prefs', {
+  profileId: uuid('profile_id')
+    .primaryKey()
+    .references(() => profiles.id, { onDelete: 'cascade' }),
+  boardTheme: text('board_theme').$type<BoardTheme>().notNull().default('classic'),
+  pieceSet: text('piece_set').$type<PieceSet>().notNull().default('cburnett'),
+  soundEnabled: boolean('sound_enabled').notNull().default(true),
+  animationsEnabled: boolean('animations_enabled').notNull().default(true),
+  premovesEnabled: boolean('premoves_enabled').notNull().default(true),
+  autoPromoteQueen: boolean('auto_promote_queen').notNull().default(false),
+  showLegalMoves: boolean('show_legal_moves').notNull().default(true),
+  showCoordinates: boolean('show_coordinates').notNull().default(true),
+  updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+});
+
+// ============================================================================
 // INFERRED TYPES (handy aliases for app code)
 // ============================================================================
 
@@ -714,3 +736,5 @@ export type LedgerEntry = typeof ledgerEntries.$inferSelect;
 export type Rating = typeof ratings.$inferSelect;
 export type RefundRequest = typeof refundRequests.$inferSelect;
 export type FairplayFlag = typeof fairplayFlags.$inferSelect;
+export type UserPracticePrefs = typeof userPracticePrefs.$inferSelect;
+export type NewUserPracticePrefs = typeof userPracticePrefs.$inferInsert;

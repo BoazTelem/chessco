@@ -1,0 +1,43 @@
+# fly.toml — Fly.io app config for the realtime game server.
+#
+# Region: fra (Frankfurt) — same complex as the Supabase pooler at
+# aws-1-eu-central-1, so DB round-trips stay <5ms.
+#
+# Build context is the repo root (one level up from this file) because the
+# Dockerfile needs pnpm-workspace.yaml + @chessco/db.
+
+app = "chessco-realtime"
+primary_region = "fra"
+
+# Run all fly commands from the REPO ROOT so the build context includes
+# pnpm-workspace.yaml + packages/db (the workspace deps the Dockerfile copies).
+# Pass the Dockerfile path on the CLI to avoid path-resolution quirks:
+#   fly deploy --config apps/realtime/fly.toml --dockerfile apps/realtime/Dockerfile
+[build]
+
+[env]
+  PORT = "3001"
+  NODE_ENV = "production"
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  # Keep at least one machine warm — WS reconnects must succeed quickly.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/healthz"
+    timeout = "5s"
+
+# 256 MB is comfortable for a few hundred concurrent games. Bump to 512 MB
+# if you start hitting RSS limits when scaled.
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "256mb"
