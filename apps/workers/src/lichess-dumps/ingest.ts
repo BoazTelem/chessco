@@ -82,7 +82,13 @@ export async function ingestBatch(sql: postgres.Sql, batch: ProcessedGame[]): Pr
       }
     }
   }
-  const uniquePositions = [...positionByHash.values()];
+  // Sort by fen_hash so concurrent workers inserting overlapping positions
+  // acquire the unique-index locks in the same order — eliminates the
+  // deadlock cycles we were seeing once 2+ workers ran against this DB.
+  // Lexicographic sort is fine: any deterministic ordering prevents cycles.
+  const uniquePositions = [...positionByHash.values()].sort((a, b) =>
+    a.fen_hash < b.fen_hash ? -1 : a.fen_hash > b.fen_hash ? 1 : 0,
+  );
 
   return sql.begin(async (tx) => {
     // postgres-js v3.4 typings reject `string[]` as column keys and the
