@@ -12,10 +12,6 @@ export const revalidate = 86_400;
 
 export default async function HomePage() {
   const [user, stats] = await Promise.all([getUser(), getIndexStats()]);
-  const federations: string[] = ['FIDE'];
-  if (stats.uscf > 0) federations.push('USCF');
-  if (stats.icf > 0) federations.push('ICF');
-  const federationsLabel = federations.join(' + ');
 
   return (
     <main className="container mx-auto flex min-h-screen flex-col items-center px-4 py-16">
@@ -73,9 +69,7 @@ export default async function HomePage() {
             <span className="font-medium text-foreground">
               {stats.total.toLocaleString()} players indexed
             </span>{' '}
-            — {stats.federationTotal.toLocaleString()} OTB-rated ({federationsLabel}) plus{' '}
-            {stats.platformTotal.toLocaleString()} on chess.com and Lichess. Try the scout, no
-            sign-up needed.
+            — try the scout, no sign-up needed.
           </div>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             {user ? (
