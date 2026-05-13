@@ -1,11 +1,15 @@
 /**
  * Filter + ingest constants for the Lichess monthly dump worker.
- * Spec §5/PLAN.md Phase 1 W1: rated standard, Elo >= 1500, last 24 months.
+ * Spec §5/PLAN.md Phase 1 W1: rated standard, Elo >= 1200, last 24 months.
+ *
+ * Threshold lowered from 1500 → 1200 on 2026-05-13 as part of the
+ * comprehensive seed expansion plan: capture tournament-active players
+ * beyond the top tier.
  */
 
 export const FILTER = {
   /** Minimum of (WhiteElo, BlackElo). Both players must clear it. */
-  minElo: 1500,
+  minElo: 1200,
   /** Lichess Variant tag must equal this. */
   variant: 'Standard',
   /** PGN Event tag must include one of these (rated games only). */

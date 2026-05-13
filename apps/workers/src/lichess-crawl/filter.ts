@@ -13,7 +13,10 @@
 import type { PgnHeaders } from '../lichess-dumps/types';
 
 export const LICHESS_CRAWL_FILTER = {
-  minElo: 1500,
+  /** Both Elos must clear this. Lowered from 1500 → 1200 to capture
+   *  tournament-active players beyond the top tier (decision locked
+   *  2026-05-13, plan: comprehensive seed expansion). */
+  minElo: 1200,
   variant: 'Standard',
 } as const;
 

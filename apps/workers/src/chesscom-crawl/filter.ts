@@ -9,8 +9,11 @@
 import type { ChesscomArchiveGame } from '../lib/chesscom-api';
 
 export const CHESSCOM_FILTER = {
-  /** Both white.rating and black.rating must clear this. */
-  minElo: 1500,
+  /** Both white.rating and black.rating must clear this. Lowered from
+   *  1500 → 1000 to capture all tournament-active players, not just
+   *  the top tier (decision locked 2026-05-13, plan: comprehensive
+   *  seed expansion). */
+  minElo: 1000,
 } as const;
 
 export interface ChesscomFilterStats {
