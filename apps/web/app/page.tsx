@@ -52,14 +52,14 @@ export default async function HomePage() {
           <PillarTile
             index={2}
             title="Prepare against an opponent"
-            subtitle="You know their chess.com or Lichess account. Free opening tree — sign in for personalized leaks and surprise lines."
+            subtitle="You know their chess.com or Lichess account. Get a free opening tree. Sign in for personalized leaks and surprise lines."
             cta="Open prep"
             href="/prepare"
           />
           <PillarTile
             index={3}
             title="Practice from a position"
-            subtitle="Set up the position you want to drill on the board — or paste a FEN — pick a time class, and publish it with a per-game budget. A verified opponent plays it through with you. Or list yourself to help others prepare and earn per completed game."
+            subtitle="Set up the position you want to drill, or paste a FEN. Pick a time class and publish it with a per-game budget. A verified opponent plays it through with you. Or list yourself to help others prepare, and earn per completed game."
             badge="Coming soon"
           />
         </div>
@@ -67,9 +67,9 @@ export default async function HomePage() {
         <div className="flex flex-col items-center gap-3 text-sm">
           <div className="rounded-lg border border-border bg-card px-6 py-4 text-muted-foreground">
             <span className="font-medium text-foreground">
-              {stats.total.toLocaleString()} players indexed
+              {stats.total.toLocaleString()} players indexed.
             </span>{' '}
-            — try the scout, no sign-up needed.
+            Try the scout, no sign-up needed.
           </div>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             {user ? (
