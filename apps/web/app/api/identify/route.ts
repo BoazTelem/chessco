@@ -18,9 +18,11 @@ import { parsePgnToGameRows } from '@/lib/scout/pgn';
 import { rankBySampleGames, type Stage3Match } from '@/lib/scout/stage3';
 import { runStage2Cached } from '@/lib/scout/stage2';
 import {
-  generateEvidenceProse,
+  generateRerankProse,
+  type AiVerdict,
   type ProseCandidate,
   type ProseSubject,
+  type RerankResult,
 } from '@/lib/scout/evidence-prose';
 
 interface FederationPlayerLite {
@@ -162,8 +164,8 @@ export async function POST(req: Request): Promise<NextResponse> {
   }
 
   // ---- Persist top N as candidates ------------------------------------
-  const persisted = candidates.slice(0, MAX_CANDIDATES_PERSISTED);
-  const proseMap = await generateProseSafe(
+  const persistedAlgo = candidates.slice(0, MAX_CANDIDATES_PERSISTED);
+  const rerank = await generateRerankSafe(
     {
       name: stage2Input.name,
       country: stage2Input.country,
@@ -171,7 +173,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       title: stage2Input.title,
       via: 'name',
     },
-    persisted.map((c) => ({
+    persistedAlgo.map((c) => ({
       platform: c.platform,
       handle: c.handle,
       confidence: c.confidence,
@@ -181,6 +183,8 @@ export async function POST(req: Request): Promise<NextResponse> {
       reasons: c.reasons,
     })),
   );
+  const proseMap = rerank.prose;
+  const persisted = applyRerank(persistedAlgo, rerank.order);
   if (persisted.length > 0) {
     const rows = persisted.map((c, i) => ({
       query_id: queryId,
@@ -205,6 +209,10 @@ export async function POST(req: Request): Promise<NextResponse> {
     }
   }
 
+  // Persist the AI verdict on the query row's query_payload jsonb. Keeps
+  // us off a dedicated migration; the match page reads it from there.
+  await persistAiVerdict(supabase, queryId, rerank.verdict);
+
   await supabase
     .from('identification_queries')
     .update({ status: 'ready', completed_at: new Date().toISOString() })
@@ -213,17 +221,72 @@ export async function POST(req: Request): Promise<NextResponse> {
   return NextResponse.json({ query_id: queryId, candidate_count: persisted.length });
 }
 
-/** Fail-soft wrapper around generateEvidenceProse — never throws,
- *  returns empty map if anything goes wrong (no key, API down, etc.). */
-async function generateProseSafe(
+/** Fail-soft wrapper around generateRerankProse — never throws, returns
+ *  an empty RerankResult if anything goes wrong (no key, API down, JSON
+ *  parse failure). Callers always get a usable shape back. */
+async function generateRerankSafe(
   subject: ProseSubject,
   candidates: ProseCandidate[],
-): Promise<Map<string, string>> {
+): Promise<RerankResult> {
   try {
-    return await generateEvidenceProse(subject, candidates);
+    return await generateRerankProse(subject, candidates);
   } catch {
-    return new Map();
+    return { order: [], verdict: null, prose: new Map() };
   }
+}
+
+/**
+ * Persist the AI verdict on the identification_queries row's query_payload
+ * jsonb. Stores under `ai_verdict` key — the match page reads from there.
+ * No dedicated migration: query_payload is already jsonb and adding a key
+ * is forward-compatible. Silent on failure (the rest of the result is
+ * already persisted; the verdict is a nice-to-have).
+ */
+async function persistAiVerdict(
+  supabase: ReturnType<typeof createAdminClient>,
+  queryId: string,
+  verdict: AiVerdict | null,
+): Promise<void> {
+  if (!verdict) return;
+  const { data } = await supabase
+    .from('identification_queries')
+    .select('query_payload')
+    .eq('id', queryId)
+    .maybeSingle();
+  const existing =
+    data && (data as { query_payload?: Record<string, unknown> | null }).query_payload
+      ? (data as { query_payload: Record<string, unknown> }).query_payload
+      : {};
+  await supabase
+    .from('identification_queries')
+    .update({ query_payload: { ...existing, ai_verdict: verdict } })
+    .eq('id', queryId);
+}
+
+/** Re-order a persisted candidate array per the LLM's verdict order.
+ *  Falls back to the algorithmic order when the LLM didn't return one
+ *  or returned something unparseable. Candidates the LLM omitted from
+ *  its order get appended in their original positions at the end. */
+function applyRerank<T extends { platform: string; handle: string }>(
+  persisted: T[],
+  order: string[],
+): T[] {
+  if (order.length === 0) return persisted;
+  const byKey = new Map(persisted.map((c) => [`${c.platform}/${c.handle}`, c]));
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const k of order) {
+    const c = byKey.get(k);
+    if (c && !seen.has(k)) {
+      out.push(c);
+      seen.add(k);
+    }
+  }
+  for (const c of persisted) {
+    const k = `${c.platform}/${c.handle}`;
+    if (!seen.has(k)) out.push(c);
+  }
+  return out;
 }
 
 async function handleAdHocStage2(
@@ -282,10 +345,10 @@ async function handleAdHocStage2(
     );
   }
 
-  const persisted = candidates.slice(0, MAX_CANDIDATES_PERSISTED);
-  const proseMap = await generateProseSafe(
+  const persistedAlgo = candidates.slice(0, MAX_CANDIDATES_PERSISTED);
+  const rerank = await generateRerankSafe(
     { name: adHoc.name, country: adHoc.country, via: 'name' },
-    persisted.map((c) => ({
+    persistedAlgo.map((c) => ({
       platform: c.platform,
       handle: c.handle,
       confidence: c.confidence,
@@ -295,6 +358,8 @@ async function handleAdHocStage2(
       reasons: c.reasons,
     })),
   );
+  const proseMap = rerank.prose;
+  const persisted = applyRerank(persistedAlgo, rerank.order);
   if (persisted.length > 0) {
     const rows = persisted.map((c, i) => ({
       query_id: queryId,
@@ -316,6 +381,8 @@ async function handleAdHocStage2(
     const { error: candErr } = await supabase.from('identification_candidates').insert(rows);
     if (candErr) return NextResponse.json({ error: candErr.message }, { status: 500 });
   }
+
+  await persistAiVerdict(supabase, queryId, rerank.verdict);
 
   await supabase
     .from('identification_queries')
@@ -430,15 +497,22 @@ async function handleSamplePgn(
       `time-class ${(m.components.time_class * 100).toFixed(0)}%`,
       `opp-rating ${(m.components.opp_rating * 100).toFixed(0)}%`,
     ];
-    // Surface cp-loss reason only when both sides actually had cp-loss data —
-    // gaussianScalar returns 0 when either is null, which would otherwise
-    // produce a misleading "cp-loss 0%" line during the rolling backfill.
+    // Each of these terms can be 0 either because the signal genuinely
+    // disagrees OR because one side has no data yet (rolling backfill).
+    // We surface them only when non-zero to avoid misleading "0%" lines
+    // during partial-coverage windows.
+    if (m.components.move_seq_white > 0) {
+      r.push(`seq-W ${(m.components.move_seq_white * 100).toFixed(0)}%`);
+    }
+    if (m.components.move_seq_black > 0) {
+      r.push(`seq-B ${(m.components.move_seq_black * 100).toFixed(0)}%`);
+    }
     if (m.components.cp_loss > 0) {
       r.push(`cp-loss ${(m.components.cp_loss * 100).toFixed(0)}%`);
     }
     return r;
   };
-  const proseMap = await generateProseSafe(
+  const rerank = await generateRerankSafe(
     proseSubject,
     matches.map((m) => ({
       platform: m.platform as 'lichess' | 'chess.com',
@@ -450,9 +524,11 @@ async function handleSamplePgn(
       reasons: matchReasons(m),
     })),
   );
+  const proseMap = rerank.prose;
+  const reorderedMatches = applyRerank(matches, rerank.order);
 
-  if (matches.length > 0) {
-    const rows = matches.map((m, i) => ({
+  if (reorderedMatches.length > 0) {
+    const rows = reorderedMatches.map((m, i) => ({
       query_id: queryId,
       rank: i + 1,
       federation_player_id: anchorPlayer?.id ?? null,
@@ -479,6 +555,8 @@ async function handleSamplePgn(
     }
   }
 
+  await persistAiVerdict(supabase, queryId, rerank.verdict);
+
   await supabase
     .from('identification_queries')
     .update({ status: 'ready', completed_at: new Date().toISOString() })
@@ -486,7 +564,7 @@ async function handleSamplePgn(
 
   return NextResponse.json({
     query_id: queryId,
-    candidate_count: matches.length,
+    candidate_count: reorderedMatches.length,
     games_parsed: games.length,
   });
 }

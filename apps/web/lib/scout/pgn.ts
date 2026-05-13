@@ -154,6 +154,10 @@ export function parsePgnToGameRows(text: string, claimedHandle: string | null = 
 
     const tokens = tokenizeMoves(b.moveText);
     const board = new Chess();
+    // Capture first 12 plies in canonical SAN form (whatever chess.js emits
+    // back after legalising the move). Must match what features/run.ts does
+    // on the corpus side, or the cosine comparison won't match anything.
+    const movesSan: string[] = [];
     let plies = 0;
     let valid = true;
     for (const tok of tokens) {
@@ -164,6 +168,7 @@ export function parsePgnToGameRows(text: string, claimedHandle: string | null = 
           valid = false;
           break;
         }
+        if (movesSan.length < 12) movesSan.push(m.san);
         plies++;
       } catch {
         valid = false;
@@ -187,6 +192,7 @@ export function parsePgnToGameRows(text: string, claimedHandle: string | null = 
           ? Number.parseInt(h.WhiteElo, 10)
           : null,
       played_at: playedAt,
+      move_seq_prefix: movesSan.join(' '),
     });
   }
 

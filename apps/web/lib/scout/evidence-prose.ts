@@ -1,26 +1,27 @@
 /**
- * Turns the bullet-list "reasons" we already attach to each candidate into
- * a one-sentence English explanation, via a swappable LLM provider.
+ * LLM rerank + verdict + per-candidate prose, in a single batched call.
  *
- *   reasons: ["fuzzy match on 'gelfand'", "name match 57%", "country matches",
- *             "rating in band"]
- *   evidence_prose: "Israeli GM whose chess.com handle 'boris-gelfand'
- *     matches the name and country, with 2504 blitz consistent with his
- *     2635 FIDE rating."
+ * The algorithmic Stage 2/3 matcher produces a top-K ranked candidate list
+ * with per-component scores. This module hands that structured evidence to
+ * an LLM (DeepSeek by default; swappable via SCOUT_PROSE_PROVIDER) and
+ * asks it to do three things in one prompt:
+ *
+ *   1. **Re-rank** the candidates — synthesize the close calls the
+ *      algorithm couldn't resolve (e.g. "rank #2 has perfect ECO and
+ *      cp-loss match but rank #1 only wins on name; promote rank #2").
+ *   2. **Render a single overall verdict** — "best_match" handle +
+ *      confidence + one-paragraph reasoning. This becomes the headline
+ *      banner on the match-results page.
+ *   3. **Write per-candidate prose** — one English sentence per candidate
+ *      explaining why they are / aren't a likely match (same as before).
  *
  * Design:
- *   - LLM choice lives in `llm-providers.ts` (DeepSeek by default; flip
- *     SCOUT_PROSE_PROVIDER=anthropic for A/B). This file is engine-agnostic.
- *   - One batched call per identification query (15 candidates max).
- *   - Strict JSON-only output, keyed by `${platform}:${handle}` so we
- *     can map prose back to rows.
- *   - Graceful fallback: if no provider is configured or the API fails,
- *     return an empty map. The match page falls back to bullet reasons.
- *
- * Cost: ~2-3k output tokens per query × ~$0.27/M for DeepSeek-chat
- * ≈ $0.0008/query. Latency: ~1-2s. We add it after the candidates are
- * persisted with a status update, so the user can see results immediately
- * and the prose fills in on refresh.
+ *   - One round-trip per identification query (~$0.001 with DeepSeek-chat,
+ *     ~1-2s latency). Cheaper to do all three in one prompt than three.
+ *   - Fail-soft on every layer: missing API key, JSON parse failure, API
+ *     error → return empty RerankResult, caller falls back to algorithmic
+ *     order + bullet reasons.
+ *   - Provider-agnostic via getProseProvider().
  */
 import { getProseProvider } from './llm-providers';
 
@@ -47,16 +48,51 @@ export interface ProseCandidate {
   reasons: string[];
 }
 
-/** Returns a map keyed by `${platform}:${handle}` → English explanation. */
-export async function generateEvidenceProse(
+export interface AiVerdict {
+  /** "platform/handle" key of the LLM's chosen best match. */
+  best_match: string;
+  /** LLM's self-rated confidence in its best_match choice. */
+  confidence: 'high' | 'medium' | 'low';
+  /** One-paragraph English reasoning. Renders on the match page banner. */
+  reasoning: string;
+}
+
+export interface RerankResult {
+  /** LLM's reordering of candidates as "platform/handle" keys.
+   *  Empty array when the LLM didn't return a usable order; caller keeps
+   *  the algorithmic order in that case. May omit candidates the LLM
+   *  judged irrelevant. */
+  order: string[];
+  /** Overall verdict — null if the LLM didn't return one. */
+  verdict: AiVerdict | null;
+  /** Per-candidate prose, keyed by "platform/handle". */
+  prose: Map<string, string>;
+}
+
+/**
+ * Heuristic: should we even pay for the LLM call?
+ * - Skip when there are 0-1 candidates (nothing to rerank, nothing to judge).
+ * - Otherwise fire — the prose is valuable on every candidate, and rerank
+ *   only changes the order when the LLM disagrees with the algorithm
+ *   (which is rare for runaway top-1s but always shows up as a confidence
+ *   "high" verdict).
+ */
+export function shouldRerank(candidates: ProseCandidate[]): boolean {
+  return candidates.length >= 2;
+}
+
+/** Returns an empty result. Callers fall back to algorithmic ranking + bullets. */
+function emptyResult(): RerankResult {
+  return { order: [], verdict: null, prose: new Map() };
+}
+
+export async function generateRerankProse(
   subject: ProseSubject,
   candidates: ProseCandidate[],
-): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  if (candidates.length === 0) return out;
-
+): Promise<RerankResult> {
+  if (candidates.length === 0) return emptyResult();
   const provider = getProseProvider();
-  if (!provider) return out;
+  if (!provider) return emptyResult();
 
   const subjectLine = [
     subject.title,
@@ -79,7 +115,7 @@ export async function generateEvidenceProse(
       .join(', ');
     return [
       `[${i + 1}] ${c.platform}/${c.handle}`,
-      `    confidence: ${(c.confidence * 100).toFixed(0)}%`,
+      `    algorithmic_confidence: ${(c.confidence * 100).toFixed(0)}%`,
       c.country ? `    country: ${c.country}` : null,
       c.title ? `    title: ${c.title}` : null,
       ratingStr ? `    ratings: ${ratingStr}` : null,
@@ -91,39 +127,93 @@ export async function generateEvidenceProse(
 
   const viaPhrase =
     subject.via === 'sample_game'
-      ? 'from sample-game stylometric matching'
+      ? 'from sample-game stylometric matching (opening repertoire + play quality)'
       : 'from name + country + rating fuzzy search';
 
-  const prompt = `You're writing one-sentence evidence summaries for chess account match candidates.
+  const prompt = `You're judging which online chess account belongs to a known player. The algorithm has already produced ranked candidates with per-signal scores. Your job is to (a) synthesize the evidence holistically and decide the best match, (b) re-rank the candidates by your judgment, and (c) write one short English sentence per candidate explaining the verdict.
 
 SUBJECT: ${subjectLine || subject.name}
 MATCHING METHOD: ${viaPhrase}
 
-CANDIDATES (${candidates.length}):
+CANDIDATES (${candidates.length}, ranked by algorithm):
 ${lines.join('\n')}
 
-For each candidate, write ONE concise sentence (≤25 words) explaining why we think this might or might not be the subject's online account. Reference specific signals from the list (country, title alignment, rating-band, name vs handle similarity, etc.). Be honest about weak matches.
+Reasoning guidelines:
+- Strong name + country match dominates when present. ECO/opening-sequence overlap is highly identifying; cp-loss disagreement with claimed rating (e.g. claimed GM but cp-loss 100) is a red flag for fake accounts.
+- When the algorithm's top candidate is a runaway leader, agree with it. When the top 2-3 are close, use the structured signals to break the tie.
+- Be honest about weak matches. If nothing looks right, set verdict.confidence = "low" and explain why.
 
-Return strict JSON only, in this exact shape — no prose, no markdown:
+Return STRICT JSON in this exact shape — no prose outside the JSON, no markdown:
+
 {
-  "lichess/handlename": "Sentence here.",
-  "chess.com/another": "Sentence here."
+  "verdict": {
+    "best_match": "<platform>/<handle>",
+    "confidence": "high" | "medium" | "low",
+    "reasoning": "One paragraph synthesizing why this is the best match (or why no match is confident)."
+  },
+  "order": ["<platform>/<handle>", "<platform>/<handle>", ...],
+  "prose": {
+    "<platform>/<handle>": "One concise sentence (≤25 words) explaining this candidate.",
+    "<platform>/<handle>": "..."
+  }
 }
 
-Use the exact "platform/handle" keys from the candidates above.`;
+Use the exact "platform/handle" keys from the candidates list above. Order must include every candidate, best first. Prose must include one entry per candidate.`;
 
   try {
-    const text = await provider.generate({ prompt, maxTokens: 2000 });
+    const text = await provider.generate({ prompt, maxTokens: 2500 });
     const parsed = extractJsonObject(text);
-    if (parsed) {
-      for (const [k, v] of Object.entries(parsed)) {
-        if (typeof v === 'string') out.set(k, v);
+    if (!parsed) return emptyResult();
+
+    const out = emptyResult();
+
+    // Prose extraction
+    const proseRaw = parsed['prose'];
+    if (proseRaw && typeof proseRaw === 'object') {
+      for (const [k, v] of Object.entries(proseRaw as Record<string, unknown>)) {
+        if (typeof v === 'string') out.prose.set(k, v);
       }
     }
+
+    // Order extraction
+    const orderRaw = parsed['order'];
+    if (Array.isArray(orderRaw)) {
+      const validKeys = new Set(candidates.map((c) => `${c.platform}/${c.handle}`));
+      for (const o of orderRaw) {
+        if (typeof o === 'string' && validKeys.has(o)) out.order.push(o);
+      }
+    }
+
+    // Verdict extraction — defensive against missing fields.
+    const vRaw = parsed['verdict'];
+    if (vRaw && typeof vRaw === 'object') {
+      const v = vRaw as Record<string, unknown>;
+      const bm = v.best_match;
+      const cf = v.confidence;
+      const rs = v.reasoning;
+      if (
+        typeof bm === 'string' &&
+        (cf === 'high' || cf === 'medium' || cf === 'low') &&
+        typeof rs === 'string'
+      ) {
+        out.verdict = { best_match: bm, confidence: cf, reasoning: rs };
+      }
+    }
+
+    return out;
   } catch {
-    // Fail-soft: return whatever we have (likely empty).
+    return emptyResult();
   }
-  return out;
+}
+
+/** Legacy wrapper for code paths that only want the prose map.
+ *  New code should call `generateRerankProse` directly. */
+export async function generateEvidenceProse(
+  subject: ProseSubject,
+  candidates: ProseCandidate[],
+): Promise<Map<string, string>> {
+  const result = await generateRerankProse(subject, candidates);
+  return result.prose;
 }
 
 /** Find the first `{ ... }` block in the text and JSON.parse it.

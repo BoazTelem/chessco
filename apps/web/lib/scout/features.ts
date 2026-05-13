@@ -18,6 +18,10 @@ export interface PlayerFeaturesV0 {
   draws_as_black: number;
   eco_white: Record<string, number>;
   eco_black: Record<string, number>;
+  /** First 12 plies SAN, frequency-counted per color. Phase 1 W5 v3 —
+   *  sharper than ECO bucket overlap. See workers/src/features/types.ts. */
+  move_seq_white?: Record<string, number>;
+  move_seq_black?: Record<string, number>;
   time_class: Record<string, number>;
   termination: Record<string, number>;
   avg_ply_count: number;
@@ -49,6 +53,8 @@ export interface GameRow {
   mean_cp_loss_black?: number | null;
   blunder_count?: number | null;
   plies_analyzed?: number | null;
+  /** First 12 SAN plies, joined by single space (Phase 1 W5 v3). */
+  move_seq_prefix?: string;
 }
 
 export function extractFeaturesV0(games: GameRow[]): PlayerFeaturesV0 {
@@ -63,6 +69,8 @@ export function extractFeaturesV0(games: GameRow[]): PlayerFeaturesV0 {
   let drawB = 0;
   const ecoW: Record<string, number> = {};
   const ecoB: Record<string, number> = {};
+  const seqW: Record<string, number> = {};
+  const seqB: Record<string, number> = {};
   const timeClass: Record<string, number> = {};
   const termination: Record<string, number> = {};
   let plySum = 0;
@@ -82,18 +90,21 @@ export function extractFeaturesV0(games: GameRow[]): PlayerFeaturesV0 {
   let blunderCount = 0;
 
   for (const g of games) {
+    const seq = g.move_seq_prefix && g.move_seq_prefix.length > 0 ? g.move_seq_prefix : null;
     if (g.color === 'white') {
       asW++;
       if (g.result === '1-0') winW++;
       else if (g.result === '0-1') lossW++;
       else drawW++;
       if (g.opening_eco) ecoW[g.opening_eco] = (ecoW[g.opening_eco] ?? 0) + 1;
+      if (seq) seqW[seq] = (seqW[seq] ?? 0) + 1;
     } else {
       asB++;
       if (g.result === '0-1') winB++;
       else if (g.result === '1-0') lossB++;
       else drawB++;
       if (g.opening_eco) ecoB[g.opening_eco] = (ecoB[g.opening_eco] ?? 0) + 1;
+      if (seq) seqB[seq] = (seqB[seq] ?? 0) + 1;
     }
     if (g.time_class) timeClass[g.time_class] = (timeClass[g.time_class] ?? 0) + 1;
     if (g.termination) {
@@ -142,6 +153,8 @@ export function extractFeaturesV0(games: GameRow[]): PlayerFeaturesV0 {
     draws_as_black: drawB,
     eco_white: ecoW,
     eco_black: ecoB,
+    move_seq_white: seqW,
+    move_seq_black: seqB,
     time_class: timeClass,
     termination,
     avg_ply_count: total > 0 ? plySum / total : 0,

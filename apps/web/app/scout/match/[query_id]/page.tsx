@@ -14,6 +14,13 @@ export const metadata = {
   title: 'Identification results',
 };
 
+interface AiVerdict {
+  /** "platform/handle" key of the LLM's chosen best match. */
+  best_match: string;
+  confidence: 'high' | 'medium' | 'low';
+  reasoning: string;
+}
+
 interface IdentificationQuery {
   id: string;
   status: 'pending' | 'ready' | 'failed';
@@ -27,6 +34,8 @@ interface IdentificationQuery {
     title?: string | null;
     /** When the query was a pure sample-game paste with no FIDE anchor. */
     games_pasted?: number;
+    /** Set by /api/identify when LLM rerank produced a verdict. */
+    ai_verdict?: AiVerdict | null;
   };
   created_at: string;
   completed_at: string | null;
@@ -186,6 +195,9 @@ export default async function MatchPage({ params }: { params: Promise<{ query_id
 
         {query.status === 'ready' && candidates && candidates.length > 0 && (
           <section className="mt-8 space-y-3">
+            {query.query_payload.ai_verdict && (
+              <AiVerdictBanner verdict={query.query_payload.ai_verdict} />
+            )}
             <DiscriminationNote candidates={candidates} />
             <p className="text-xs text-muted-foreground">
               Showing top {candidates.length}. Confidence is computed from handle similarity,
@@ -249,6 +261,43 @@ function getSampleGameFallbackInsertionIndex(candidates: Candidate[]): number {
  * Also surfaces when nothing reaches the "medium" confidence floor — the
  * search is grasping; honest about it.
  */
+/**
+ * AI verdict banner — renders the LLM rerank's overall judgment above the
+ * candidate cards. Only shown when /api/identify wrote one to
+ * query_payload.ai_verdict (i.e., the LLM had a usable response).
+ *
+ * The verdict is the LLM's synthesis of name + country + rating + opening
+ * fingerprint + cp-loss; it can override the algorithmic top-1 when the
+ * close-call breakers (e.g., GM with cp-loss 100 = unlikely) point the
+ * other way.
+ */
+function AiVerdictBanner({ verdict }: { verdict: AiVerdict }) {
+  const color =
+    verdict.confidence === 'high'
+      ? 'border-emerald-500/40 bg-emerald-500/5 text-emerald-500'
+      : verdict.confidence === 'medium'
+        ? 'border-amber-500/40 bg-amber-500/5 text-amber-500'
+        : 'border-rose-500/40 bg-rose-500/5 text-rose-500';
+  return (
+    <div className={`rounded-lg border ${color.split(' ').slice(0, 2).join(' ')} p-4`}>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent">
+          AI verdict
+        </p>
+        <p
+          className={`text-xs font-semibold uppercase tracking-wider ${color.split(' ').slice(2).join(' ')}`}
+        >
+          {verdict.confidence} confidence
+        </p>
+      </div>
+      <p className="mt-2 font-display text-base font-semibold tracking-tight text-foreground">
+        Best match: <span className="font-mono text-accent">{verdict.best_match}</span>
+      </p>
+      <p className="mt-2 text-sm leading-relaxed text-foreground/90">{verdict.reasoning}</p>
+    </div>
+  );
+}
+
 function DiscriminationNote({ candidates }: { candidates: Candidate[] }) {
   if (candidates.length === 0) return null;
   const top = candidates.slice(0, 5).map((c) => c.combined_score);

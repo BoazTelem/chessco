@@ -31,6 +31,16 @@ export interface PlayerFeaturesV0 {
   eco_white: Record<string, number>;
   eco_black: Record<string, number>;
 
+  // ---- opening move-sequence fingerprint (Phase 1 W5 v3) ----
+  // SnoopChess's headline feature is opening-% match at the ECO level. We
+  // sharpen that to first-12-plies — Gelfand's exact Najdorf line is a
+  // different key than another B90 player's, even though both classify
+  // as B90. Keys are SAN moves joined by single spaces.
+  /** First 12 plies SAN of games played as White (frequency-counted). */
+  move_seq_white?: Record<string, number>;
+  /** First 12 plies SAN of games played as Black (frequency-counted). */
+  move_seq_black?: Record<string, number>;
+
   // ---- time-control preference ----
   /** time_class → games at that pace. {"bullet": 30, "blitz": 50, "rapid": 7}. */
   time_class: Record<string, number>;

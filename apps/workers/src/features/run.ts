@@ -21,9 +21,32 @@
  *   pnpm --filter @chessco/workers features:run --handle gelfand   # match across platforms
  */
 import 'dotenv/config';
+import { Chess } from 'chess.js';
 import type postgres from 'postgres';
 import { getGamesDb } from '../db';
 import { extractFeaturesV0, type GameRow } from './extract';
+
+/** Number of plies captured for the opening fingerprint key. 12 = 6 full
+ *  moves each side. Short enough that pet lines repeat; long enough that
+ *  random transpositions don't collide. Matches the web pgn parser. */
+const MOVE_SEQ_PLY_COUNT = 12;
+
+/** Parse a PGN's first N plies into a SAN sequence joined by single space.
+ *  Returns empty string when the PGN is missing or unparseable — the
+ *  aggregator ignores empty sequences. Reused for every game; chess.js is
+ *  cheap (~0.2ms per game on first N moves). */
+function pgnToMoveSeqPrefix(pgn: string | null, plyCount = MOVE_SEQ_PLY_COUNT): string {
+  if (!pgn || pgn.length === 0) return '';
+  const chess = new Chess();
+  try {
+    chess.loadPgn(pgn, { strict: false });
+  } catch {
+    return '';
+  }
+  const history = chess.history();
+  if (history.length === 0) return '';
+  return history.slice(0, plyCount).join(' ');
+}
 
 type Source = 'lichess' | 'chess.com';
 
@@ -76,6 +99,7 @@ interface RawGameRow {
   mean_cp_loss_black: string | null;
   blunder_count: number | null;
   plies_analyzed: number | null;
+  pgn: string | null;
 }
 
 /** postgres-js returns numeric columns as strings. Cast safely. */
@@ -116,7 +140,8 @@ async function main() {
             white_rating, black_rating,
             result, time_class, opening_eco, ply_count, termination, played_at,
             mean_cp_loss, mean_cp_loss_white, mean_cp_loss_black,
-            blunder_count, plies_analyzed
+            blunder_count, plies_analyzed,
+            pgn
           FROM games
           WHERE source IN ${sourceList}
             AND (LOWER(white_handle_snapshot) = ${args.filterHandle}
@@ -128,7 +153,8 @@ async function main() {
             white_rating, black_rating,
             result, time_class, opening_eco, ply_count, termination, played_at,
             mean_cp_loss, mean_cp_loss_white, mean_cp_loss_black,
-            blunder_count, plies_analyzed
+            blunder_count, plies_analyzed,
+            pgn
           FROM games
           WHERE source IN ${sourceList}
         `);
@@ -137,12 +163,20 @@ async function main() {
     );
 
     // ---- 2. Group by (platform, handle) --------------------------------
+    // We parse the first MOVE_SEQ_PLY_COUNT plies once per game (not per
+    // color) — the move sequence is the same regardless of which side's
+    // GameRow we're building, so both sides reuse the same parsed prefix.
     const byHandle = new Map<string, GameRow[]>();
+    let seqParsed = 0;
+    let seqEmpty = 0;
     for (const r of rows) {
       const playedAt = new Date(r.played_at);
       const meanCp = numOrNull(r.mean_cp_loss);
       const meanCpW = numOrNull(r.mean_cp_loss_white);
       const meanCpB = numOrNull(r.mean_cp_loss_black);
+      const moveSeq = pgnToMoveSeqPrefix(r.pgn);
+      if (moveSeq.length > 0) seqParsed++;
+      else seqEmpty++;
       if (r.white_handle_snapshot) {
         const k = groupKey(r.source, r.white_handle_snapshot.toLowerCase());
         const list = byHandle.get(k) ?? [];
@@ -160,6 +194,7 @@ async function main() {
           mean_cp_loss_black: meanCpB,
           blunder_count: r.blunder_count,
           plies_analyzed: r.plies_analyzed,
+          move_seq_prefix: moveSeq,
         });
         byHandle.set(k, list);
       }
@@ -180,10 +215,14 @@ async function main() {
           mean_cp_loss_black: meanCpB,
           blunder_count: r.blunder_count,
           plies_analyzed: r.plies_analyzed,
+          move_seq_prefix: moveSeq,
         });
         byHandle.set(k, list);
       }
     }
+    console.log(
+      `[features] parsed move-seq prefix for ${seqParsed.toLocaleString()} games (${seqEmpty.toLocaleString()} had no pgn)`,
+    );
     const breakdown = countBySource(byHandle);
     console.log(
       `[features] grouped into ${byHandle.size.toLocaleString()} (platform, handle) pairs ` +
