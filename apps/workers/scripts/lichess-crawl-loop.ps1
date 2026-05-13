@@ -42,18 +42,17 @@ $null = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action {
     $script:stopFlag = $true
 }
 
-Write-Log "loop start — worker=$WorkerId rate=${RateMs}ms months_back=$MonthsBack idle=${IdleSleepSec}s exit_when_empty=$ExitWhenEmpty"
+Write-Log "loop start - worker=$WorkerId rate=${RateMs}ms months_back=$MonthsBack idle=${IdleSleepSec}s exit_when_empty=$ExitWhenEmpty"
 
 Push-Location $RepoRoot
 try {
     $iteration = 0
     while (-not $stopFlag) {
         $iteration++
-        Write-Log "iteration $iteration: spawning crawler"
+        Write-Log "iteration ${iteration}: spawning crawler"
 
         $crawlerArgs = @(
             '--filter', '@chessco/workers', 'lichess:crawl',
-            '--',
             '--rate-ms', "$RateMs",
             '--months-back', "$MonthsBack",
             '--idle-sleep-sec', "$IdleSleepSec",
@@ -64,18 +63,18 @@ try {
         & pnpm @crawlerArgs
 
         $exit = $LASTEXITCODE
-        Write-Log "iteration $iteration: crawler exited code=$exit"
+        Write-Log "iteration ${iteration}: crawler exited code=$exit"
 
         if ($exit -eq 0) {
             if ($ExitWhenEmpty) {
-                Write-Log "queue drained — loop terminating."
+                Write-Log "queue drained - loop terminating."
                 break
             }
             Start-Sleep -Seconds 5
             continue
         }
 
-        Write-Log "non-zero exit — backing off $BackoffSec s before restart."
+        Write-Log "non-zero exit - backing off $BackoffSec s before restart."
         Start-Sleep -Seconds $BackoffSec
     }
 } finally {
