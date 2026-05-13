@@ -878,6 +878,29 @@ Learned embedding: a small transformer encoder ingests a sequence of game-level 
 
 Given the user's own player record and a target opponent's player record, produce a usable battle plan.
 
+### Positioning
+
+Reference product: **openingtree.com** — the base opening-tree view of an opponent's games is the demo wedge and is free for everyone, signed in or not. Chessco's differentiator is **leak detection correlated against the user's imported repertoire** ("openingtree++"): positions the opponent has scored poorly from that the user can plausibly steer into, plus "off-guard" line suggestions both inside and outside the user's existing repertoire. Leak correlation and off-guard suggestions require sign-in — they read the user's own games, which only exist after the Phase 0 import flow.
+
+### Entry points
+
+A prep view can be reached two ways:
+
+1. **Post-Scout (existing).** User has gone through `/scout` → `/scout/match/[query_id]`, confirmed an `external_account`, and clicks "Build prep report." This path is seeded with a verified federation anchor and a confidence-ranked online handle.
+2. **Direct via `/prepare`.** User already knows the opponent's chess.com or Lichess handle and skips Scout entirely. They paste `handle + platform`. The server runs lightweight handle verification (a single call to `probeChesscomOne` / `probeLichess` from `apps/web/lib/scout/lazy-probe.ts`) before queueing the prep job. A successful probe upserts the handle into `platform_players` so subsequent Scout queries hit the cache. A failed probe surfaces an inline "We couldn't find that handle" error and never queues a job.
+
+The two entry points produce the same `PrepReport` shape; the only difference is the seed — post-Scout brings a federation anchor (richer leak context), direct entry brings only the handle.
+
+### Gating
+
+| Tier            | Opening tree | One sample leak | Full 3a + 3b | PDF / PGN export |
+| --------------- | ------------ | --------------- | ------------ | ---------------- |
+| Logged out      | ✅           | ❌              | ❌           | ❌               |
+| Logged in, free | ✅           | ✅              | ❌           | ❌               |
+| Subscriber      | ✅           | ✅              | ✅           | ✅               |
+
+The free-tier "one sample leak" exists to give signed-in non-paying users a concrete feel of what the subscription unlocks — picked deterministically (highest severity) so the upsell is honest.
+
 ### Output shape
 
 ```
@@ -919,7 +942,10 @@ Each leak gets a severity score combining: position frequency × score gap × cp
 
 **Step 3 — Generate recommended lines.**
 
-Walk forward from each detected leak and produce 2–4 concrete recommended move sequences. Annotate each move with: engine eval, frequency in master games, and opponent's likely response.
+Walk forward from each detected leak and produce 2–4 concrete recommended move sequences. Annotate each move with: engine eval, frequency in master games, and opponent's likely response. Recommended lines split into two named buckets:
+
+- **3a. In-repertoire counter-lines.** Sequences inside the user's existing repertoire (derived from their imported games) that steer into one or more detected leaks. These are the safe defaults — the user already knows how to play them, so the surprise weapon is "you've prepped this exact tabiya, your opponent has flunked it." Label each with `repertoire_match: true`, the user's prior score in the surrounding line, and which leak(s) it activates.
+- **3b. Off-guard suggestions.** 2–3 "consider learning this" lines _outside_ the user's repertoire, surfaced only when leak severity ≥ a threshold (default: top quartile of detected leaks for this opponent) AND the line is well-trodden enough in master games (≥ N master games played from the position) that the user can learn it in an evening. These are explicit surprise weapons. Label each with `repertoire_match: false`, master frequency, expected score, and one-line learn-cost commentary ("4–6 critical lines to memorize"). Capped at 3 so we never recommend a full new opening system per opponent.
 
 **Step 4 — Select practice positions.**
 

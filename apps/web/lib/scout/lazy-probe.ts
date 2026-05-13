@@ -53,7 +53,7 @@ async function fetchChesscomJson<T>(path: string, signal: AbortSignal): Promise<
   }
 }
 
-async function probeChesscomOne(handle: string): Promise<ProbeHit | null> {
+export async function probeChesscomOne(handle: string): Promise<ProbeHit | null> {
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), CHESSCOM_PROBE_TIMEOUT_MS);
   try {
@@ -110,7 +110,7 @@ function lichessRatingFromPerf(perf?: { rating?: number; prov?: boolean }): numb
  * to 300 IDs and returns JSON for those that exist. No auth needed. One
  * request handles the full synthesis batch.
  */
-async function probeLichess(handles: string[]): Promise<ProbeHit[]> {
+export async function probeLichess(handles: string[]): Promise<ProbeHit[]> {
   if (handles.length === 0) return [];
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), LICHESS_PROBE_TIMEOUT_MS);
@@ -163,7 +163,7 @@ function normalizeClaimedName(s: string | null): string | null {
  * `pulled_via='lazy'` is the marker for "discovered via name probe at
  * identify time" — distinct from country/titled bulk pulls.
  */
-async function upsertProbeHits(
+export async function upsertProbeHits(
   supabase: ReturnType<typeof createAdminClient>,
   hits: ProbeHit[],
 ): Promise<void> {
