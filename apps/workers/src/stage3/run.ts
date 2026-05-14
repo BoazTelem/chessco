@@ -28,13 +28,16 @@
  */
 import 'dotenv/config';
 import { readFile } from 'node:fs/promises';
-import { Readable } from 'node:stream';
+import { Chess } from 'chess.js';
 import { getGamesDb } from '../db';
 import { extractFeaturesV0, type GameRow } from '../features/extract';
-import { streamGames } from '../lichess-dumps/pgn-stream';
-import { processGame } from '../lichess-dumps/parse-game';
 import { getProseProvider } from '../scout/llm-providers';
+import { parsePgnToGameRows } from '../scout/pgn';
 import { rankFingerprints, type Stage3Match } from './match';
+
+/** Must match features/run.ts pgnToMoveSeqPrefix N — keys would otherwise
+ *  not collide between the target and stored fingerprints. */
+const MOVE_SEQ_PLY_COUNT = 12;
 
 interface CliArgs {
   mode: 'self' | 'self-sample' | 'pgn';
@@ -105,11 +108,30 @@ function sampleN<T>(arr: T[], n: number, seed: number): T[] {
   return idx.slice(idx.length - n).map((i) => arr[i]!);
 }
 
+/** Parse first MOVE_SEQ_PLY_COUNT plies SAN from a stored PGN. Empty when
+ *  PGN is missing or unparseable. Mirrors features/run.ts so the keys here
+ *  match what the corpus extractor produced. */
+function pgnToMoveSeqPrefix(pgn: string | null, n = MOVE_SEQ_PLY_COUNT): string {
+  if (!pgn || pgn.length === 0) return '';
+  const chess = new Chess();
+  try {
+    chess.loadPgn(pgn, { strict: false });
+  } catch {
+    return '';
+  }
+  const history = chess.history();
+  if (history.length === 0) return '';
+  return history.slice(0, n).join(' ');
+}
+
 async function loadSelfGames(
   sql: ReturnType<typeof getGamesDb>['client'],
   platform: string,
   handle: string,
 ): Promise<GameRow[]> {
+  // Pull pgn alongside the scalar columns so we can populate move_seq_prefix
+  // for the target — without it, the matcher's two seq components evaluate
+  // to 0 and a self-test scores ~0.54 instead of ~1.0.
   const rows = await sql<
     {
       white_handle_snapshot: string | null;
@@ -122,11 +144,12 @@ async function loadSelfGames(
       ply_count: number;
       termination: string | null;
       played_at: string;
+      pgn: string | null;
     }[]
   >`
     SELECT
       white_handle_snapshot, black_handle_snapshot, white_rating, black_rating,
-      result, time_class, opening_eco, ply_count, termination, played_at
+      result, time_class, opening_eco, ply_count, termination, played_at, pgn
     FROM games
     WHERE source = ${platform}
       AND (LOWER(white_handle_snapshot) = ${handle} OR LOWER(black_handle_snapshot) = ${handle})
@@ -143,37 +166,25 @@ async function loadSelfGames(
       termination: r.termination,
       opponent_rating: isWhite ? r.black_rating : r.white_rating,
       played_at: playedAt,
+      move_seq_prefix: pgnToMoveSeqPrefix(r.pgn),
     };
   });
 }
 
+/**
+ * Load + parse a PGN file from any source (lichess / chess.com / TWIC /
+ * pgnmentor / OTB tournament export). Uses the shared parsePgnToGameRows
+ * which infers the target handle from the most-common name across the
+ * paste (or accepts an explicit claim).
+ *
+ * Previously this called the lichess-dumps parser, which required a
+ * lichess.org Site header and rejected every other source. It also
+ * defaulted unclaimed games to White and never populated move_seq_prefix
+ * — both fixed here.
+ */
 async function loadPgnFile(pgnPath: string, claimedHandle: string | null): Promise<GameRow[]> {
   const text = await readFile(pgnPath, 'utf8');
-  const stream = Readable.from([text]);
-  const out: GameRow[] = [];
-
-  for await (const parsed of streamGames(stream)) {
-    const processed = processGame(parsed);
-    if (!processed) continue;
-    const h = parsed.headers;
-    const white = (h.White ?? '').toLowerCase();
-    // For sample-game mode, decide which side is the target. If a
-    // claimedHandle is given, use it. Otherwise: default to White.
-    const targetIsWhite = claimedHandle ? white === claimedHandle : true;
-    const result = processed.game.result;
-    if (result === '*') continue; // unfinished game — skip
-    out.push({
-      color: targetIsWhite ? 'white' : 'black',
-      result,
-      time_class: processed.game.time_class,
-      opening_eco: processed.game.opening_eco,
-      ply_count: processed.game.ply_count,
-      termination: processed.game.termination,
-      opponent_rating: targetIsWhite ? processed.game.black_rating : processed.game.white_rating,
-      played_at: processed.game.played_at,
-    });
-  }
-  return out;
+  return parsePgnToGameRows(text, claimedHandle);
 }
 
 async function main() {
