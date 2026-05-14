@@ -1,13 +1,39 @@
 /**
- * Web-side Stage 3 matcher.
+ * Web-side Stage 3 matcher — sparse cascade retrieval (v4).
  *
- * Mirror of apps/workers/src/stage3/match.ts — duplicated rather than
- * cross-app imported, but kept logically identical. When the algorithm
- * evolves both copies should change together (W4.5 Stockfish features
- * will hit both files).
+ * Pipeline (per PGN-upload query):
+ *
+ *   Stage A — SQL prefilter on account_fingerprints
+ *     · games_window >= minGames (always)
+ *     · median_rating BETWEEN target±400 (only when target has rating data)
+ *
+ *   Stage B — Sparse inverted-index retrieval on fingerprint_terms
+ *     · Project target features → weighted term list (ECO, move-seq, time)
+ *     · Apply kind weights mirroring the combined-score formula
+ *     · SUM(stored.weight × query.weight × kind_weight) per handle
+ *     · Top 2,000 by retrieval_score
+ *
+ *   Stage C — Re-rank with the existing combined-score formula
+ *     · Fetch scalar_summary for the top 2,000 (jsonb_summary already has V0)
+ *     · compareFingerprints() weighs cosine(eco_w, eco_b, seq_w, seq_b, tc) +
+ *       gaussian(opp_rating, cp_loss). Sort by combined_score, return top-K.
+ *
+ * Stage D (LLM rerank + verdict + per-candidate prose via DeepSeek) is
+ * handled by `generateRerankProse` in evidence-prose.ts — already wired,
+ * fail-soft, env-controlled via SCOUT_PROSE_PROVIDER.
+ *
+ * Mirror of apps/workers/src/stage3/match.ts — both copies must stay in
+ * sync. The sparse cascade replaced the linear-scan v3 matcher when the
+ * sparse fingerprint storage landed (migration 0010_account_fingerprints).
  */
 import { getGamesDb } from '@/lib/games-db';
-import { extractFeaturesV0, type GameRow, type PlayerFeaturesV0 } from './features';
+import {
+  extractFeaturesV0,
+  extractFingerprintTerms,
+  type FingerprintTerm,
+  type GameRow,
+  type PlayerFeaturesV0,
+} from './features';
 
 export interface Stage3Match {
   player_id: string;
@@ -15,6 +41,8 @@ export interface Stage3Match {
   handle: string;
   games_window: number;
   combined_score: number;
+  /** Sparse-retrieval score from Stage B — useful for diagnostics. */
+  retrieval_score: number;
   components: {
     eco_white: number;
     eco_black: number;
@@ -25,6 +53,22 @@ export interface Stage3Match {
     cp_loss: number;
   };
 }
+
+/** Re-rank kind weights for Stage B sparse retrieval. Mirrors the histogram
+ *  half of the combined-score formula so retrieval ordering pre-shapes the
+ *  candidate pool toward what Stage C will eventually pick. opp_rating and
+ *  cp_loss aren't terms (they're scalars), so their 0.20 of total weight is
+ *  applied only at Stage C. */
+const KIND_WEIGHTS: Record<FingerprintTerm['kind'], number> = {
+  eco_w: 0.18,
+  eco_b: 0.18,
+  seq_w: 0.18,
+  seq_b: 0.18,
+  tc: 0.08,
+};
+
+const STAGE_B_CANDIDATE_CAP = 2000;
+const RATING_BAND = 400;
 
 function cosineSparse(a: Record<string, number>, b: Record<string, number>): number {
   let dot = 0;
@@ -84,33 +128,113 @@ export async function rankBySampleGames(
   const topK = opts.topK ?? 15;
   const minGames = opts.minGamesWindow ?? 10;
   const target = extractFeaturesV0(games);
+  const targetTerms = extractFingerprintTerms(target);
+
+  // Empty target → no signal to retrieve against. Bail cleanly so the
+  // caller can fall back to bullet reasons or "insufficient evidence".
+  if (targetTerms.length === 0) {
+    return { target, matches: [] };
+  }
 
   const sql = getGamesDb();
-  type Row = {
-    player_id: string;
-    features: PlayerFeaturesV0 | string;
-    games_window: number;
+
+  // ---- Build the query-terms JSONB payload ---------------------------
+  // Each query term carries its pre-multiplied weight (term_freq × kind_weight)
+  // so Stage B's SUM is a pure dot product on the Postgres side.
+  const queryPayload = targetTerms.map((t) => ({
+    kind: t.kind,
+    term: t.term,
+    qweight: t.weight * (KIND_WEIGHTS[t.kind] ?? 0),
+  }));
+  const queryPayloadJson = JSON.stringify(queryPayload);
+
+  // ---- Stage A + B: prefilter and sparse retrieval in one query ------
+  // We split the rating filter into "applied" vs "skipped" branches because
+  // postgres-js doesn't compose `WHERE` fragments cleanly; the duplication is
+  // worth the simplicity. median_rating IS NULL is kept inclusive so handles
+  // whose own rating signal hasn't been computed yet still surface.
+  const targetRating =
+    target.avg_opponent_rating === null ? null : Math.round(target.avg_opponent_rating);
+
+  type RetrievalRow = { handle_id: string; retrieval_score: string };
+  const ranked = await (targetRating === null
+    ? sql<RetrievalRow[]>`
+        WITH query_terms AS (
+          SELECT (val->>'kind')::text AS kind,
+                 (val->>'term')::text AS term,
+                 (val->>'qweight')::real AS qweight
+          FROM jsonb_array_elements(${queryPayloadJson}::jsonb) AS val
+        )
+        SELECT af.handle_id::text AS handle_id,
+               SUM(ft.weight * qt.qweight)::text AS retrieval_score
+        FROM account_fingerprints af
+        JOIN fingerprint_terms ft ON ft.handle_id = af.handle_id
+        JOIN query_terms qt ON qt.kind = ft.kind AND qt.term = ft.term
+        WHERE af.games_window >= ${minGames}
+        GROUP BY af.handle_id
+        ORDER BY SUM(ft.weight * qt.qweight) DESC
+        LIMIT ${STAGE_B_CANDIDATE_CAP}
+      `
+    : sql<RetrievalRow[]>`
+        WITH query_terms AS (
+          SELECT (val->>'kind')::text AS kind,
+                 (val->>'term')::text AS term,
+                 (val->>'qweight')::real AS qweight
+          FROM jsonb_array_elements(${queryPayloadJson}::jsonb) AS val
+        )
+        SELECT af.handle_id::text AS handle_id,
+               SUM(ft.weight * qt.qweight)::text AS retrieval_score
+        FROM account_fingerprints af
+        JOIN fingerprint_terms ft ON ft.handle_id = af.handle_id
+        JOIN query_terms qt ON qt.kind = ft.kind AND qt.term = ft.term
+        WHERE af.games_window >= ${minGames}
+          AND (af.median_rating IS NULL
+               OR af.median_rating BETWEEN ${targetRating - RATING_BAND}
+                                       AND ${targetRating + RATING_BAND})
+        GROUP BY af.handle_id
+        ORDER BY SUM(ft.weight * qt.qweight) DESC
+        LIMIT ${STAGE_B_CANDIDATE_CAP}
+      `);
+
+  if (ranked.length === 0) {
+    return { target, matches: [] };
+  }
+
+  // ---- Stage C: hydrate scalar_summary for the top 2k and re-rank ----
+  const handleIds = ranked.map((r) => r.handle_id);
+  type HydratedRow = {
+    handle_id: string;
     platform: string;
     handle: string;
+    games_window: number;
+    scalar_summary: PlayerFeaturesV0 | string;
   };
-  const rows = await sql<Row[]>`
-    SELECT sf.player_id, sf.features, sf.games_window, h.platform, h.handle
-    FROM style_features sf
-    JOIN handles h ON h.id = sf.player_id
-    WHERE sf.games_window >= ${minGames}
+  const hydrated = await sql<HydratedRow[]>`
+    SELECT af.handle_id::text AS handle_id,
+           af.platform,
+           af.handle,
+           af.games_window,
+           af.scalar_summary
+    FROM account_fingerprints af
+    WHERE af.handle_id = ANY(${handleIds}::uuid[])
   `;
+  const hydratedById = new Map(hydrated.map((h) => [h.handle_id, h]));
+  const retrievalById = new Map(ranked.map((r) => [r.handle_id, Number(r.retrieval_score)]));
 
   const scored: Stage3Match[] = [];
-  for (const r of rows) {
+  for (const id of handleIds) {
+    const h = hydratedById.get(id);
+    if (!h) continue;
     const cand: PlayerFeaturesV0 =
-      typeof r.features === 'string' ? JSON.parse(r.features) : r.features;
+      typeof h.scalar_summary === 'string' ? JSON.parse(h.scalar_summary) : h.scalar_summary;
     const { combined, components } = compareFingerprints(target, cand);
     scored.push({
-      player_id: r.player_id,
-      platform: r.platform,
-      handle: r.handle,
-      games_window: r.games_window,
+      player_id: id,
+      platform: h.platform,
+      handle: h.handle,
+      games_window: h.games_window,
       combined_score: combined,
+      retrieval_score: retrievalById.get(id) ?? 0,
       components,
     });
   }
