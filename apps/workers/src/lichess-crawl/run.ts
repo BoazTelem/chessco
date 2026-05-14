@@ -23,7 +23,7 @@ import 'dotenv/config';
 import { hostname } from 'node:os';
 import type postgres from 'postgres';
 import { getGamesDb } from '../db';
-import { LichessApiError, fetchUserGamesPgn, monthsBackWindow } from '../lib/lichess-api';
+import { LichessApiError, fetchUserGamesPgn } from '../lib/lichess-api';
 import { BATCH } from '../lichess-dumps/config';
 import { ingestBatch } from '../lichess-dumps/ingest';
 import { processGame } from '../lichess-dumps/parse-game';
@@ -184,51 +184,76 @@ async function main() {
   }
 }
 
+/**
+ * Number of equal-width sub-windows to split a handle's monthsBack
+ * request into. Lichess's user-export server-side time-limits long
+ * streams, which used to surface as `terminated` errors on prolific
+ * handles (m_t_h, gamboc etc. went error_permanent at 5×retry). Four
+ * quarterly requests of ~3 months each are short enough to complete
+ * before the server-side limit kicks in.
+ */
+const REQUEST_CHUNKS = 4;
+
 async function handleUserGames(
   sql: postgres.Sql,
   item: LichessQueueRow,
   monthsBack: number,
 ): Promise<number> {
-  const window = monthsBackWindow(monthsBack);
-  let stream;
-  try {
-    stream = await fetchUserGamesPgn(item.handle, window);
-  } catch (err) {
-    if (err instanceof LichessApiError && err.status === 404) {
-      await completeItem(sql, item.id, 0);
-      return 0;
-    }
-    throw err;
-  }
-  if (stream === null) {
-    // Handle doesn't exist on Lichess — close out cleanly.
-    await completeItem(sql, item.id, 0);
-    return 0;
-  }
-
   const filterStats = emptyCrawlFilterStats();
   const buffer: ProcessedGame[] = [];
   let gamesInserted = 0;
+  const monthsPerChunk = Math.ceil(monthsBack / REQUEST_CHUNKS);
+  const now = new Date();
 
-  for await (const game of streamGames(stream)) {
-    if (!shouldIngestLichessCrawl(game.headers, filterStats)) continue;
-    const processed = processGame(game);
-    if (!processed) continue;
-    buffer.push(processed);
-    if (buffer.length >= BATCH.gamesPerBatch) {
+  // Iterate from oldest chunk to most recent. If the FIRST chunk returns
+  // a 404 (handle banned/closed), we short-circuit the whole item.
+  for (let chunkIdx = REQUEST_CHUNKS - 1; chunkIdx >= 0; chunkIdx--) {
+    const untilOffsetMonths = chunkIdx * monthsPerChunk;
+    const sinceOffsetMonths = Math.min((chunkIdx + 1) * monthsPerChunk, monthsBack);
+    const untilDate = new Date(now);
+    untilDate.setMonth(untilDate.getMonth() - untilOffsetMonths);
+    const sinceDate = new Date(now);
+    sinceDate.setMonth(sinceDate.getMonth() - sinceOffsetMonths);
+
+    let stream;
+    try {
+      stream = await fetchUserGamesPgn(item.handle, {
+        sinceMs: sinceDate.getTime(),
+        untilMs: untilDate.getTime(),
+      });
+    } catch (err) {
+      if (err instanceof LichessApiError && err.status === 404) {
+        // 404 on any chunk: handle vanished/banned — treat as done with
+        // whatever we've ingested so far (could be zero).
+        await completeItem(sql, item.id, gamesInserted);
+        return gamesInserted;
+      }
+      throw err;
+    }
+    if (stream === null) {
+      // Same 404 path via the null-return shape.
+      await completeItem(sql, item.id, gamesInserted);
+      return gamesInserted;
+    }
+
+    for await (const game of streamGames(stream)) {
+      if (!shouldIngestLichessCrawl(game.headers, filterStats)) continue;
+      const processed = processGame(game);
+      if (!processed) continue;
+      buffer.push(processed);
+      if (buffer.length >= BATCH.gamesPerBatch) {
+        const r = await ingestBatch(sql, buffer);
+        gamesInserted += r.games;
+        await enqueueLichessOpponents(sql, buffer, item.handle);
+        buffer.length = 0;
+      }
+    }
+    if (buffer.length > 0) {
       const r = await ingestBatch(sql, buffer);
       gamesInserted += r.games;
-      // Transitive discovery: enqueue opponents from this batch.
-      // Idempotent — ON CONFLICT (handle) handles already-known handles.
       await enqueueLichessOpponents(sql, buffer, item.handle);
       buffer.length = 0;
     }
-  }
-  if (buffer.length > 0) {
-    const r = await ingestBatch(sql, buffer);
-    gamesInserted += r.games;
-    await enqueueLichessOpponents(sql, buffer, item.handle);
-    buffer.length = 0;
   }
 
   await completeItem(sql, item.id, gamesInserted);
