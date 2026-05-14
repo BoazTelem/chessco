@@ -1,9 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { brand } from '@chessco/ui';
 import { requireUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
-import { ChesscoMark } from '@/lib/logo';
 import { ReviewBoard } from '@/components/practice/ReviewBoard';
 
 export const metadata = {
@@ -42,32 +40,19 @@ export default async function PracticeReviewPage({ params }: RouteProps) {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b border-border bg-card/50">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <div className="flex items-center gap-2 text-sm">
-            <Link
-              href="/"
-              aria-label={brand.name}
-              className="inline-flex items-center gap-2 hover:opacity-80"
-            >
-              <ChesscoMark className="h-4 w-4 shrink-0" />
-              <span className="font-display font-semibold uppercase tracking-[0.3em] text-accent">
-                {brand.name}
-              </span>
-            </Link>
-            <span className="text-muted-foreground">/</span>
+      <main className="container mx-auto max-w-6xl px-4 py-6">
+        <div className="mb-4 flex items-center justify-between gap-3 text-sm">
+          <div className="flex items-center gap-2">
             <Link href="/practice" className="text-muted-foreground hover:text-foreground">
               Practice
             </Link>
             <span className="text-muted-foreground">/</span>
             <span>Review</span>
           </div>
-          <nav className="text-sm text-muted-foreground">
+          <span className="text-muted-foreground">
             {lg.result ?? '—'} {lg.termination ? `· ${lg.termination}` : ''}
-          </nav>
+          </span>
         </div>
-      </header>
-      <main className="container mx-auto max-w-6xl px-4 py-6">
         <ReviewBoard
           pgn={lg.pgn ?? ''}
           initialFen={lg.initial_fen}

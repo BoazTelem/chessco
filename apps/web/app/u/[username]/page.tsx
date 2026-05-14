@@ -1,11 +1,9 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { brand } from '@chessco/ui';
 import { getUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getPracticeDb } from '@/lib/practice/db';
-import { ChesscoMark } from '@/lib/logo';
 import { CountryBadge, TitleBadge } from '../../scout/result-card';
 
 export const metadata = {
@@ -63,7 +61,7 @@ export default async function PublicUserProfile({ params }: RouteProps) {
   // Restricted view: a private profile renders a stub with just the username.
   if (!showFull) {
     return (
-      <Shell viewerSignedIn={!!viewer}>
+      <Shell>
         <section className="space-y-3">
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-accent">Profile</p>
           <h1 className="font-display text-4xl font-bold tracking-tight">@{target.username}</h1>
@@ -136,7 +134,7 @@ export default async function PublicUserProfile({ params }: RouteProps) {
   }
 
   return (
-    <Shell viewerSignedIn={!!viewer}>
+    <Shell>
       {isSelf && !isPublic && (
         <div className="mb-6 rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-xs text-amber-700">
           Your profile is private — others see only your username.{' '}
@@ -274,43 +272,9 @@ export default async function PublicUserProfile({ params }: RouteProps) {
   );
 }
 
-function Shell({
-  children,
-  viewerSignedIn,
-}: {
-  children: React.ReactNode;
-  viewerSignedIn: boolean;
-}) {
+function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen">
-      <header className="border-b border-border bg-card/50">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <Link
-            href="/"
-            aria-label={brand.name}
-            className="inline-flex items-center gap-2 hover:opacity-80"
-          >
-            <ChesscoMark className="h-4 w-4 shrink-0" />
-            <span className="font-display font-semibold uppercase tracking-[0.3em] text-accent">
-              {brand.name}
-            </span>
-          </Link>
-          <nav className="flex items-center gap-3 text-sm">
-            {viewerSignedIn ? (
-              <Link href="/dashboard" className="text-muted-foreground hover:text-foreground">
-                Dashboard
-              </Link>
-            ) : (
-              <Link
-                href="/signup"
-                className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground hover:opacity-90"
-              >
-                Get started
-              </Link>
-            )}
-          </nav>
-        </div>
-      </header>
       <main className="container mx-auto max-w-4xl px-4 py-10">{children}</main>
     </div>
   );

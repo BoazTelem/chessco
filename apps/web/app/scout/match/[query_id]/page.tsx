@@ -1,8 +1,5 @@
 import { Fragment } from 'react';
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { brand } from '@chessco/ui';
-import { ChesscoMark } from '@/lib/logo';
 import { getUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { CountryBadge, TitleBadge } from '../../result-card';
@@ -124,29 +121,6 @@ export default async function MatchPage({ params }: { params: Promise<{ query_id
 
   return (
     <div className="min-h-screen">
-      <header className="border-b border-border bg-card/50">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <div className="flex items-center gap-2 text-sm">
-            <Link
-              href="/"
-              aria-label={brand.name}
-              className="inline-flex items-center gap-2 hover:opacity-80"
-            >
-              <ChesscoMark className="h-4 w-4 shrink-0" />
-              <span className="font-display font-semibold uppercase tracking-[0.3em] text-accent">
-                {brand.name}
-              </span>
-            </Link>
-            <span className="text-muted-foreground">/</span>
-            <Link href="/scout" className="text-muted-foreground hover:text-foreground">
-              Scout
-            </Link>
-            <span className="text-muted-foreground">/</span>
-            <span className="text-foreground">Match</span>
-          </div>
-        </div>
-      </header>
-
       <main className="container mx-auto max-w-3xl px-4 py-10">
         <section>
           <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent">
