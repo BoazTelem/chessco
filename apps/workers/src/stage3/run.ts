@@ -1,17 +1,30 @@
 /**
- * Stage 3 V0 CLI. Two modes:
+ * Stage 3 V0 CLI. Three input modes + optional LLM rerank:
  *
  *   pnpm --filter @chessco/workers stage3 --self lichess karen_armenia
  *     Take that handle's own games as the target. Used as a smoke test —
  *     the same handle should rank #1 with score ~1.0.
+ *
+ *   pnpm --filter @chessco/workers stage3 --self-sample lichess karen 50 1
+ *     Same as --self but use a deterministic sample of N games. Tests
+ *     "different games of the same player" — the harder case.
  *
  *   pnpm --filter @chessco/workers stage3 --pgn path/to/games.pgn
  *     Parse the PGN file, treat the games as if from an unknown player,
  *     compute the fingerprint, and rank the cached corpus against it.
  *     This is the "by sample game" demo flow.
  *
+ * Append `--llm` to any of the above to also run a DeepSeek rerank pass
+ * (Stage D). The LLM gets the algorithmic top-10 + per-signal scores and
+ * returns a JSON verdict + reordered top-K + per-candidate prose. Fails
+ * soft when no provider is configured (just prints a note).
+ *
+ *   stage3 --self lichess karen --llm
+ *   stage3 --pgn games.pgn --llm
+ *
  * Either way: prints top 10 candidates with their component scores so
- * you can see WHY each match scored where it did.
+ * you can see WHY each match scored where it did, then (if --llm) the
+ * LLM's holistic verdict.
  */
 import 'dotenv/config';
 import { readFile } from 'node:fs/promises';
@@ -20,7 +33,8 @@ import { getGamesDb } from '../db';
 import { extractFeaturesV0, type GameRow } from '../features/extract';
 import { streamGames } from '../lichess-dumps/pgn-stream';
 import { processGame } from '../lichess-dumps/parse-game';
-import { rankFingerprints } from './match';
+import { getProseProvider } from '../scout/llm-providers';
+import { rankFingerprints, type Stage3Match } from './match';
 
 interface CliArgs {
   mode: 'self' | 'self-sample' | 'pgn';
@@ -31,9 +45,20 @@ interface CliArgs {
   sampleN?: number;
   /** Seed the sampler so the test is reproducible. */
   seed?: number;
+  /** If true, run Stage D (DeepSeek rerank) after the algorithmic ranking. */
+  llm?: boolean;
 }
 
 function parseArgs(argv: string[]): CliArgs {
+  // --llm can appear anywhere; strip it first, then parse the positional
+  // form (which has historically been `--self <p> <h>` etc.).
+  const llm = argv.includes('--llm');
+  const rest = argv.filter((a) => a !== '--llm');
+  const base = parsePositional(rest);
+  return { ...base, llm };
+}
+
+function parsePositional(argv: string[]): CliArgs {
   if (argv[0] === '--self' && argv[1] && argv[2]) {
     return { mode: 'self', platform: argv[1], handle: argv[2].toLowerCase() };
   }
@@ -50,9 +75,9 @@ function parseArgs(argv: string[]): CliArgs {
     return { mode: 'pgn', pgnPath: argv[1] };
   }
   throw new Error(
-    'Usage: stage3 --self <platform> <handle>\n' +
-      '       stage3 --self-sample <platform> <handle> <N> [seed]\n' +
-      '       stage3 --pgn <file.pgn>',
+    'Usage: stage3 --self <platform> <handle>           [--llm]\n' +
+      '       stage3 --self-sample <platform> <handle> <N> [seed]  [--llm]\n' +
+      '       stage3 --pgn <file.pgn>                       [--llm]',
   );
 }
 
@@ -193,8 +218,123 @@ async function main() {
           `games=${m.games_window}`,
       );
     }
+
+    if (args.llm) {
+      await llmRerank(matches, label);
+    }
   } finally {
     await client.end({ timeout: 5 });
+  }
+}
+
+/** Stage D: hand the algorithmic top-10 to the configured LLM provider
+ *  (DeepSeek by default) and print its holistic verdict + reranked order
+ *  + per-candidate prose. Fail-soft when no provider is configured. */
+async function llmRerank(matches: Stage3Match[], sourceLabel: string): Promise<void> {
+  const provider = getProseProvider();
+  if (!provider) {
+    console.log(
+      '\n[stage3] --llm: no provider configured (set SCOUT_PROSE_PROVIDER + DEEPSEEK_API_KEY in env).',
+    );
+    return;
+  }
+  if (matches.length === 0) {
+    console.log('\n[stage3] --llm: no candidates to rerank.');
+    return;
+  }
+  console.log(`\n[stage3] --llm: provider=${provider.name} model=${provider.model}`);
+
+  const candidates = matches.slice(0, 10);
+  const lines = candidates.map((m, i) => {
+    const c = m.components;
+    return [
+      `[${i + 1}] ${m.platform}/${m.handle}`,
+      `    algorithmic_confidence: ${(m.combined_score * 100).toFixed(0)}%`,
+      `    games_window: ${m.games_window}`,
+      `    signals: eco-W ${(c.eco_white * 100).toFixed(0)}% / eco-B ${(c.eco_black * 100).toFixed(0)}%; ` +
+        `seq-W ${(c.move_seq_white * 100).toFixed(0)}% / seq-B ${(c.move_seq_black * 100).toFixed(0)}%; ` +
+        `time ${(c.time_class * 100).toFixed(0)}%; ` +
+        `opp_rating ${(c.opp_rating * 100).toFixed(0)}%; ` +
+        `cp_loss ${(c.cp_loss * 100).toFixed(0)}%`,
+    ].join('\n');
+  });
+
+  const prompt = `Judging which chess account fingerprint best matches the sample-game target. The algorithm has produced ranked candidates with per-signal cosine/gaussian scores. Synthesize the evidence holistically and decide.
+
+TARGET: ${sourceLabel}
+
+CANDIDATES (ranked by algorithm, top 10):
+${lines.join('\n')}
+
+Reasoning guidelines:
+- Default to algorithmic ordering; only override with a SPECIFIC structured-signal reason. Do NOT swap candidates whose algorithmic scores are within 0.05 of each other unless a concrete signal explains it.
+- ECO + move-sequence overlap is highly identifying. cp_loss disagreement with claimed rating is a red flag for fake accounts.
+- Be honest about weak matches. If nothing's compelling, set confidence "low" and explain why.
+
+Return STRICT JSON only:
+
+{
+  "verdict": {
+    "best_match": "<platform>/<handle>",
+    "confidence": "high" | "medium" | "low",
+    "reasoning": "One paragraph synthesizing the verdict."
+  },
+  "order": ["<platform>/<handle>", "<platform>/<handle>", "..."],
+  "prose": {
+    "<platform>/<handle>": "One concise sentence (≤25 words).",
+    "<platform>/<handle>": "..."
+  }
+}
+
+Use exact "platform/handle" keys from the candidates above.`;
+
+  const t0 = Date.now();
+  let text: string;
+  try {
+    text = await provider.generate({ prompt, maxTokens: 1500 });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.log(`  generate failed: ${msg}`);
+    return;
+  }
+  const dt = Date.now() - t0;
+  console.log(`  (${dt}ms, ${text.length} chars)`);
+
+  // Robust parse: first '{' to last '}' handles occasional preamble/postamble
+  // from models that don't fully respect JSON-only requests.
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  let parsed: Record<string, unknown> | null = null;
+  if (start >= 0 && end > start) {
+    try {
+      parsed = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
+    } catch {
+      // fall through
+    }
+  }
+  if (!parsed) {
+    console.log('  LLM returned unparseable JSON. Raw response:');
+    console.log(`  ${text.slice(0, 400)}${text.length > 400 ? '…' : ''}`);
+    return;
+  }
+
+  const v = parsed.verdict as Record<string, unknown> | undefined;
+  if (v && typeof v === 'object') {
+    console.log(`  verdict: ${v.best_match} (${v.confidence})`);
+    console.log(`    ${v.reasoning}`);
+  } else {
+    console.log('  (no verdict block returned)');
+  }
+  const order = parsed.order;
+  if (Array.isArray(order) && order.length > 0) {
+    console.log(`  rerank order: ${order.join(' > ')}`);
+  }
+  const prose = parsed.prose;
+  if (prose && typeof prose === 'object') {
+    console.log('  prose:');
+    for (const [k, vv] of Object.entries(prose as Record<string, unknown>)) {
+      console.log(`    ${k}: ${vv}`);
+    }
   }
 }
 
