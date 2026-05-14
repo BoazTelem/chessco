@@ -31,6 +31,7 @@
     "identification:expand": "tsx src/identification/federation-expand.ts",
     "features:run": "tsx src/features/run.ts",
     "features:fast-lane": "tsx src/features/fast-lane.ts",
+    "features:fast-lane-lichess": "tsx src/features/fast-lane-lichess.ts",
     "features:card": "tsx src/features/cardinality.ts",
     "features:inspect": "tsx src/features/inspect.ts",
     "eval:repertoire": "tsx src/eval/repertoire-benchmark.ts",
