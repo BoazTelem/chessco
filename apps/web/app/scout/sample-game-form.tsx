@@ -252,7 +252,7 @@ export function SampleGameForm({
           {subjectLabel ? <strong>{subjectLabel}</strong> : 'the target player'}
         </label>
         <p className="mt-1 text-xs text-muted-foreground">
-          AI matches play patterns against ~1,400 indexed Lichess handles. The target&apos;s real
+          AI matches play patterns against 3,500+ indexed Lichess handles. The target&apos;s real
           handle doesn&apos;t need to resemble their name — works on opening repertoire, time class,
           and opponent-rating signal.
         </p>

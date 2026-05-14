@@ -7,7 +7,7 @@
  *   { sample_pgn: string }    // Stage 3 — paste 1+ PGNs of the target
  *
  * Stage 3 takes 1-3s end-to-end (parse PGN + extract features + cosine
- * across ~1,400 cached fingerprints). Stage 2 cached: <1s. Both run
+ * across 3,500+ cached fingerprints). Stage 2 cached: <1s. Both run
  * synchronously here — async polling moves in when corpus growth pushes
  * Stage 3 past ~5s.
  */

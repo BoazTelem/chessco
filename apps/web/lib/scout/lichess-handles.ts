@@ -1,7 +1,7 @@
 /**
  * Lichess handle search — lives in Cloud SQL games-corpus, not Supabase.
  *
- * The 1,400+ Lichess handles in our `handles` table come from monthly dump
+ * The 3,500+ Lichess handles in our `handles` table come from monthly dump
  * ingest. They have no claimed_name, no country, no per-time-class rating;
  * we only know the handle string itself and an `avg_opponent_rating` from
  * style_features (used as a rough skill proxy in the result card).
