@@ -276,8 +276,12 @@ export async function queueProgress(sql: postgres.Sql): Promise<QueueProgress> {
 // ---------------------------------------------------------------------------
 
 /**
- * Insert one archives_list row per handle. Idempotent — re-running with
- * the same handles is a no-op.
+ * Insert one archives_list row per handle. Idempotent. On conflict the
+ * row's priority is RAISED to the higher of (existing, new) — never
+ * lowered — so re-running with `--priority-tier T1` after a default
+ * seed promotes T1 handles to the front of the queue without disturbing
+ * their crawl history. RETURNING reports rows that were newly inserted
+ * OR whose priority moved.
  */
 export async function seedHandles(
   sql: postgres.Sql,
@@ -300,7 +304,9 @@ export async function seedHandles(
     const result = await sql<{ id: string }[]>`
       INSERT INTO chesscom_crawl_queue
         ${insert(rows, 'kind', 'handle', 'priority')}
-      ON CONFLICT (handle, kind, archive_url) DO NOTHING
+      ON CONFLICT (handle, kind, archive_url) DO UPDATE SET
+        priority = GREATEST(chesscom_crawl_queue.priority, EXCLUDED.priority)
+      WHERE chesscom_crawl_queue.priority < EXCLUDED.priority
       RETURNING id
     `;
     inserted += result.length;

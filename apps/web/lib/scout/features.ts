@@ -172,3 +172,37 @@ export function extractFeaturesV0(games: GameRow[]): PlayerFeaturesV0 {
     blunder_rate: cpLossPlyTotal > 0 ? blunderCount / cpLossPlyTotal : null,
   };
 }
+
+/**
+ * Sparse fingerprint term — mirror of apps/workers/src/features/extract.ts.
+ * Both must stay in sync. L1-normalised within each kind.
+ */
+export interface FingerprintTerm {
+  kind: 'eco_w' | 'eco_b' | 'seq_w' | 'seq_b' | 'tc';
+  term: string;
+  weight: number;
+}
+
+export function extractFingerprintTerms(features: PlayerFeaturesV0): FingerprintTerm[] {
+  const out: FingerprintTerm[] = [];
+  pushKindTerms(out, 'eco_w', features.eco_white);
+  pushKindTerms(out, 'eco_b', features.eco_black);
+  pushKindTerms(out, 'seq_w', features.move_seq_white);
+  pushKindTerms(out, 'seq_b', features.move_seq_black);
+  pushKindTerms(out, 'tc', features.time_class);
+  return out;
+}
+
+function pushKindTerms(
+  out: FingerprintTerm[],
+  kind: FingerprintTerm['kind'],
+  histogram: Record<string, number> | undefined,
+): void {
+  if (!histogram) return;
+  let total = 0;
+  for (const v of Object.values(histogram)) total += v;
+  if (total <= 0) return;
+  for (const [term, count] of Object.entries(histogram)) {
+    if (count > 0) out.push({ kind, term, weight: count / total });
+  }
+}

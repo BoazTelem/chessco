@@ -24,7 +24,13 @@ import 'dotenv/config';
 import { Chess } from 'chess.js';
 import type postgres from 'postgres';
 import { getGamesDb } from '../db';
-import { extractFeaturesV0, type GameRow } from './extract';
+import {
+  extractFeaturesV0,
+  extractFingerprintTerms,
+  type FingerprintTerm,
+  type GameRow,
+} from './extract';
+import type { PlayerFeaturesV0 } from './types';
 
 /** Number of plies captured for the opening fingerprint key. 12 = 6 full
  *  moves each side. Short enough that pet lines repeat; long enough that
@@ -272,31 +278,57 @@ async function main() {
       handleIds.map((r) => [groupKey(r.platform as Source, r.handle), r.id]),
     );
 
-    // ---- 4. Compute features -------------------------------------------
+    // ---- 4. Compute features + terms + account_fingerprints ------------
+    // Same loop produces three downstream artefacts so we only walk
+    // `qualified` once: the canonical V0 JSONB (→ style_features), the
+    // denormalised scalar prefilter row (→ account_fingerprints), and
+    // the sparse term inverted-index rows (→ fingerprint_terms).
+    interface ComputeRow {
+      player_id: string;
+      platform: Source;
+      handle: string;
+      games_window: number;
+      features: PlayerFeaturesV0;
+      featuresJson: string;
+      dominantTimeClass: string | null;
+      whiteShare: number;
+      terms: FingerprintTerm[];
+    }
     const featuresT = Date.now();
-    const featureRows = qualified
-      .map(([key, games]) => {
-        const playerId = handleIdByKey.get(key);
-        if (!playerId) return null;
-        const features = extractFeaturesV0(games);
-        return {
-          player_id: playerId,
-          features: JSON.stringify(features),
-          games_window: games.length,
-        };
-      })
-      .filter((r): r is NonNullable<typeof r> => r !== null);
+    const computed: ComputeRow[] = [];
+    for (const [key, games] of qualified) {
+      const playerId = handleIdByKey.get(key);
+      if (!playerId) continue;
+      const { source, handle } = parseGroupKey(key);
+      const features = extractFeaturesV0(games);
+      const terms = extractFingerprintTerms(features);
+      computed.push({
+        player_id: playerId,
+        platform: source,
+        handle,
+        games_window: games.length,
+        features,
+        featuresJson: JSON.stringify(features),
+        dominantTimeClass: argmaxKey(features.time_class),
+        whiteShare: features.games_total > 0 ? features.games_as_white / features.games_total : 0,
+        terms,
+      });
+    }
     console.log(
-      `[features] computed ${featureRows.length.toLocaleString()} feature vectors in ${((Date.now() - featuresT) / 1000).toFixed(1)}s`,
+      `[features] computed ${computed.length.toLocaleString()} feature vectors in ${((Date.now() - featuresT) / 1000).toFixed(1)}s`,
     );
 
-    // ---- 5. Batch-upsert into style_features. Chunked to stay under
-    //         the 65k Postgres parameter cap (3 cols × N rows). --------
+    // ---- 5a. Batch-upsert into style_features (canonical V0 JSONB) ----
+    //          Chunked to stay under the 65k Postgres parameter cap.
     const upsertT = Date.now();
     const CHUNK = 5000;
     let upserted = 0;
-    for (let i = 0; i < featureRows.length; i += CHUNK) {
-      const chunk = featureRows.slice(i, i + CHUNK);
+    for (let i = 0; i < computed.length; i += CHUNK) {
+      const chunk = computed.slice(i, i + CHUNK).map((r) => ({
+        player_id: r.player_id,
+        features: r.featuresJson,
+        games_window: r.games_window,
+      }));
       const result = await client<{ player_id: string }[]>`
         INSERT INTO style_features
           ${insert(chunk, 'player_id', 'features', 'games_window')}
@@ -310,6 +342,118 @@ async function main() {
     }
     console.log(
       `[features] upserted ${upserted.toLocaleString()} style_features rows in ${((Date.now() - upsertT) / 1000).toFixed(1)}s`,
+    );
+
+    // ---- 5b. Upsert account_fingerprints (scalar prefilter denorm) ---
+    //          country / title left null in v0 — those live in Supabase
+    //          platform_players. A v1 sync job can backfill them across
+    //          the DB boundary if/when Stage A prefilter needs them.
+    //          15 cols → cap chunk at 3000 rows to stay under 65k params.
+    const acctT = Date.now();
+    let acctUpserted = 0;
+    const ACCT_CHUNK = 3000;
+    for (let i = 0; i < computed.length; i += ACCT_CHUNK) {
+      const chunk = computed.slice(i, i + ACCT_CHUNK).map((r) => ({
+        handle_id: r.player_id,
+        platform: r.platform,
+        handle: r.handle,
+        games_window: r.games_window,
+        // median_rating is an INTEGER column; avg_opponent_rating is a float
+        // mean (proxy until we track player's own ratings per game). Round.
+        median_rating:
+          r.features.avg_opponent_rating === null
+            ? null
+            : Math.round(r.features.avg_opponent_rating),
+        rating_blitz: null,
+        rating_rapid: null,
+        rating_classical: null,
+        country: null,
+        title: null,
+        dominant_time_class: r.dominantTimeClass,
+        white_share: r.whiteShare,
+        earliest_played_at: r.features.earliest_played_at,
+        latest_played_at: r.features.latest_played_at,
+        scalar_summary: r.featuresJson,
+      }));
+      const result = await client<{ handle_id: string }[]>`
+        INSERT INTO account_fingerprints
+          ${insert(
+            chunk,
+            'handle_id',
+            'platform',
+            'handle',
+            'games_window',
+            'median_rating',
+            'rating_blitz',
+            'rating_rapid',
+            'rating_classical',
+            'country',
+            'title',
+            'dominant_time_class',
+            'white_share',
+            'earliest_played_at',
+            'latest_played_at',
+            'scalar_summary',
+          )}
+        ON CONFLICT (handle_id) DO UPDATE SET
+          games_window = EXCLUDED.games_window,
+          median_rating = EXCLUDED.median_rating,
+          dominant_time_class = EXCLUDED.dominant_time_class,
+          white_share = EXCLUDED.white_share,
+          earliest_played_at = EXCLUDED.earliest_played_at,
+          latest_played_at = EXCLUDED.latest_played_at,
+          scalar_summary = EXCLUDED.scalar_summary,
+          built_at = NOW()
+        RETURNING handle_id
+      `;
+      acctUpserted += result.length;
+    }
+    console.log(
+      `[features] upserted ${acctUpserted.toLocaleString()} account_fingerprints rows in ${((Date.now() - acctT) / 1000).toFixed(1)}s`,
+    );
+
+    // ---- 5c. Replace fingerprint_terms for each rebuilt handle -------
+    //          Delete-then-insert is the cleanest way to retire stale
+    //          terms (a handle's old "Najdorf" weight should disappear if
+    //          their new game window doesn't include it). Chunk handle
+    //          IDs for the DELETE and term rows for the INSERT separately.
+    const termsT = Date.now();
+    const handleIdsAll = computed.map((r) => r.player_id);
+    const DELETE_HANDLE_CHUNK = 5000;
+    for (let i = 0; i < handleIdsAll.length; i += DELETE_HANDLE_CHUNK) {
+      const ids = handleIdsAll.slice(i, i + DELETE_HANDLE_CHUNK);
+      await client`
+        DELETE FROM fingerprint_terms
+        WHERE handle_id = ANY(${ids}::uuid[])
+      `;
+    }
+
+    // Insert: each chunk caps at ~10000 rows × 4 cols = 40k params to
+    // stay under Postgres's 65k bound-param ceiling.
+    const allTermRows = computed.flatMap((r) =>
+      r.terms.map((t) => ({
+        handle_id: r.player_id,
+        kind: t.kind,
+        term: t.term,
+        weight: t.weight,
+      })),
+    );
+    const TERM_INSERT_CHUNK = 10000;
+    let termsUpserted = 0;
+    for (let i = 0; i < allTermRows.length; i += TERM_INSERT_CHUNK) {
+      const chunk = allTermRows.slice(i, i + TERM_INSERT_CHUNK);
+      const result = await client<{ handle_id: string }[]>`
+        INSERT INTO fingerprint_terms
+          ${insert(chunk, 'handle_id', 'kind', 'term', 'weight')}
+        ON CONFLICT (handle_id, kind, term) DO UPDATE SET
+          weight = EXCLUDED.weight
+        RETURNING handle_id
+      `;
+      termsUpserted += result.length;
+    }
+    console.log(
+      `[features] upserted ${termsUpserted.toLocaleString()} fingerprint_terms rows ` +
+        `(${computed.length.toLocaleString()} handles) in ${((Date.now() - termsT) / 1000).toFixed(1)}s`,
     );
 
     const totalDt = ((Date.now() - t0) / 1000).toFixed(1);
@@ -337,6 +481,20 @@ function countBySource(byHandle: Map<string, GameRow[]>): Record<Source, number>
     counts[source]++;
   }
   return counts;
+}
+
+/** Returns the key with the highest value in the histogram, or null when
+ *  the histogram is empty. Ties broken arbitrarily (insertion order). */
+function argmaxKey(histogram: Record<string, number>): string | null {
+  let best: string | null = null;
+  let bestN = -Infinity;
+  for (const [k, v] of Object.entries(histogram)) {
+    if (v > bestN) {
+      best = k;
+      bestN = v;
+    }
+  }
+  return best;
 }
 
 main().catch((err) => {

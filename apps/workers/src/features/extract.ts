@@ -7,6 +7,17 @@
  */
 import type { PlayerFeaturesV0 } from './types';
 
+/**
+ * Sparse fingerprint term — one row destined for the fingerprint_terms
+ * inverted index. Kinds map 1:1 to the V0 histograms; weight is L1-
+ * normalised within the kind so a handle's eco_w terms sum to 1.0.
+ */
+export interface FingerprintTerm {
+  kind: 'eco_w' | 'eco_b' | 'seq_w' | 'seq_b' | 'tc';
+  term: string;
+  weight: number;
+}
+
 export interface GameRow {
   color: 'white' | 'black';
   result: '1-0' | '0-1' | '1/2-1/2';
@@ -159,4 +170,33 @@ export function extractFeaturesV0(games: GameRow[]): PlayerFeaturesV0 {
       cpLossBlackPlyTotal > 0 ? cpLossBlackWeightedSum / cpLossBlackPlyTotal : null,
     blunder_rate: cpLossPlyTotal > 0 ? blunderCount / cpLossPlyTotal : null,
   };
+}
+
+/**
+ * V0 features → sparse term rows for the fingerprint_terms inverted index.
+ * L1-normalises within each kind so weight ∈ [0, 1] and Σ weights = 1 per
+ * (handle, kind). Returns empty array when features has no usable signal.
+ */
+export function extractFingerprintTerms(features: PlayerFeaturesV0): FingerprintTerm[] {
+  const out: FingerprintTerm[] = [];
+  pushKindTerms(out, 'eco_w', features.eco_white);
+  pushKindTerms(out, 'eco_b', features.eco_black);
+  pushKindTerms(out, 'seq_w', features.move_seq_white);
+  pushKindTerms(out, 'seq_b', features.move_seq_black);
+  pushKindTerms(out, 'tc', features.time_class);
+  return out;
+}
+
+function pushKindTerms(
+  out: FingerprintTerm[],
+  kind: FingerprintTerm['kind'],
+  histogram: Record<string, number> | undefined,
+): void {
+  if (!histogram) return;
+  let total = 0;
+  for (const v of Object.values(histogram)) total += v;
+  if (total <= 0) return;
+  for (const [term, count] of Object.entries(histogram)) {
+    if (count > 0) out.push({ kind, term, weight: count / total });
+  }
 }

@@ -15,6 +15,7 @@
  *   pnpm --filter @chessco/workers chesscom:crawl --max-items 100
  *   pnpm --filter @chessco/workers chesscom:crawl --rate-ms 2000 --months-back 12
  *   pnpm --filter @chessco/workers chesscom:crawl --idle-sleep-sec 60
+ *   pnpm --filter @chessco/workers chesscom:crawl --no-opponent-expand
  */
 import 'dotenv/config';
 import { hostname } from 'node:os';
@@ -51,6 +52,7 @@ interface CliArgs {
   idleSleepSec: number;
   workerId: string;
   exitWhenEmpty: boolean;
+  noOpponentExpand: boolean;
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -61,6 +63,7 @@ function parseArgs(argv: string[]): CliArgs {
     idleSleepSec: 60,
     workerId: `${hostname()}-${process.pid}`,
     exitWhenEmpty: false,
+    noOpponentExpand: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -72,6 +75,7 @@ function parseArgs(argv: string[]): CliArgs {
       args.idleSleepSec = Number.parseInt(argv[++i]!, 10);
     else if (a === '--worker-id' && argv[i + 1]) args.workerId = argv[++i]!;
     else if (a === '--exit-when-empty') args.exitWhenEmpty = true;
+    else if (a === '--no-opponent-expand') args.noOpponentExpand = true;
     else throw new Error(`Unrecognized arg: ${a}`);
   }
   return args;
@@ -85,7 +89,8 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   console.log(
     `[chesscom-crawl] worker=${args.workerId} rate=${args.rateMs}ms ` +
-      `months_back=${args.monthsBack} max_items=${args.maxItems ?? '∞'}`,
+      `months_back=${args.monthsBack} max_items=${args.maxItems ?? '∞'} ` +
+      `opponent_expand=${args.noOpponentExpand ? 'off' : 'on'}`,
   );
 
   const { client } = getGamesDb();
@@ -152,7 +157,12 @@ async function main() {
           sessionStats.archivesListsExpanded++;
           console.log(`  · ${item.handle}: archives_list → ${fmt(inserted)} months queued`);
         } else {
-          const gamesInserted = await handleArchiveMonth(client, item, filterStats);
+          const gamesInserted = await handleArchiveMonth(
+            client,
+            item,
+            filterStats,
+            !args.noOpponentExpand,
+          );
           sessionStats.archiveMonthsIngested++;
           sessionStats.games += gamesInserted;
           if (gamesInserted > 0 || filterStats.seen % 1000 === 0) {
@@ -233,6 +243,7 @@ async function handleArchiveMonth(
   sql: postgres.Sql,
   item: QueueRow,
   filterStats: ReturnType<typeof emptyChesscomFilterStats>,
+  expandOpponents: boolean,
 ): Promise<number> {
   if (!item.archive_url) {
     throw new Error('archive_month row missing archive_url');
@@ -260,10 +271,12 @@ async function handleArchiveMonth(
   if (buffer.length > 0) {
     const result = await ingestBatch(sql, buffer);
     gamesInserted = result.games;
-    // Transitive discovery: enqueue this archive's opponents as new
-    // archives_list rows so the crawler eventually fetches their games
-    // too. Idempotent — ON CONFLICT handles already-known handles.
-    await enqueueOpponents(sql, buffer, item.handle);
+    if (expandOpponents) {
+      // Transitive discovery: enqueue this archive's opponents as new
+      // archives_list rows so the crawler eventually fetches their games
+      // too. Idempotent — ON CONFLICT handles already-known handles.
+      await enqueueOpponents(sql, buffer, item.handle);
+    }
   }
   await completeItem(sql, item.id, gamesInserted);
   return gamesInserted;

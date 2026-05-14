@@ -1,15 +1,16 @@
 /**
  * Filter + ingest constants for the Lichess monthly dump worker.
- * Spec §5/PLAN.md Phase 1 W1: rated standard, Elo >= 1200, last 24 months.
+ * Spec §5/PLAN.md Phase 1 W1: rated standard, last 24 months.
  *
- * Threshold lowered from 1500 → 1200 on 2026-05-13 as part of the
- * comprehensive seed expansion plan: capture tournament-active players
- * beyond the top tier.
+ * Threshold set to 1400 on 2026-05-14 as the broad floor — anything below
+ * is too casual for our v1 tournament-prep audience. Top-down crawl order
+ * is enforced by the lichess_crawl_queue priority column (T1=1900+ first,
+ * then T2/T3) rather than by raising the floor itself.
  */
 
 export const FILTER = {
   /** Minimum of (WhiteElo, BlackElo). Both players must clear it. */
-  minElo: 1200,
+  minElo: 1400,
   /** Lichess Variant tag must equal this. */
   variant: 'Standard',
   /** PGN Event tag must include one of these (rated games only). */

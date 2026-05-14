@@ -13,10 +13,11 @@
 import type { PgnHeaders } from '../lichess-dumps/types';
 
 export const LICHESS_CRAWL_FILTER = {
-  /** Both Elos must clear this. Lowered from 1500 → 1200 to capture
-   *  tournament-active players beyond the top tier (decision locked
-   *  2026-05-13, plan: comprehensive seed expansion). */
-  minElo: 1200,
+  /** Both Elos must clear this. Set to 1400 on 2026-05-14 as the broad
+   *  floor for the v1 tournament-prep audience. Top-down crawl order
+   *  enforced by queue priority (T1=1900+, T2, T3) not by the floor.
+   *  Matches lichess-dumps/config.ts FILTER.minElo. */
+  minElo: 1400,
   variant: 'Standard',
 } as const;
 
