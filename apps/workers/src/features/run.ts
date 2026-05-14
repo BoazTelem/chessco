@@ -262,15 +262,25 @@ async function main() {
       rs: object[],
       ...cs: string[]
     ) => postgres.Helper<object[]>;
-    const handleIds = await client<{ id: string; platform: string; handle: string }[]>`
-      INSERT INTO handles
-        ${insert(handleRows, 'platform', 'handle', 'games_seen', 'first_seen_at', 'last_seen_at')}
-      ON CONFLICT (platform, handle) DO UPDATE SET
-        games_seen = GREATEST(handles.games_seen, EXCLUDED.games_seen),
-        first_seen_at = LEAST(handles.first_seen_at, EXCLUDED.first_seen_at),
-        last_seen_at = GREATEST(handles.last_seen_at, EXCLUDED.last_seen_at)
-      RETURNING id, platform, handle
-    `;
+    // 5 cols × N rows; Postgres caps at 65,534 bound params per query. Chunk
+    // at 10000 rows → 50k params per call, safe headroom. The full-corpus
+    // chess.com run failed at 14,018 unchunked × 5 cols = 70k params before
+    // this fix.
+    const HANDLES_CHUNK = 10000;
+    const handleIds: { id: string; platform: string; handle: string }[] = [];
+    for (let i = 0; i < handleRows.length; i += HANDLES_CHUNK) {
+      const chunk = handleRows.slice(i, i + HANDLES_CHUNK);
+      const result = await client<{ id: string; platform: string; handle: string }[]>`
+        INSERT INTO handles
+          ${insert(chunk, 'platform', 'handle', 'games_seen', 'first_seen_at', 'last_seen_at')}
+        ON CONFLICT (platform, handle) DO UPDATE SET
+          games_seen = GREATEST(handles.games_seen, EXCLUDED.games_seen),
+          first_seen_at = LEAST(handles.first_seen_at, EXCLUDED.first_seen_at),
+          last_seen_at = GREATEST(handles.last_seen_at, EXCLUDED.last_seen_at)
+        RETURNING id, platform, handle
+      `;
+      handleIds.push(...result);
+    }
     console.log(
       `[features] upserted ${handleIds.length.toLocaleString()} handles in ${((Date.now() - handlesUpsertT) / 1000).toFixed(1)}s`,
     );
