@@ -2,7 +2,7 @@
 
 import { useId } from 'react';
 import { COUNTRIES } from '@/lib/scout/countries';
-import { type FederationOption, groupFederationsByContinent } from '@/lib/scout/federations';
+import { type FederationOption, groupFederationsByContinent } from '@/lib/scout/federations-shared';
 
 type Initial = {
   q: string;
