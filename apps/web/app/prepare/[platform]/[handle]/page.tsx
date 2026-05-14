@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { OpeningTreeSection } from './OpeningTreeSection';
@@ -17,9 +18,33 @@ const PLATFORM_SLUGS: Record<string, 'chess.com' | 'lichess'> = {
   lichess: 'lichess',
 };
 
+const PLATFORM_DISPLAY: Record<string, string> = {
+  chesscom: 'chess.com',
+  lichess: 'lichess.org',
+};
+
 interface RouteParams {
   platform: string;
   handle: string;
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<RouteParams>;
+}): Promise<Metadata> {
+  const { platform: platformSlug, handle: rawHandle } = await params;
+  const display = PLATFORM_DISPLAY[platformSlug];
+  if (!display) return { title: 'Prepare against an opponent' };
+  const handle = decodeURIComponent(rawHandle);
+  const title = `Prepare to play chess against ${handle} (${display})`;
+  return {
+    title,
+    description: `Opening tree, repertoire leaks, and prep report for ${display} user ${handle}. Build a battle plan before your next game.`,
+    alternates: {
+      canonical: `/prepare/${platformSlug}/${rawHandle}`,
+    },
+  };
 }
 
 export default async function PrepareStubPage({ params }: { params: Promise<RouteParams> }) {

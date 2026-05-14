@@ -4,6 +4,8 @@ import { getUser } from '@/lib/auth';
 import { ChesscoMark } from '@/lib/logo';
 import { getIndexStats } from '@/lib/index-stats';
 import { PillarTile } from '@/components/home/pillar-tile';
+import { JsonLd } from '@/components/seo/JsonLd';
+import { organizationJsonLd, websiteJsonLd } from '@/lib/seo/jsonld';
 
 // The indexed-player count is cached hourly inside getIndexStats()
 // (unstable_cache), so the page can stay fully dynamic per-request —
@@ -16,6 +18,7 @@ export default async function HomePage() {
 
   return (
     <main className="container mx-auto flex min-h-screen flex-col items-center px-4 py-16">
+      <JsonLd data={[organizationJsonLd(), websiteJsonLd()]} />
       <div className="flex w-full max-w-5xl flex-col items-center gap-10 text-center">
         <div className="flex flex-col items-center gap-5">
           <ChesscoMark variant="float" className="h-[200px] w-[200px] md:h-[240px] md:w-[240px]" />

@@ -1,30 +1,43 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect } from 'next/navigation';
 import { brand } from '@chessco/ui';
 import { getUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { ChesscoMark } from '@/lib/logo';
+import { JsonLd } from '@/components/seo/JsonLd';
+import { personJsonLd } from '@/lib/seo/jsonld';
+import { getPlayerByParam } from '@/lib/seo/player-fetch';
+import { isUuid, playerDisplayName, toPlayerSlug } from '@/lib/seo/slug';
 import { CountryBadge, FederationBadge, TitleBadge } from '../../scout/result-card';
 import { SampleGameForm } from '../../scout/sample-game-form';
 import { IdentifyButton } from './identify-button';
 
-export const metadata = {
-  title: 'Player profile',
-};
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ player_id: string }>;
+}): Promise<Metadata> {
+  const { player_id } = await params;
+  const player = await getPlayerByParam(player_id);
+  if (!player) return { title: 'Player profile' };
 
-type FederationPlayer = {
-  id: string;
-  federation_id: string;
-  federation_player_id: string;
-  name: string;
-  country: string | null;
-  title: string | null;
-  rating_standard: number | null;
-  rating_rapid: number | null;
-  rating_blitz: number | null;
-  birth_year: number | null;
-  last_updated_at: string;
-};
+  const display = playerDisplayName(player.name);
+  const ratingBits = [
+    player.rating_standard != null ? `Standard ${player.rating_standard}` : null,
+    player.rating_rapid != null ? `Rapid ${player.rating_rapid}` : null,
+    player.rating_blitz != null ? `Blitz ${player.rating_blitz}` : null,
+  ].filter(Boolean);
+  const ratingSentence = ratingBits.length ? ` · ${ratingBits.join(' · ')}` : '';
+
+  return {
+    title: `Scout ${display} chess accounts`,
+    description: `${player.federation_id} ${player.federation_player_id}${ratingSentence}. Find their Lichess and chess.com accounts and prepare against them.`,
+    alternates: {
+      canonical: `/p/${toPlayerSlug(player)}`,
+    },
+  };
+}
 
 type Snapshot = {
   snapshot_date: string;
@@ -39,23 +52,21 @@ export default async function PlayerProfilePage({
   params: Promise<{ player_id: string }>;
 }) {
   const { player_id } = await params;
-  const user = await getUser();
-  const supabase = await createClient();
-
-  const { data: player } = (await supabase
-    .from('federation_players')
-    .select(
-      'id, federation_id, federation_player_id, name, country, title, rating_standard, rating_rapid, rating_blitz, birth_year, last_updated_at',
-    )
-    .eq('id', player_id)
-    .maybeSingle()) as { data: FederationPlayer | null };
-
+  const player = await getPlayerByParam(player_id);
   if (!player) notFound();
+
+  // Canonicalize: UUID-form URLs 308 to the slug URL so AI/search crawlers
+  // converge on one URL per player. Slug param skips this branch.
+  if (isUuid(player_id)) {
+    permanentRedirect(`/p/${toPlayerSlug(player)}`);
+  }
+
+  const [user, supabase] = await Promise.all([getUser(), createClient()]);
 
   const { data: snapshots } = (await supabase
     .from('federation_rating_snapshots')
     .select('snapshot_date, rating_standard, rating_rapid, rating_blitz')
-    .eq('federation_player_id', player_id)
+    .eq('federation_player_id', player.id)
     .order('snapshot_date', { ascending: false })
     .limit(24)) as { data: Snapshot[] | null };
 
@@ -67,7 +78,7 @@ export default async function PlayerProfilePage({
   const { data: rawConfirmed } = (await supabase
     .from('identification_candidates')
     .select('platform, handle, combined_score, evidence')
-    .eq('federation_player_id', player_id)
+    .eq('federation_player_id', player.id)
     .eq('user_confirmed', true)
     .order('combined_score', { ascending: false })) as {
     data:
@@ -95,6 +106,7 @@ export default async function PlayerProfilePage({
 
   return (
     <div className="min-h-screen">
+      <JsonLd data={personJsonLd(player)} />
       <header className="border-b border-border bg-card/50">
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
           <div className="flex items-center gap-2 text-sm">
