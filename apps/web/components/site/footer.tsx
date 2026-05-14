@@ -55,6 +55,7 @@ export function SiteFooter() {
           <FooterColumn label="Product">
             <FooterLink href="/scout">Scout</FooterLink>
             <FooterLink href="/prepare">Prepare</FooterLink>
+            <FooterLink href="/practice">Practice</FooterLink>
           </FooterColumn>
 
           <FooterColumn label="Legal">
