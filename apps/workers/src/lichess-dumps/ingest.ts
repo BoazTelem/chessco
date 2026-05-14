@@ -144,32 +144,42 @@ export async function ingestBatch(sql: postgres.Sql, batch: ProcessedGame[]): Pr
           return a.source_game_id < b.source_game_id ? -1 : 1;
         return a.played_at < b.played_at ? -1 : a.played_at > b.played_at ? 1 : 0;
       });
-    const inserted = await tx<{ id: string; source_game_id: string }[]>`
-      INSERT INTO games
-        ${insert(
-          gameRows,
-          'source',
-          'source_game_id',
-          'white_handle_snapshot',
-          'black_handle_snapshot',
-          'white_rating',
-          'black_rating',
-          'pgn',
-          'initial_fen',
-          'result',
-          'termination',
-          'time_control',
-          'time_class',
-          'opening_eco',
-          'opening_name',
-          'ply_count',
-          'played_at',
-        )}
-      ON CONFLICT (source, source_game_id, played_at) DO NOTHING
-      RETURNING id, source_game_id
-    `;
+    // Chunk the games INSERT to stay under Postgres's 65534-bound-params
+    // ceiling. 16 cols × 4000 rows = 64,000 — under the limit but tight.
+    // Heavy tournament archives (philippians46/2025/03 etc.) yield 4000+
+    // games in one buffer, which would otherwise overflow on the single
+    // INSERT path. Use 3000 rows per chunk for comfortable headroom
+    // (48,000 params, leaves ~17k overhead for postgres-js internals).
+    const GAMES_CHUNK = 3000;
     const gameIdBySourceId = new Map<string, string>();
-    for (const r of inserted) gameIdBySourceId.set(r.source_game_id, r.id);
+    for (let i = 0; i < gameRows.length; i += GAMES_CHUNK) {
+      const chunk = gameRows.slice(i, i + GAMES_CHUNK);
+      const inserted = await tx<{ id: string; source_game_id: string }[]>`
+        INSERT INTO games
+          ${insert(
+            chunk,
+            'source',
+            'source_game_id',
+            'white_handle_snapshot',
+            'black_handle_snapshot',
+            'white_rating',
+            'black_rating',
+            'pgn',
+            'initial_fen',
+            'result',
+            'termination',
+            'time_control',
+            'time_class',
+            'opening_eco',
+            'opening_name',
+            'ply_count',
+            'played_at',
+          )}
+        ON CONFLICT (source, source_game_id, played_at) DO NOTHING
+        RETURNING id, source_game_id
+      `;
+      for (const r of inserted) gameIdBySourceId.set(r.source_game_id, r.id);
+    }
 
     // ---- 5. Insert moves -----------------------------------------------
     const moveRows: MoveInsertRow[] = [];
@@ -225,7 +235,7 @@ export async function ingestBatch(sql: postgres.Sql, batch: ProcessedGame[]): Pr
     }
 
     return {
-      games: inserted.length,
+      games: gameIdBySourceId.size,
       positions_inserted: newlyInserted,
       positions_dedup_hits: uniquePositions.length - newlyInserted,
       moves: movesInserted,
