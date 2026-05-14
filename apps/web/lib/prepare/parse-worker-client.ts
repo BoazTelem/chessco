@@ -42,10 +42,12 @@ function ensureWorker(): Worker | null {
           : null,
       );
     };
-    w.onerror = (e) => {
-      workerFailed = true;
+    w.onerror = () => {
+      // Don't latch workerFailed: a runtime throw shouldn't poison the rest of
+      // the session. Resolve in-flight requests as null (skip the bad game)
+      // and let the next call respawn the worker.
       worker = null;
-      for (const resolver of pending.values()) resolver.reject(e.message ?? 'worker error');
+      for (const resolver of pending.values()) resolver.resolve(null);
       pending.clear();
     };
     worker = w;
