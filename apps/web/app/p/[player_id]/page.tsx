@@ -258,8 +258,9 @@ export default async function PlayerProfilePage({
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
                 Have games of {player.name.split(',')[0] ?? player.name}? Paste them below for
-                precise identification by play pattern — the AI Scout finds their accounts even when
-                their handle looks nothing like their name. Works best with 10+ games.
+                repertoire matching by play pattern. The AI Scout can surface accounts even when
+                their handle looks nothing like their name; the right game count is benchmarked on
+                /benchmarks.
               </p>
               <div className="mt-3">
                 <SampleGameForm federationPlayerId={player.id} subjectLabel={player.name} />

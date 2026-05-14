@@ -387,9 +387,8 @@ function SampleGameFallback({
         <span className="text-[10px] uppercase tracking-[0.2em] text-accent">AI matching</span>
       </div>
       <p className="mt-1 text-sm text-muted-foreground">
-        Paste 10+ PGN games of {subjectName} and find their accounts by play pattern instead. Works
-        on amateur and titled players alike — the AI doesn&apos;t need their handle to match their
-        name.
+        Paste PGN games of {subjectName} and find accounts by repertoire pattern instead. The AI
+        does not need their handle to match their name; game-count guidance comes from /benchmarks.
       </p>
       <div className="mt-4 max-w-2xl">
         <SampleGameForm

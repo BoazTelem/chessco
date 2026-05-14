@@ -248,13 +248,16 @@ export function SampleGameForm({
     <form onSubmit={onSubmit} className="space-y-3">
       <div>
         <label className="text-sm font-medium">
-          Paste 10+ PGN games of{' '}
+          Paste PGN games of{' '}
           {subjectLabel ? <strong>{subjectLabel}</strong> : 'the target player'}
         </label>
         <p className="mt-1 text-xs text-muted-foreground">
-          AI matches play patterns against 3,500+ indexed Lichess handles. The target&apos;s real
-          handle doesn&apos;t need to resemble their name — works on opening repertoire, time class,
-          and opponent-rating signal.
+          AI matches play patterns against stored account repertoires. A few games can surface
+          candidates; more games improves confidence. Benchmark-backed guidance is published on{' '}
+          <a href="/benchmarks" className="font-medium text-accent hover:underline">
+            /benchmarks
+          </a>
+          .
         </p>
       </div>
 
