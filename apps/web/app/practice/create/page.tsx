@@ -4,6 +4,7 @@ import { requireUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { ChesscoMark } from '@/lib/logo';
 import { CreatePositionForm } from '@/components/practice/CreatePositionForm';
+import { InvitePicker } from '@/components/practice/InvitePicker';
 
 export const metadata = {
   title: 'Practice — create a position',
@@ -82,6 +83,10 @@ export default async function PracticeCreatePage() {
             Set up any FEN, choose a time control and fee. Strong opponents will pick it up from the
             lobby and play it against you.
           </p>
+        </div>
+
+        <div className="mb-6">
+          <InvitePicker currentUserId={user.id} />
         </div>
 
         <CreatePositionForm

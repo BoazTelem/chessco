@@ -45,7 +45,7 @@ export async function POST(_req: Request, ctx: RouteContext): Promise<NextRespon
       // Lock the challenge row.
       const challenges = (await tx`
         SELECT id, creator_id, fen, creator_color, time_control, time_class, fee_cents,
-               games_requested, games_completed, status, last_heartbeat
+               games_requested, games_completed, status, last_heartbeat, target_opponent_id
         FROM challenges
         WHERE id = ${challengeId}
         FOR UPDATE
@@ -61,12 +61,17 @@ export async function POST(_req: Request, ctx: RouteContext): Promise<NextRespon
         games_completed: number;
         status: string;
         last_heartbeat: string;
+        target_opponent_id: string | null;
       }>;
       const ch = challenges[0];
       if (!ch) throw new HttpError(404, 'challenge not found');
       if (ch.status !== 'open') throw new HttpError(409, 'challenge no longer open');
       if (ch.creator_id === user.id)
         throw new HttpError(400, "you can't accept your own challenge");
+      // Direct invites are private to the named opponent.
+      if (ch.target_opponent_id && ch.target_opponent_id !== user.id) {
+        throw new HttpError(403, 'this invite is for a different player');
+      }
 
       // Reject if the creator's heartbeat is stale — the lobby already
       // filters these out, but a race or a direct API call could still

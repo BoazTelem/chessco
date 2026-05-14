@@ -10,19 +10,22 @@
 
 import dynamic from 'next/dynamic';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Chess } from 'chess.js';
 import {
   annotateCpLoss,
   StockfishEngine,
   type Annotation,
   type EvalResult,
 } from '@/lib/practice/engine';
+import { parsePgnToMoves } from '@/lib/practice/parse-pgn';
+import { EvalBar } from './EvalBar';
 import {
   BOARD_BORDER,
   BOARD_DARK_SQUARE,
   BOARD_LIGHT_SQUARE,
   BOARD_LAST_MOVE_TINT,
 } from '../prepare/board-theme';
+
+const EVAL_BAR_PREF_KEY = 'practice.evalBar.visible';
 
 const Chessboard = dynamic(() => import('react-chessboard').then((m) => m.Chessboard), {
   ssr: false,
@@ -56,11 +59,68 @@ const DEPTH = 16;
 const MAX_BOARD = 520;
 
 export function ReviewBoard({ pgn, initialFen, whiteName, blackName }: Props) {
-  const [moves, setMoves] = useState<MoveEntry[]>(() => parsePgnToMoves(pgn, initialFen));
+  const [moves, setMoves] = useState<MoveEntry[]>(() =>
+    parsePgnToMoves(pgn, initialFen).map((p) => ({
+      ...p,
+      evalBefore: null,
+      evalAfter: null,
+      cpLoss: null,
+      annotation: null,
+    })),
+  );
   const [idx, setIdx] = useState(moves.length - 1);
   const [analyzing, setAnalyzing] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [evalBarVisible, setEvalBarVisible] = useState(false);
   const engineRef = useRef<StockfishEngine | null>(null);
+
+  // Restore persisted eval-bar preference. Default off per spec.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      setEvalBarVisible(window.localStorage.getItem(EVAL_BAR_PREF_KEY) === '1');
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  function toggleEvalBar(): void {
+    setEvalBarVisible((v) => {
+      const next = !v;
+      try {
+        window.localStorage.setItem(EVAL_BAR_PREF_KEY, next ? '1' : '0');
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
+
+  // Keyboard arrow navigation through moves. Skip while focus is in a text
+  // input so users can still type freely.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) {
+        return;
+      }
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setIdx((i) => Math.max(-1, i - 1));
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        setIdx((i) => Math.min(moves.length - 1, i + 1));
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        setIdx(-1);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        setIdx(moves.length - 1);
+      }
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [moves.length]);
 
   // Auto-run a full pass on mount.
   useEffect(() => {
@@ -115,21 +175,33 @@ export function ReviewBoard({ pgn, initialFen, whiteName, blackName }: Props) {
     };
   }, [lastUci]);
 
+  // Eval shown next to the bar always reflects the currently-displayed
+  // position (after the selected move, or pre-game when idx === -1).
+  const shownEval: EvalResult | null = current?.evalAfter ?? null;
+
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
       <div className="mx-auto w-full" style={{ maxWidth: `${MAX_BOARD}px` }}>
-        <div className="overflow-hidden rounded-md" style={{ border: `2px solid ${BOARD_BORDER}` }}>
-          <Chessboard
-            position={currentFen}
-            boardWidth={MAX_BOARD}
-            customDarkSquareStyle={{ backgroundColor: BOARD_DARK_SQUARE }}
-            customLightSquareStyle={{ backgroundColor: BOARD_LIGHT_SQUARE }}
-            customSquareStyles={squareStyles}
-            arePiecesDraggable={false}
-          />
+        <div className="flex gap-2">
+          {evalBarVisible && (
+            <EvalBar cp={shownEval?.cp} mate={shownEval?.mate} heightPx={MAX_BOARD} />
+          )}
+          <div
+            className="flex-1 overflow-hidden rounded-md"
+            style={{ border: `2px solid ${BOARD_BORDER}` }}
+          >
+            <Chessboard
+              position={currentFen}
+              boardWidth={evalBarVisible ? MAX_BOARD - 26 : MAX_BOARD}
+              customDarkSquareStyle={{ backgroundColor: BOARD_DARK_SQUARE }}
+              customLightSquareStyle={{ backgroundColor: BOARD_LIGHT_SQUARE }}
+              customSquareStyles={squareStyles}
+              arePiecesDraggable={false}
+            />
+          </div>
         </div>
 
-        <div className="mt-3 flex items-center justify-between">
+        <div className="mt-3 flex items-center justify-between gap-2">
           <div className="flex gap-1">
             <NavBtn onClick={() => setIdx(-1)} label="«" disabled={idx < 0} />
             <NavBtn
@@ -148,9 +220,23 @@ export function ReviewBoard({ pgn, initialFen, whiteName, blackName }: Props) {
               disabled={idx >= moves.length - 1}
             />
           </div>
-          <p className="text-xs text-muted-foreground">
-            {analyzing ? `Analyzing… ${Math.round(progress)}%` : 'Analysis complete'}
-          </p>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={toggleEvalBar}
+              className={`rounded-md border px-2.5 py-1 text-xs ${
+                evalBarVisible
+                  ? 'border-accent bg-accent text-accent-foreground'
+                  : 'border-border bg-background hover:bg-muted'
+              }`}
+              title="Use ← → keys to step through moves"
+            >
+              Eval bar: {evalBarVisible ? 'On' : 'Off'}
+            </button>
+            <p className="text-xs text-muted-foreground">
+              {analyzing ? `Analyzing… ${Math.round(progress)}%` : 'Analysis complete'}
+            </p>
+          </div>
         </div>
 
         {current && (
@@ -281,35 +367,4 @@ function formatEval(e: EvalResult): string {
 function scoreToCp(e: EvalResult): number {
   if (e.mate !== null) return e.mate > 0 ? 10_000 : -10_000;
   return e.cp ?? 0;
-}
-
-function parsePgnToMoves(pgn: string, initialFen: string): MoveEntry[] {
-  if (!pgn?.trim()) return [];
-  const chess = new Chess(initialFen);
-  try {
-    chess.loadPgn(pgn);
-  } catch {
-    return [];
-  }
-  const history = chess.history({ verbose: true });
-  // Replay to capture fen before/after each move.
-  const replay = new Chess(initialFen);
-  const out: MoveEntry[] = [];
-  for (const h of history) {
-    const fenBefore = replay.fen();
-    const m = replay.move({ from: h.from, to: h.to, promotion: h.promotion });
-    if (!m) break;
-    const uci = `${h.from}${h.to}${h.promotion ?? ''}`;
-    out.push({
-      san: h.san,
-      uci,
-      fenBefore,
-      fenAfter: replay.fen(),
-      evalBefore: null,
-      evalAfter: null,
-      cpLoss: null,
-      annotation: null,
-    });
-  }
-  return out;
 }

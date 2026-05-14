@@ -19,6 +19,7 @@ import { Chess } from 'chess.js';
 import type { Piece, Square } from 'react-chessboard/dist/chessboard/types';
 import type { ClientMsg, Color, Result, ServerMsg, Termination } from '@/lib/practice/protocol';
 import { sounds } from '@/lib/practice/sounds';
+import { MovesPanel } from './MovesPanel';
 import {
   BOARD_BORDER,
   BOARD_DARK_SQUARE,
@@ -48,6 +49,7 @@ interface Props {
   matchId: string;
   initialWsUrl: string;
   initialRole: Color;
+  initialFen: string;
   prefs: Prefs;
 }
 
@@ -63,9 +65,23 @@ interface GameState {
   termination: Termination | null;
 }
 
-const MAX_BOARD = 560;
+const SIDEBAR_WIDTH = 300;
+const VERTICAL_CHROME = 180; // approx px reserved for clocks + brand chip + breathing room
 const MIN_BOARD = 280;
+const MAX_BOARD = 1100; // sane upper bound on giant displays so pieces stay legible
 const RECONNECT_DELAYS_MS = [500, 1500, 3000, 6000, 12000];
+
+function computeBoardSize(): number {
+  if (typeof window === 'undefined') return 560;
+  const vh = window.innerHeight;
+  const vw = window.innerWidth;
+  // On wide screens the sidebar sits beside the board; below the `lg`
+  // breakpoint (~1024px) it stacks below, so the board can use the full width.
+  const sidebar = vw >= 1024 ? SIDEBAR_WIDTH + 32 : 0;
+  const widthCap = vw - sidebar - 32;
+  const heightCap = vh - VERTICAL_CHROME;
+  return Math.max(MIN_BOARD, Math.min(MAX_BOARD, Math.floor(Math.min(widthCap, heightCap))));
+}
 
 function sideToMoveFromFen(fen: string): Color {
   return fen.split(' ')[1] === 'b' ? 'black' : 'white';
@@ -82,13 +98,13 @@ function fmtClock(ms: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-export function GamePlayer({ matchId, initialWsUrl, initialRole, prefs }: Props) {
+export function GamePlayer({ matchId, initialWsUrl, initialRole, initialFen, prefs }: Props) {
   const router = useRouter();
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempt = useRef(0);
   const closedIntentionally = useRef(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [boardWidth, setBoardWidth] = useState(MAX_BOARD);
+  const startSoundFired = useRef(false);
+  const [boardWidth, setBoardWidth] = useState(560);
   const [connected, setConnected] = useState(false);
   const [state, setState] = useState<GameState | null>(null);
   const [role] = useState<Color>(initialRole);
@@ -126,16 +142,12 @@ export function GamePlayer({ matchId, initialWsUrl, initialRole, prefs }: Props)
   }, [matchId]);
 
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (!entry) return;
-      const w = entry.contentRect.width;
-      setBoardWidth(Math.max(MIN_BOARD, Math.min(MAX_BOARD, Math.floor(w))));
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
+    function update() {
+      setBoardWidth(computeBoardSize());
+    }
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
   }, []);
 
   // Connect (and reconnect) lifecycle.
@@ -221,6 +233,13 @@ export function GamePlayer({ matchId, initialWsUrl, initialRole, prefs }: Props)
           result: msg.result,
           termination: msg.termination,
         });
+        // Fire the "fight start" gong once, the first time we see a live game
+        // with no moves played yet. After any move lastMove is non-null, so
+        // reconnects mid-game won't re-trigger this.
+        if (!startSoundFired.current && msg.status === 'live' && !msg.lastMove) {
+          startSoundFired.current = true;
+          sounds.play('gameStart');
+        }
         return;
       case 'move':
         setState((s) =>
@@ -356,8 +375,8 @@ export function GamePlayer({ matchId, initialWsUrl, initialRole, prefs }: Props)
   const ended = state.status !== 'live';
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
-      <div ref={containerRef} className="mx-auto w-full" style={{ maxWidth: `${MAX_BOARD}px` }}>
+    <div className="flex flex-col items-center gap-4 lg:flex-row lg:items-start lg:justify-center">
+      <div className="flex flex-col" style={{ width: boardWidth }}>
         <ClockChip
           ms={topClockMs}
           active={topActive}
@@ -387,19 +406,17 @@ export function GamePlayer({ matchId, initialWsUrl, initialRole, prefs }: Props)
         />
       </div>
 
-      <aside className="space-y-3">
+      <aside className="w-full space-y-3 lg:w-[300px] lg:shrink-0">
         <div className="rounded-lg border border-border bg-card p-3">
-          <p className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-            Connection
-          </p>
-          <p className="text-sm">{connected ? 'Live' : 'Reconnecting…'}</p>
-        </div>
-
-        <div className="rounded-lg border border-border bg-card p-3">
-          <p className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">PGN</p>
-          <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[11px]">
-            {state.pgn || '—'}
-          </pre>
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Moves</p>
+            <span className={`text-[10px] ${connected ? 'text-accent' : 'text-muted-foreground'}`}>
+              {connected ? '● Live' : '○ Reconnecting…'}
+            </span>
+          </div>
+          <div className="mt-2">
+            <MovesPanel pgn={state.pgn} initialFen={initialFen} />
+          </div>
         </div>
 
         {drawOfferedFrom && drawOfferedFrom !== role && !ended && (

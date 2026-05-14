@@ -45,6 +45,7 @@ export default async function PracticeLobbyPage({
       'id, creator_id, fen, creator_color, time_control, time_class, fee_cents, funding_type, credit_cost, rating_min, rating_max, games_requested, games_completed, notes, opening_name, anonymous, creator_rating, created_at, profiles:profiles!challenges_creator_id_fkey(display_name, username, profile_visibility)',
     )
     .eq('status', 'open')
+    .is('target_opponent_id', null) // direct invites are private to the invitee
     .gt('last_heartbeat', liveCutoff)
     .order('created_at', { ascending: false })
     .limit(60);
@@ -61,6 +62,7 @@ export default async function PracticeLobbyPage({
       .from('challenges')
       .select('opening_name')
       .eq('status', 'open')
+      .is('target_opponent_id', null)
       .gt('last_heartbeat', liveCutoff)
       .not('opening_name', 'is', null)
       .order('opening_name', { ascending: true }),

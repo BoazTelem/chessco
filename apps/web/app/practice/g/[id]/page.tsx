@@ -77,11 +77,12 @@ export default async function PracticeGamePage({ params }: RouteProps) {
         </span>
         <span className="text-muted-foreground">· {lg.time_control}</span>
       </Link>
-      <main className="container mx-auto max-w-6xl flex-1 px-4 py-12 md:py-16">
+      <main className="flex-1 px-2 pt-14 pb-4 md:px-4">
         <GamePlayer
           matchId={matchId}
           initialWsUrl={initialWsUrl}
           initialRole={role}
+          initialFen={lg.initial_fen}
           prefs={prefs}
         />
       </main>
