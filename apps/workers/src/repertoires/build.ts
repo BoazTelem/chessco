@@ -190,14 +190,14 @@ async function loadGameRecords(
   depth: number,
 ): Promise<GameRecord[]> {
   const lower = handle.toLowerCase();
-  // Load games for the handle in the last 12 months.
+  // Load ALL games for the handle (no time filter — we partition into buckets
+  // in memory below). Capped only by the corpus we've crawled.
   const games = await sql<GameRow[]>`
     SELECT id::text, played_at::text, result,
            white_handle_snapshot AS white_handle,
            black_handle_snapshot AS black_handle
     FROM games
     WHERE source = ${platform}
-      AND played_at > NOW() - INTERVAL '12 months'
       AND (LOWER(white_handle_snapshot) = ${lower}
         OR LOWER(black_handle_snapshot) = ${lower})
   `;
@@ -250,8 +250,31 @@ async function loadGameRecords(
 }
 
 // ---------------------------------------------------------------------------
-// Per-handle build + persist
+// Time-bucket partitioning + per-(bucket × color) build + persist
 // ---------------------------------------------------------------------------
+
+type TimeBucket = 'recent_3mo' | 'recent_12mo' | 'recent_36mo' | 'all_time';
+const BUCKETS: { name: TimeBucket; days: number | null }[] = [
+  { name: 'recent_3mo', days: 90 },
+  { name: 'recent_12mo', days: 365 },
+  { name: 'recent_36mo', days: 1095 },
+  { name: 'all_time', days: null },
+];
+
+function gamesInBucket(games: GameRecord[], bucketDays: number | null, now: Date): GameRecord[] {
+  if (bucketDays === null) return games;
+  const cutoff = now.getTime() - bucketDays * 24 * 60 * 60 * 1000;
+  return games.filter((g) => g.playedAt.getTime() >= cutoff);
+}
+
+interface PersistStats {
+  buckets_written: number;
+  total_white_nodes: number;
+  total_black_nodes: number;
+  games_total: number;
+  games_white: number;
+  games_black: number;
+}
 
 async function buildAndPersist(
   sql: postgres.Sql,
@@ -259,36 +282,55 @@ async function buildAndPersist(
   platform: string,
   handle: string,
   depth: number,
-): Promise<{ white_nodes: number; black_nodes: number; games_window: number }> {
+): Promise<PersistStats> {
   const now = new Date();
-  const games = await loadGameRecords(sql, platform, handle, depth);
-  const whiteTree = buildTree(games, 'white', now, depth);
-  const blackTree = buildTree(games, 'black', now, depth);
-
-  await sql`
-    INSERT INTO player_repertoires (player_id, color, depth, tree, games_window, built_at)
-    VALUES (${playerId}::uuid, 'white', ${depth}, ${JSON.stringify(whiteTree)}::jsonb,
-            ${games.filter((g) => g.playerColor === 'white').length}, NOW())
-    ON CONFLICT (player_id, color, depth) DO UPDATE SET
-      tree = EXCLUDED.tree,
-      games_window = EXCLUDED.games_window,
-      built_at = NOW()
-  `;
-  await sql`
-    INSERT INTO player_repertoires (player_id, color, depth, tree, games_window, built_at)
-    VALUES (${playerId}::uuid, 'black', ${depth}, ${JSON.stringify(blackTree)}::jsonb,
-            ${games.filter((g) => g.playerColor === 'black').length}, NOW())
-    ON CONFLICT (player_id, color, depth) DO UPDATE SET
-      tree = EXCLUDED.tree,
-      games_window = EXCLUDED.games_window,
-      built_at = NOW()
-  `;
-
-  return {
-    white_nodes: Object.keys(whiteTree).length,
-    black_nodes: Object.keys(blackTree).length,
-    games_window: games.length,
+  const allGames = await loadGameRecords(sql, platform, handle, depth);
+  const stats: PersistStats = {
+    buckets_written: 0,
+    total_white_nodes: 0,
+    total_black_nodes: 0,
+    games_total: allGames.length,
+    games_white: allGames.filter((g) => g.playerColor === 'white').length,
+    games_black: allGames.filter((g) => g.playerColor === 'black').length,
   };
+  if (allGames.length === 0) return stats;
+
+  for (const bucket of BUCKETS) {
+    const bucketGames = gamesInBucket(allGames, bucket.days, now);
+    if (bucketGames.length === 0) continue;
+    const since =
+      bucket.days === null
+        ? new Date(Math.min(...bucketGames.map((g) => g.playedAt.getTime())))
+        : new Date(now.getTime() - bucket.days * 24 * 60 * 60 * 1000);
+    const until = now;
+
+    for (const color of ['white', 'black'] as const) {
+      const colorGames = bucketGames.filter((g) => g.playerColor === color);
+      if (colorGames.length === 0) continue;
+      const tree = buildTree(bucketGames, color, now, depth);
+      const nodeCount = Object.keys(tree).length;
+      if (color === 'white') stats.total_white_nodes += nodeCount;
+      else stats.total_black_nodes += nodeCount;
+      stats.buckets_written++;
+
+      await sql`
+        INSERT INTO player_repertoires
+          (player_id, color, depth, time_bucket, tree, games_window, bucket_since, bucket_until, built_at)
+        VALUES (
+          ${playerId}::uuid, ${color}, ${depth}, ${bucket.name},
+          ${JSON.stringify(tree)}::jsonb, ${colorGames.length},
+          ${since.toISOString()}, ${until.toISOString()}, NOW()
+        )
+        ON CONFLICT (player_id, color, depth, time_bucket) DO UPDATE SET
+          tree = EXCLUDED.tree,
+          games_window = EXCLUDED.games_window,
+          bucket_since = EXCLUDED.bucket_since,
+          bucket_until = EXCLUDED.bucket_until,
+          built_at = NOW()
+      `;
+    }
+  }
+  return stats;
 }
 
 // ---------------------------------------------------------------------------
@@ -301,6 +343,7 @@ interface CliArgs {
   limit: number | null;
   rebuild: boolean;
   depth: number;
+  concurrency: number;
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -310,6 +353,7 @@ function parseArgs(argv: string[]): CliArgs {
     limit: null,
     rebuild: false,
     depth: DEFAULT_DEPTH,
+    concurrency: 1,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -320,10 +364,14 @@ function parseArgs(argv: string[]): CliArgs {
       args.platform = p;
     } else if (a === '--limit' && argv[i + 1]) args.limit = Number.parseInt(argv[++i]!, 10);
     else if (a === '--depth' && argv[i + 1]) args.depth = Number.parseInt(argv[++i]!, 10);
+    else if (a === '--concurrency' && argv[i + 1])
+      args.concurrency = Number.parseInt(argv[++i]!, 10);
     else if (a === '--rebuild') args.rebuild = true;
     else throw new Error(`unrecognized arg: ${a}`);
   }
   if (args.depth < 1 || args.depth > 60) throw new Error(`--depth must be 1..60`);
+  if (args.concurrency < 1 || args.concurrency > 6)
+    throw new Error(`--concurrency must be 1..6 (DB pool max=4 limits this)`);
   return args;
 }
 
@@ -374,44 +422,65 @@ async function main() {
       const out = await buildAndPersist(client, r.id, r.platform, r.handle, args.depth);
       console.log(
         `[repertoires] done in ${((Date.now() - t0) / 1000).toFixed(1)}s — ` +
-          `games=${out.games_window}, white_nodes=${out.white_nodes}, black_nodes=${out.black_nodes}`,
+          `games_total=${out.games_total} (white=${out.games_white} black=${out.games_black}), ` +
+          `buckets_written=${out.buckets_written}, ` +
+          `total_white_nodes=${out.total_white_nodes}, total_black_nodes=${out.total_black_nodes}`,
       );
       return;
     }
 
     const pending = await listPendingHandles(client, args.limit, args.rebuild, args.depth);
-    console.log(`[repertoires] backfill depth=${args.depth}: ${pending.length} handle(s) to build`);
+    console.log(
+      `[repertoires] backfill depth=${args.depth} concurrency=${args.concurrency}: ${pending.length} handle(s) to build`,
+    );
     let done = 0;
     let totalGames = 0;
     let totalWhiteNodes = 0;
     let totalBlackNodes = 0;
+    let totalBuckets = 0;
     const t0 = Date.now();
-    for (const h of pending) {
-      try {
-        const out = await buildAndPersist(client, h.id, h.platform, h.handle, args.depth);
+    // Chunked Promise.all gives us N-wide concurrency. Each handle still uses
+    // 1 connection at a time (sequential queries within), so concurrency=N
+    // takes N connections from the pool (max=4).
+    for (let i = 0; i < pending.length; i += args.concurrency) {
+      const chunk = pending.slice(i, i + args.concurrency);
+      const results = await Promise.all(
+        chunk.map(async (h) => {
+          try {
+            const out = await buildAndPersist(client, h.id, h.platform, h.handle, args.depth);
+            return { h, out, err: null as Error | null };
+          } catch (err) {
+            return { h, out: null, err: err instanceof Error ? err : new Error(String(err)) };
+          }
+        }),
+      );
+      for (const { h, out, err } of results) {
+        if (err) {
+          console.warn(`  ! ${h.platform}/${h.handle}: ${err.message}`);
+          continue;
+        }
+        if (!out) continue;
         done++;
-        totalGames += out.games_window;
-        totalWhiteNodes += out.white_nodes;
-        totalBlackNodes += out.black_nodes;
+        totalGames += out.games_total;
+        totalWhiteNodes += out.total_white_nodes;
+        totalBlackNodes += out.total_black_nodes;
+        totalBuckets += out.buckets_written;
         if (done % 25 === 0 || h.games_seen > 5000) {
           const elapsedSec = (Date.now() - t0) / 1000;
           console.log(
             `  [${done}/${pending.length}] ${h.platform}/${h.handle} (games_seen=${h.games_seen}) — ` +
-              `${out.games_window}g, ${out.white_nodes}w + ${out.black_nodes}b nodes ` +
+              `${out.games_total}g across ${out.buckets_written} bucket-rows, ` +
+              `${out.total_white_nodes}w + ${out.total_black_nodes}b nodes ` +
               `(${elapsedSec.toFixed(1)}s elapsed)`,
           );
         }
-      } catch (err) {
-        console.warn(
-          `  ! ${h.platform}/${h.handle}: ${err instanceof Error ? err.message : String(err)}`,
-        );
       }
     }
     const dur = ((Date.now() - t0) / 1000).toFixed(1);
     console.log(
       `[repertoires] backfill done in ${dur}s — ` +
-        `built ${done}/${pending.length}; total games=${totalGames}, ` +
-        `nodes=${totalWhiteNodes + totalBlackNodes}`,
+        `built ${done}/${pending.length}; ${totalBuckets} bucket-rows; ` +
+        `total games=${totalGames}, nodes=${totalWhiteNodes + totalBlackNodes}`,
     );
   } finally {
     await client.end({ timeout: 5 });
