@@ -308,7 +308,8 @@ async function processHandle(
 
 /** Upsert handles + style_features + account_fingerprints + fingerprint_terms.
  *  Mirror of the chess.com fast-lane writeFingerprint; platform is locked to
- *  'lichess'. */
+ *  'lichess'. Wrapped in sql.begin() so a partial failure can't leave a
+ *  handle searchable in account_fingerprints but empty in fingerprint_terms. */
 async function writeFingerprint(
   sql: postgres.Sql,
   handle: string,
@@ -318,76 +319,77 @@ async function writeFingerprint(
 ): Promise<void> {
   const earliest = new Date(features.earliest_played_at);
   const latest = new Date(features.latest_played_at);
-
-  const handleRows = await sql<{ id: string }[]>`
-    INSERT INTO handles (platform, handle, games_seen, first_seen_at, last_seen_at)
-    VALUES ('lichess', ${handle.toLowerCase()}, ${gamesWindow},
-            ${earliest.toISOString()}, ${latest.toISOString()})
-    ON CONFLICT (platform, handle) DO UPDATE SET
-      games_seen = GREATEST(handles.games_seen, EXCLUDED.games_seen),
-      first_seen_at = LEAST(handles.first_seen_at, EXCLUDED.first_seen_at),
-      last_seen_at = GREATEST(handles.last_seen_at, EXCLUDED.last_seen_at)
-    RETURNING id
-  `;
-  const handleId = handleRows[0]?.id;
-  if (!handleId) throw new Error(`handles upsert returned no rows for lichess/${handle}`);
-
   const featuresJson = JSON.stringify(features);
   const dominantTc = argmaxKey(features.time_class);
   const whiteShare = features.games_total > 0 ? features.games_as_white / features.games_total : 0;
   const medianRating =
     features.avg_opponent_rating === null ? null : Math.round(features.avg_opponent_rating);
 
-  await sql`
-    INSERT INTO style_features (player_id, features, games_window)
-    VALUES (${handleId}, ${featuresJson}, ${gamesWindow})
-    ON CONFLICT (player_id) DO UPDATE SET
-      features = EXCLUDED.features,
-      games_window = EXCLUDED.games_window,
-      computed_at = NOW()
-  `;
+  await sql.begin(async (tx) => {
+    const handleRows = await tx<{ id: string }[]>`
+      INSERT INTO handles (platform, handle, games_seen, first_seen_at, last_seen_at)
+      VALUES ('lichess', ${handle.toLowerCase()}, ${gamesWindow},
+              ${earliest.toISOString()}, ${latest.toISOString()})
+      ON CONFLICT (platform, handle) DO UPDATE SET
+        games_seen = GREATEST(handles.games_seen, EXCLUDED.games_seen),
+        first_seen_at = LEAST(handles.first_seen_at, EXCLUDED.first_seen_at),
+        last_seen_at = GREATEST(handles.last_seen_at, EXCLUDED.last_seen_at)
+      RETURNING id
+    `;
+    const handleId = handleRows[0]?.id;
+    if (!handleId) throw new Error(`handles upsert returned no rows for lichess/${handle}`);
 
-  await sql`
-    INSERT INTO account_fingerprints (
-      handle_id, platform, handle, games_window,
-      median_rating, dominant_time_class, white_share,
-      earliest_played_at, latest_played_at, scalar_summary
-    ) VALUES (
-      ${handleId}, 'lichess', ${handle.toLowerCase()}, ${gamesWindow},
-      ${medianRating}, ${dominantTc}, ${whiteShare},
-      ${features.earliest_played_at}, ${features.latest_played_at}, ${featuresJson}
-    )
-    ON CONFLICT (handle_id) DO UPDATE SET
-      games_window = EXCLUDED.games_window,
-      median_rating = EXCLUDED.median_rating,
-      dominant_time_class = EXCLUDED.dominant_time_class,
-      white_share = EXCLUDED.white_share,
-      earliest_played_at = EXCLUDED.earliest_played_at,
-      latest_played_at = EXCLUDED.latest_played_at,
-      scalar_summary = EXCLUDED.scalar_summary,
-      built_at = NOW()
-  `;
+    await tx`
+      INSERT INTO style_features (player_id, features, games_window)
+      VALUES (${handleId}, ${featuresJson}, ${gamesWindow})
+      ON CONFLICT (player_id) DO UPDATE SET
+        features = EXCLUDED.features,
+        games_window = EXCLUDED.games_window,
+        computed_at = NOW()
+    `;
 
-  await sql`DELETE FROM fingerprint_terms WHERE handle_id = ${handleId}`;
-  if (terms.length > 0) {
-    const insert = sql as unknown as (rs: object[], ...cs: string[]) => postgres.Helper<object[]>;
-    const rows = terms.map((t) => ({
-      handle_id: handleId,
-      kind: t.kind,
-      term: t.term,
-      weight: t.weight,
-    }));
-    const CHUNK = 10000;
-    for (let i = 0; i < rows.length; i += CHUNK) {
-      const chunk = rows.slice(i, i + CHUNK);
-      await sql`
-        INSERT INTO fingerprint_terms
-          ${insert(chunk, 'handle_id', 'kind', 'term', 'weight')}
-        ON CONFLICT (handle_id, kind, term) DO UPDATE SET
-          weight = EXCLUDED.weight
-      `;
+    await tx`
+      INSERT INTO account_fingerprints (
+        handle_id, platform, handle, games_window,
+        median_rating, dominant_time_class, white_share,
+        earliest_played_at, latest_played_at, scalar_summary
+      ) VALUES (
+        ${handleId}, 'lichess', ${handle.toLowerCase()}, ${gamesWindow},
+        ${medianRating}, ${dominantTc}, ${whiteShare},
+        ${features.earliest_played_at}, ${features.latest_played_at}, ${featuresJson}
+      )
+      ON CONFLICT (handle_id) DO UPDATE SET
+        games_window = EXCLUDED.games_window,
+        median_rating = EXCLUDED.median_rating,
+        dominant_time_class = EXCLUDED.dominant_time_class,
+        white_share = EXCLUDED.white_share,
+        earliest_played_at = EXCLUDED.earliest_played_at,
+        latest_played_at = EXCLUDED.latest_played_at,
+        scalar_summary = EXCLUDED.scalar_summary,
+        built_at = NOW()
+    `;
+
+    await tx`DELETE FROM fingerprint_terms WHERE handle_id = ${handleId}`;
+    if (terms.length > 0) {
+      const insert = tx as unknown as (rs: object[], ...cs: string[]) => postgres.Helper<object[]>;
+      const rows = terms.map((t) => ({
+        handle_id: handleId,
+        kind: t.kind,
+        term: t.term,
+        weight: t.weight,
+      }));
+      const CHUNK = 10000;
+      for (let i = 0; i < rows.length; i += CHUNK) {
+        const chunk = rows.slice(i, i + CHUNK);
+        await tx`
+          INSERT INTO fingerprint_terms
+            ${insert(chunk, 'handle_id', 'kind', 'term', 'weight')}
+          ON CONFLICT (handle_id, kind, term) DO UPDATE SET
+            weight = EXCLUDED.weight
+        `;
+      }
     }
-  }
+  });
 }
 
 function argmaxKey(histogram: Record<string, number>): string | null {

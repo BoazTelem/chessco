@@ -337,8 +337,13 @@ async function processHandle(
 
 /** Upsert handles + style_features + account_fingerprints + fingerprint_terms
  *  for a single (platform, handle) pair. Sequence is chosen so foreign keys
- *  (handle_id → handles.id) resolve cleanly. Not transactional — each upsert
- *  is idempotent on its own. */
+ *  (handle_id → handles.id) resolve cleanly.
+ *
+ *  Wrapped in sql.begin() so a crash between the DELETE and INSERT on
+ *  fingerprint_terms can't leave a handle searchable in account_fingerprints
+ *  (Stage A prefilter) but missing from fingerprint_terms (Stage B retrieval)
+ *  — that combination ranks the handle 0 and effectively erases prior good
+ *  data. */
 async function writeFingerprint(
   sql: postgres.Sql,
   platform: 'chess.com',
@@ -349,81 +354,82 @@ async function writeFingerprint(
 ): Promise<void> {
   const earliest = new Date(features.earliest_played_at);
   const latest = new Date(features.latest_played_at);
-
-  // 1. Upsert handle, get its uuid.
-  const handleRows = await sql<{ id: string }[]>`
-    INSERT INTO handles (platform, handle, games_seen, first_seen_at, last_seen_at)
-    VALUES (${platform}, ${handle.toLowerCase()}, ${gamesWindow},
-            ${earliest.toISOString()}, ${latest.toISOString()})
-    ON CONFLICT (platform, handle) DO UPDATE SET
-      games_seen = GREATEST(handles.games_seen, EXCLUDED.games_seen),
-      first_seen_at = LEAST(handles.first_seen_at, EXCLUDED.first_seen_at),
-      last_seen_at = GREATEST(handles.last_seen_at, EXCLUDED.last_seen_at)
-    RETURNING id
-  `;
-  const handleId = handleRows[0]?.id;
-  if (!handleId) throw new Error(`handles upsert returned no rows for ${platform}/${handle}`);
-
   const featuresJson = JSON.stringify(features);
   const dominantTc = argmaxKey(features.time_class);
   const whiteShare = features.games_total > 0 ? features.games_as_white / features.games_total : 0;
   const medianRating =
     features.avg_opponent_rating === null ? null : Math.round(features.avg_opponent_rating);
 
-  // 2. style_features (canonical V0 JSONB).
-  await sql`
-    INSERT INTO style_features (player_id, features, games_window)
-    VALUES (${handleId}, ${featuresJson}, ${gamesWindow})
-    ON CONFLICT (player_id) DO UPDATE SET
-      features = EXCLUDED.features,
-      games_window = EXCLUDED.games_window,
-      computed_at = NOW()
-  `;
+  await sql.begin(async (tx) => {
+    // 1. Upsert handle, get its uuid.
+    const handleRows = await tx<{ id: string }[]>`
+      INSERT INTO handles (platform, handle, games_seen, first_seen_at, last_seen_at)
+      VALUES (${platform}, ${handle.toLowerCase()}, ${gamesWindow},
+              ${earliest.toISOString()}, ${latest.toISOString()})
+      ON CONFLICT (platform, handle) DO UPDATE SET
+        games_seen = GREATEST(handles.games_seen, EXCLUDED.games_seen),
+        first_seen_at = LEAST(handles.first_seen_at, EXCLUDED.first_seen_at),
+        last_seen_at = GREATEST(handles.last_seen_at, EXCLUDED.last_seen_at)
+      RETURNING id
+    `;
+    const handleId = handleRows[0]?.id;
+    if (!handleId) throw new Error(`handles upsert returned no rows for ${platform}/${handle}`);
 
-  // 3. account_fingerprints (scalar prefilter denorm).
-  await sql`
-    INSERT INTO account_fingerprints (
-      handle_id, platform, handle, games_window,
-      median_rating, dominant_time_class, white_share,
-      earliest_played_at, latest_played_at, scalar_summary
-    ) VALUES (
-      ${handleId}, ${platform}, ${handle.toLowerCase()}, ${gamesWindow},
-      ${medianRating}, ${dominantTc}, ${whiteShare},
-      ${features.earliest_played_at}, ${features.latest_played_at}, ${featuresJson}
-    )
-    ON CONFLICT (handle_id) DO UPDATE SET
-      games_window = EXCLUDED.games_window,
-      median_rating = EXCLUDED.median_rating,
-      dominant_time_class = EXCLUDED.dominant_time_class,
-      white_share = EXCLUDED.white_share,
-      earliest_played_at = EXCLUDED.earliest_played_at,
-      latest_played_at = EXCLUDED.latest_played_at,
-      scalar_summary = EXCLUDED.scalar_summary,
-      built_at = NOW()
-  `;
+    // 2. style_features (canonical V0 JSONB).
+    await tx`
+      INSERT INTO style_features (player_id, features, games_window)
+      VALUES (${handleId}, ${featuresJson}, ${gamesWindow})
+      ON CONFLICT (player_id) DO UPDATE SET
+        features = EXCLUDED.features,
+        games_window = EXCLUDED.games_window,
+        computed_at = NOW()
+    `;
 
-  // 4. fingerprint_terms (delete-then-insert per handle to retire stale terms).
-  await sql`DELETE FROM fingerprint_terms WHERE handle_id = ${handleId}`;
-  if (terms.length > 0) {
-    const insert = sql as unknown as (rs: object[], ...cs: string[]) => postgres.Helper<object[]>;
-    // 4 cols × N rows; 10000 rows = 40k params, safely under 65k cap.
-    const CHUNK = 10000;
-    const rows = terms.map((t) => ({
-      handle_id: handleId,
-      kind: t.kind,
-      term: t.term,
-      weight: t.weight,
-    }));
-    for (let i = 0; i < rows.length; i += CHUNK) {
-      const chunk = rows.slice(i, i + CHUNK);
-      await sql`
-        INSERT INTO fingerprint_terms
-          ${insert(chunk, 'handle_id', 'kind', 'term', 'weight')}
-        ON CONFLICT (handle_id, kind, term) DO UPDATE SET
-          weight = EXCLUDED.weight
-      `;
+    // 3. account_fingerprints (scalar prefilter denorm).
+    await tx`
+      INSERT INTO account_fingerprints (
+        handle_id, platform, handle, games_window,
+        median_rating, dominant_time_class, white_share,
+        earliest_played_at, latest_played_at, scalar_summary
+      ) VALUES (
+        ${handleId}, ${platform}, ${handle.toLowerCase()}, ${gamesWindow},
+        ${medianRating}, ${dominantTc}, ${whiteShare},
+        ${features.earliest_played_at}, ${features.latest_played_at}, ${featuresJson}
+      )
+      ON CONFLICT (handle_id) DO UPDATE SET
+        games_window = EXCLUDED.games_window,
+        median_rating = EXCLUDED.median_rating,
+        dominant_time_class = EXCLUDED.dominant_time_class,
+        white_share = EXCLUDED.white_share,
+        earliest_played_at = EXCLUDED.earliest_played_at,
+        latest_played_at = EXCLUDED.latest_played_at,
+        scalar_summary = EXCLUDED.scalar_summary,
+        built_at = NOW()
+    `;
+
+    // 4. fingerprint_terms (delete-then-insert per handle to retire stale terms).
+    await tx`DELETE FROM fingerprint_terms WHERE handle_id = ${handleId}`;
+    if (terms.length > 0) {
+      const insert = tx as unknown as (rs: object[], ...cs: string[]) => postgres.Helper<object[]>;
+      // 4 cols × N rows; 10000 rows = 40k params, safely under 65k cap.
+      const CHUNK = 10000;
+      const rows = terms.map((t) => ({
+        handle_id: handleId,
+        kind: t.kind,
+        term: t.term,
+        weight: t.weight,
+      }));
+      for (let i = 0; i < rows.length; i += CHUNK) {
+        const chunk = rows.slice(i, i + CHUNK);
+        await tx`
+          INSERT INTO fingerprint_terms
+            ${insert(chunk, 'handle_id', 'kind', 'term', 'weight')}
+          ON CONFLICT (handle_id, kind, term) DO UPDATE SET
+            weight = EXCLUDED.weight
+        `;
+      }
     }
-  }
+  });
 }
 
 function argmaxKey(histogram: Record<string, number>): string | null {
