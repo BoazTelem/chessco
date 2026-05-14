@@ -241,6 +241,65 @@ export async function* fetchUserGamesNdjson<T>(
 }
 
 /**
+ * POST /api/users — bulk-check a batch of handles (max 300 per request,
+ * per Lichess docs). Returns the array of live user profiles; dead /
+ * banned / closed handles are simply omitted from the response.
+ *
+ * Same throttle + retry semantics as the other endpoints in this module:
+ * 1.5s anon / 250ms authed inner gap, 1s → 30s exponential backoff on
+ * 429 / 5xx, up to MAX_RETRIES attempts.
+ *
+ * Returns empty array on 404 (unlikely on this endpoint).
+ *
+ * Caller narrows the response shape via the generic T — typed Lichess
+ * user response shapes vary by what fields the caller cares about.
+ */
+export async function fetchLichessUserBulk<T>(handles: string[]): Promise<T[]> {
+  if (handles.length === 0) return [];
+  if (handles.length > 300) {
+    throw new Error(`fetchLichessUserBulk: max 300 handles per request (got ${handles.length})`);
+  }
+  const url = `${LICHESS_API_BASE}/users`;
+  const body = handles.join(',');
+
+  let lastErr: Error | null = null;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    if (attempt > 0) await backoff(attempt);
+    await rateLimitGap();
+
+    let res: Response;
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'text/plain',
+        Accept: 'application/json',
+        'User-Agent': USER_AGENT,
+      };
+      if (LICHESS_API_TOKEN) headers.Authorization = `Bearer ${LICHESS_API_TOKEN}`;
+      res = await fetch(url, { method: 'POST', headers, body });
+    } catch (err) {
+      lastErr = err as Error;
+      continue;
+    }
+
+    if (res.status === 404) return [];
+    if (res.status === 429 || res.status >= 500) {
+      try {
+        await res.body?.cancel();
+      } catch {
+        // ignore
+      }
+      lastErr = new LichessApiError(`${res.status} ${res.statusText}`, res.status, url);
+      continue;
+    }
+    if (!res.ok) {
+      throw new LichessApiError(`${res.status} ${res.statusText}`, res.status, url);
+    }
+    return (await res.json()) as T[];
+  }
+  throw lastErr ?? new Error(`fetchLichessUserBulk(${url}): exhausted retries`);
+}
+
+/**
  * Compute (sinceMs, untilMs) for "last N months from now".
  */
 export function monthsBackWindow(

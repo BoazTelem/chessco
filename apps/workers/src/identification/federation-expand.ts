@@ -30,14 +30,13 @@
 import 'dotenv/config';
 import type postgres from 'postgres';
 import { getDb } from '../db';
+import { fetchLichessUserBulk } from '../lib/lichess-api';
 import { hypothesizeHandles } from './hypothesize';
 
-const LICHESS_USERS_URL = 'https://lichess.org/api/users';
 const LICHESS_MAX_PER_REQUEST = 300;
 const DEFAULT_TOP_N = 10;
 const DEFAULT_MIN_RATING = 1400;
 const DEFAULT_BATCH_SIZE = 300;
-const DEFAULT_REQUEST_GAP_MS = 1000; // 1 req/s for politeness; Lichess unauth ceiling is much higher
 
 interface CliArgs {
   limit: number | null;
@@ -45,7 +44,6 @@ interface CliArgs {
   minRating: number;
   topN: number;
   batchSize: number;
-  requestGapMs: number;
   dryRun: boolean;
 }
 
@@ -56,7 +54,6 @@ function parseArgs(argv: string[]): CliArgs {
     minRating: DEFAULT_MIN_RATING,
     topN: DEFAULT_TOP_N,
     batchSize: DEFAULT_BATCH_SIZE,
-    requestGapMs: DEFAULT_REQUEST_GAP_MS,
     dryRun: false,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -70,8 +67,6 @@ function parseArgs(argv: string[]): CliArgs {
       if (out.batchSize > LICHESS_MAX_PER_REQUEST) {
         throw new Error(`--batch-size cannot exceed Lichess limit of ${LICHESS_MAX_PER_REQUEST}`);
       }
-    } else if (a === '--rate-ms' && argv[i + 1]) {
-      out.requestGapMs = Number.parseInt(argv[++i]!, 10);
     } else if (a === '--dry-run') out.dryRun = true;
     else throw new Error(`Unrecognized arg: ${a}`);
   }
@@ -266,24 +261,13 @@ async function dropAlreadyKnown(sql: postgres.Sql, handles: string[]): Promise<S
   return known;
 }
 
-/** POST a batch of up to 300 handles to lichess /api/users. Returns the
- *  list of live profiles (dead handles are simply omitted by the API). */
+/** Bulk-check a batch of up to 300 handles against Lichess via the shared
+ *  rate-limited client. Dead/banned/closed handles are simply omitted from
+ *  the response. The shared client handles 1.5s anon / 250ms authed
+ *  throttle + 429/5xx exponential backoff retry — the bulk 1800+ run hit
+ *  20 trailing 429s with the previous direct-fetch implementation. */
 async function fetchLichessUsers(handles: string[]): Promise<LichessUserResponse[]> {
-  const body = handles.join(',');
-  const res = await fetch(LICHESS_USERS_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'text/plain',
-      Accept: 'application/json',
-      'User-Agent': 'chessco-worker/0.1 (+https://chessco.org)',
-    },
-    body,
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`lichess /api/users ${res.status}: ${text.slice(0, 200)}`);
-  }
-  return (await res.json()) as LichessUserResponse[];
+  return fetchLichessUserBulk<LichessUserResponse>(handles);
 }
 
 /** Upsert a discovered live handle into platform_players with the federation
@@ -330,11 +314,6 @@ async function upsertHandle(
       claimed_federation_resolved_at = COALESCE(platform_players.claimed_federation_resolved_at, EXCLUDED.claimed_federation_resolved_at),
       last_seen_at = NOW()
   `;
-}
-
-async function sleep(ms: number): Promise<void> {
-  if (ms <= 0) return;
-  await new Promise((r) => setTimeout(r, ms));
 }
 
 async function main(): Promise<void> {
@@ -412,13 +391,10 @@ async function main(): Promise<void> {
     let live = 0;
     let upserted = 0;
     let batchIdx = 0;
-    const lastSeen = { ts: 0 };
+    // Throttling + 429/5xx retry are handled inside fetchLichessUserBulk;
+    // we just iterate the batches.
     for (const batch of batches) {
       batchIdx++;
-      // Politeness gap
-      const wait = args.requestGapMs - (Date.now() - lastSeen.ts);
-      if (wait > 0) await sleep(wait);
-      lastSeen.ts = Date.now();
 
       let profiles: LichessUserResponse[];
       try {
