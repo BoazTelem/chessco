@@ -258,7 +258,7 @@ export default async function PlayerProfilePage({
 
         <section className="mt-10">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-            What's next
+            What&rsquo;s next
           </h2>
           <div className="mt-3 rounded-lg border border-border bg-card p-5">
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent">
