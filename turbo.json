@@ -4,6 +4,21 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
+      "env": [
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "SCOUT_PROSE_PROVIDER",
+        "DEEPSEEK_API_KEY",
+        "GAMES_DATABASE_HOST",
+        "GAMES_DATABASE_PORT",
+        "GAMES_DATABASE_USER",
+        "GAMES_DATABASE_PASSWORD",
+        "GAMES_DATABASE_NAME",
+        "GAMES_DATABASE_SSLMODE",
+        "SUPER_ADMIN_EMAIL",
+        "PRACTICE_WS_TICKET_SECRET",
+        "PRACTICE_SETTLE_SECRET",
+        "PRACTICE_DATABASE_URL"
+      ],
       "outputs": [".next/**", "!.next/cache/**", "dist/**"]
     },
     "dev": {

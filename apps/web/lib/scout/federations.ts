@@ -14,7 +14,7 @@
  * `federations-shared.ts` and are re-exported here for backward compatibility.
  */
 import { unstable_cache } from 'next/cache';
-import { createClient } from '@/lib/supabase/server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import type { FederationOption } from './federations-shared';
 
 export type { FederationOption } from './federations-shared';
@@ -34,7 +34,13 @@ const CONTINENT_ORDER: Record<string, number> = {
 };
 
 async function fetchFederations(): Promise<FederationOption[]> {
-  const supabase = await createClient();
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return [];
+
+  const supabase = createSupabaseClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
   const { data, error } = await supabase
     .from('federations')
     .select(
