@@ -1,11 +1,8 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { brand } from '@chessco/ui';
-import { ChesscoMark } from '@/lib/logo';
 import { ResultCard } from '../../result-card';
 import type { SearchResult } from '../../types';
 import { createClient } from '@/lib/supabase/server';
-import { getUser } from '@/lib/auth';
 import { findFederation, getFederations } from '@/lib/scout/federations';
 
 const PAGE_SIZE = 50;
@@ -76,7 +73,7 @@ export default async function FederationRosterPage({
   const page = Math.max(1, parseInt(pageRaw ?? '1', 10) || 1);
   const offset = (page - 1) * PAGE_SIZE;
 
-  const [user, supabase] = await Promise.all([getUser(), createClient()]);
+  const supabase = await createClient();
 
   // Decide data source: native if active, else FIDE-slice via iso2 country.
   // For the FIDE row itself, "active=true" means we query FIDE players directly.
@@ -162,35 +159,6 @@ export default async function FederationRosterPage({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(ldItemList) }}
         />
       )}
-
-      <header className="border-b border-border bg-card/50">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <Link
-            href="/"
-            aria-label={brand.name}
-            className="inline-flex items-center gap-2 hover:opacity-80"
-          >
-            <ChesscoMark className="h-4 w-4 shrink-0" />
-            <span className="font-display font-semibold uppercase tracking-[0.3em] text-accent">
-              {brand.name}
-            </span>
-          </Link>
-          <nav className="flex items-center gap-3 text-sm">
-            <Link href="/scout" className="text-muted-foreground hover:text-foreground">
-              Scout
-            </Link>
-            {user ? (
-              <Link href="/dashboard" className="text-muted-foreground hover:text-foreground">
-                Dashboard
-              </Link>
-            ) : (
-              <Link href="/login" className="text-muted-foreground hover:text-foreground">
-                Sign in
-              </Link>
-            )}
-          </nav>
-        </div>
-      </header>
 
       <main className="container mx-auto max-w-5xl px-4 py-10">
         <p className="text-xs font-semibold uppercase tracking-[0.3em] text-accent">

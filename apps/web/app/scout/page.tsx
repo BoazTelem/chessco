@@ -1,8 +1,6 @@
 import Link from 'next/link';
-import { brand } from '@chessco/ui';
 import { getUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
-import { ChesscoMark } from '@/lib/logo';
 import { SearchForm } from './search-form';
 import { HandleResultCard, ResultCard, type HandleResult } from './result-card';
 import { TrackPersonCTA } from './track-person-cta';
@@ -130,45 +128,6 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
 
   return (
     <div className="min-h-screen">
-      <header className="border-b border-border bg-card/50">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <Link
-            href="/"
-            aria-label={brand.name}
-            className="inline-flex items-center gap-2 hover:opacity-80"
-          >
-            <ChesscoMark className="h-4 w-4 shrink-0" />
-            <span className="font-display font-semibold uppercase tracking-[0.3em] text-accent">
-              {brand.name}
-            </span>
-          </Link>
-          <nav className="flex items-center gap-3 text-sm">
-            {user ? (
-              <>
-                <Link href="/dashboard" className="text-muted-foreground hover:text-foreground">
-                  Dashboard
-                </Link>
-                <Link href="/account" className="text-muted-foreground hover:text-foreground">
-                  Account
-                </Link>
-              </>
-            ) : (
-              <>
-                <Link href="/login" className="text-muted-foreground hover:text-foreground">
-                  Sign in
-                </Link>
-                <Link
-                  href="/signup"
-                  className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground hover:opacity-90"
-                >
-                  Get started
-                </Link>
-              </>
-            )}
-          </nav>
-        </div>
-      </header>
-
       <main className="container mx-auto max-w-5xl px-4 py-10">
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-accent">Scout</p>

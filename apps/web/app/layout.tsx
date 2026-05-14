@@ -5,6 +5,8 @@ import { GeistMono } from 'geist/font/mono';
 import { brand } from '@chessco/ui';
 import { Analytics } from '@vercel/analytics/next';
 import { ConditionalFooter } from '@/components/site/ConditionalFooter';
+import { ConditionalSiteHeader } from '@/components/site/ConditionalSiteHeader';
+import { SiteHeader } from '@/components/site/SiteHeader';
 import { PracticePresence } from '@/components/practice/PracticePresence';
 import { SessionGuard } from '@/components/auth/SessionGuard';
 import './globals.css';
@@ -42,6 +44,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       suppressHydrationWarning
     >
       <body className="flex min-h-screen flex-col bg-background font-sans text-foreground antialiased">
+        <ConditionalSiteHeader>
+          <SiteHeader />
+        </ConditionalSiteHeader>
         <div className="flex-1">{children}</div>
         <ConditionalFooter />
         <PracticePresence />
