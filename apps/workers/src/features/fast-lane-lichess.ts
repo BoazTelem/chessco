@@ -34,6 +34,7 @@
 import 'dotenv/config';
 import type postgres from 'postgres';
 import { getDb, getGamesDb } from '../db';
+import { fetchUserGamesNdjson } from '../lib/lichess-api';
 import {
   extractFeaturesV0,
   extractFingerprintTerms,
@@ -42,7 +43,6 @@ import {
 } from './extract';
 import type { PlayerFeaturesV0 } from './types';
 
-const LICHESS_API_BASE = 'https://lichess.org/api';
 const DEFAULT_MAX_GAMES = 1000;
 const DEFAULT_CONCURRENCY = 3; // lower than chess.com because each call is bigger
 const DEFAULT_MIN_GAMES = 10;
@@ -194,58 +194,16 @@ function lichessToGameRow(game: LichessGame, targetHandle: string): GameRow | nu
   };
 }
 
-/** Stream NDJSON from /api/games/user/{handle}. Yields parsed game objects. */
-async function* streamUserGames(
-  handle: string,
-  maxGames: number,
-  token: string | null,
-): AsyncGenerator<LichessGame> {
-  const url =
-    `${LICHESS_API_BASE}/games/user/${encodeURIComponent(handle)}` +
-    `?rated=true&max=${maxGames}&pgnInJson=false&clocks=false&evals=false&opening=true`;
-  const headers: Record<string, string> = {
-    Accept: 'application/x-ndjson',
-    'User-Agent': 'chessco-worker/0.1 (+https://chessco.org)',
-  };
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const res = await fetch(url, { headers });
-  if (res.status === 404) return;
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`lichess /api/games/user ${res.status}: ${text.slice(0, 200)}`);
-  }
-  if (!res.body) return;
-
-  // Streaming ndjson parse: buffer until newline, parse each line as JSON.
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder('utf-8');
-  let buf = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (value) buf += decoder.decode(value, { stream: true });
-    let nl = buf.indexOf('\n');
-    while (nl >= 0) {
-      const line = buf.slice(0, nl).trim();
-      buf = buf.slice(nl + 1);
-      if (line.length > 0) {
-        try {
-          yield JSON.parse(line) as LichessGame;
-        } catch {
-          // tolerate occasional malformed line; skip
-        }
-      }
-      nl = buf.indexOf('\n');
-    }
-    if (done) break;
-  }
-  if (buf.trim().length > 0) {
-    try {
-      yield JSON.parse(buf) as LichessGame;
-    } catch {
-      // ignore
-    }
-  }
+/** Wrapper around the shared rate-limited Lichess client. Delegates to
+ *  fetchUserGamesNdjson in apps/workers/src/lib/lichess-api.ts so we
+ *  inherit its throttle (1.5s anon / 250ms authed) + 429/5xx exponential
+ *  backoff retry + LICHESS_API_TOKEN auth. */
+function streamUserGames(handle: string, maxGames: number): AsyncGenerator<LichessGame> {
+  return fetchUserGamesNdjson<LichessGame>(
+    handle,
+    { max: maxGames, rated: true, perfType: 'bullet,blitz,rapid,classical' },
+    { pgnInJson: 'false', clocks: 'false', evals: 'false', opening: 'true' },
+  );
 }
 
 interface HandleResult {
@@ -261,7 +219,6 @@ async function processHandle(
   cloudSql: postgres.Sql,
   handle: string,
   args: CliArgs,
-  token: string | null,
 ): Promise<HandleResult> {
   const t0 = Date.now();
   const result: HandleResult = {
@@ -275,7 +232,7 @@ async function processHandle(
 
   const buffer: GameRow[] = [];
   try {
-    for await (const game of streamUserGames(handle, args.maxGames, token)) {
+    for await (const game of streamUserGames(handle, args.maxGames)) {
       result.gamesSeen++;
       const row = lichessToGameRow(game, handle);
       if (row) buffer.push(row);
@@ -506,7 +463,6 @@ async function runPool(
   cloudSql: postgres.Sql,
   handles: string[],
   args: CliArgs,
-  token: string | null,
 ): Promise<HandleResult[]> {
   const results: HandleResult[] = new Array(handles.length);
   let next = 0;
@@ -518,7 +474,7 @@ async function runPool(
       if (i >= handles.length) return;
       const handle = handles[i]!;
       try {
-        const r = await processHandle(cloudSql, handle, args, token);
+        const r = await processHandle(cloudSql, handle, args);
         results[i] = r;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -552,7 +508,7 @@ async function runPool(
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  const token = process.env.LICHESS_API_TOKEN ?? null;
+  const hasToken = Boolean(process.env.LICHESS_API_TOKEN);
   const { client: cloudSql } = getGamesDb();
   let supaSql: postgres.Sql | null = null;
 
@@ -567,7 +523,7 @@ async function main(): Promise<void> {
       console.log(
         `[fast-lane-lichess] tier=${args.tier} → ${fmt(handles.length)} handles ` +
           `(max-games=${args.maxGames}, concurrency=${args.concurrency}, ` +
-          `min-games=${args.minGames}, token=${token ? 'yes' : 'no'}` +
+          `min-games=${args.minGames}, token=${hasToken ? 'yes' : 'no'}` +
           `${args.dryRun ? ', DRY RUN' : ''})`,
       );
     } else {
@@ -580,7 +536,7 @@ async function main(): Promise<void> {
     }
 
     const t0 = Date.now();
-    const results = await runPool(cloudSql, handles, args, token);
+    const results = await runPool(cloudSql, handles, args);
     const dt = ((Date.now() - t0) / 1000).toFixed(1);
 
     const wrote = results.filter((r) => r.fingerprintWritten).length;
