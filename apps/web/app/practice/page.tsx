@@ -42,7 +42,7 @@ export default async function PracticeLobbyPage({
   let query = supabase
     .from('challenges')
     .select(
-      'id, creator_id, fen, creator_color, time_control, time_class, fee_cents, rating_min, rating_max, games_requested, games_completed, notes, opening_name, anonymous, creator_rating, created_at, profiles:profiles!challenges_creator_id_fkey(display_name, username, profile_visibility)',
+      'id, creator_id, fen, creator_color, time_control, time_class, fee_cents, funding_type, credit_cost, rating_min, rating_max, games_requested, games_completed, notes, opening_name, anonymous, creator_rating, created_at, profiles:profiles!challenges_creator_id_fkey(display_name, username, profile_visibility)',
     )
     .eq('status', 'open')
     .gt('last_heartbeat', liveCutoff)

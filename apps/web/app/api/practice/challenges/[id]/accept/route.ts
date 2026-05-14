@@ -117,7 +117,8 @@ export async function POST(_req: Request, ctx: RouteContext): Promise<NextRespon
       await tx`UPDATE matches SET game_id = ${lg.id} WHERE id = ${match.id}`;
 
       // Escrow this game's fee: D creator user_wallet, C escrow.
-      // Skip when fee_cents = 0 (free game) — ledger has CHECK (amount_cents > 0).
+      // Skip when fee_cents = 0 (credit-funded practice) because the cash
+      // ledger has CHECK (amount_cents > 0).
       if (ch.fee_cents > 0) {
         const txnId = crypto.randomUUID();
         await tx`

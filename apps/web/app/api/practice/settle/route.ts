@@ -65,7 +65,8 @@ export async function POST(req: Request): Promise<NextResponse> {
     await sql.begin(async (tx) => {
       const matchRows = (await tx`
         SELECT m.id, m.challenge_id, m.opponent_id, m.fee_cents, m.opponent_payout_cents,
-               m.status, m.settled_at, c.creator_id
+               m.status, m.settled_at, c.creator_id, c.funding_type, c.credit_cost,
+               c.games_requested
         FROM matches m
         JOIN challenges c ON c.id = m.challenge_id
         WHERE m.id = ${body.matchId}
@@ -79,15 +80,22 @@ export async function POST(req: Request): Promise<NextResponse> {
         status: string;
         settled_at: string | null;
         creator_id: string;
+        funding_type: 'cash' | 'credits';
+        credit_cost: number;
+        games_requested: number;
       }>;
       const m = matchRows[0];
       if (!m) throw new HttpError(404, 'match not found');
       if (m.settled_at) return; // idempotent
 
       const txnId = crypto.randomUUID();
+      const creditPerGame =
+        m.funding_type === 'credits' && m.credit_cost > 0 && m.games_requested > 0
+          ? Math.max(1, Math.floor(m.credit_cost / m.games_requested))
+          : 0;
 
       if (body.termination === 'opponent_abandoned') {
-        // Refund the creator (skip ledger ops when fee was 0 — free game).
+        // Refund the creator. Credit-funded games return the reserved credit.
         if (m.fee_cents > 0) {
           await tx`
             INSERT INTO ledger_entries (
@@ -111,12 +119,28 @@ export async function POST(req: Request): Promise<NextResponse> {
             )
           `;
         }
+        if (creditPerGame > 0) {
+          await tx`
+            UPDATE wallets
+            SET credit_available = credit_available + ${creditPerGame},
+                credit_pending = credit_pending - ${creditPerGame}
+            WHERE profile_id = ${m.creator_id}
+          `;
+          await tx`
+            INSERT INTO credit_ledger_entries (
+              profile_id, direction, amount, category, reference_type, reference_id, metadata
+            ) VALUES (
+              ${m.creator_id}, 'C', ${creditPerGame}, 'challenge_refund', 'match', ${m.id},
+              ${JSON.stringify({ termination: body.termination })}::jsonb
+            )
+          `;
+        }
         await tx`
           UPDATE ratings SET paid_games_abandoned = paid_games_abandoned + 1
           WHERE profile_id = ${m.opponent_id}
         `;
       } else if (body.termination === 'aborted') {
-        // No play happened. Return escrow to the creator (skip if free), no rating change.
+        // No play happened. Return escrow or reserved credit to the creator.
         if (m.fee_cents > 0) {
           await tx`
             INSERT INTO ledger_entries (
@@ -131,9 +155,25 @@ export async function POST(req: Request): Promise<NextResponse> {
             WHERE profile_id = ${m.creator_id}
           `;
         }
+        if (creditPerGame > 0) {
+          await tx`
+            UPDATE wallets
+            SET credit_available = credit_available + ${creditPerGame},
+                credit_pending = credit_pending - ${creditPerGame}
+            WHERE profile_id = ${m.creator_id}
+          `;
+          await tx`
+            INSERT INTO credit_ledger_entries (
+              profile_id, direction, amount, category, reference_type, reference_id, metadata
+            ) VALUES (
+              ${m.creator_id}, 'C', ${creditPerGame}, 'challenge_refund', 'match', ${m.id},
+              ${JSON.stringify({ termination: body.termination })}::jsonb
+            )
+          `;
+        }
       } else {
         // Clean ending (including creator_abandoned): opponent gets paid.
-        // Skip the ledger/wallet move when the game was free.
+        // Skip the cash ledger/wallet move for credit-funded practice games.
         if (m.opponent_payout_cents > 0) {
           await tx`
             INSERT INTO ledger_entries (
@@ -146,6 +186,21 @@ export async function POST(req: Request): Promise<NextResponse> {
           await tx`
             UPDATE wallets SET available_cents = available_cents + ${m.opponent_payout_cents}
             WHERE profile_id = ${m.opponent_id}
+          `;
+        }
+        if (creditPerGame > 0) {
+          await tx`
+            UPDATE wallets
+            SET credit_pending = credit_pending - ${creditPerGame}
+            WHERE profile_id = ${m.creator_id}
+          `;
+          await tx`
+            INSERT INTO credit_ledger_entries (
+              profile_id, direction, amount, category, reference_type, reference_id, metadata
+            ) VALUES (
+              ${m.creator_id}, 'D', ${creditPerGame}, 'challenge_consume', 'match', ${m.id},
+              ${JSON.stringify({ termination: body.termination })}::jsonb
+            )
           `;
         }
         await tx`

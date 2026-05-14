@@ -39,9 +39,11 @@ function classifyCustom(baseMin: number, incSec: number): TimeClass {
 }
 
 type SideChoice = 'w' | 'b' | 'random';
+type FundingType = 'cash' | 'credits';
 
 interface Props {
   walletAvailableCents: number;
+  creditAvailable: number;
   /** Best-known rating for the user (from linked online accounts or Chessco skill). */
   userRating: number | null;
 }
@@ -49,7 +51,7 @@ interface Props {
 const DEFAULT_TC_INDEX = 4; // 10+0 rapid — most common online time class
 const RATING_BAND_ABOVE = 200; // default opponent ceiling = user rating + 200
 
-export function CreatePositionForm({ walletAvailableCents, userRating }: Props) {
+export function CreatePositionForm({ walletAvailableCents, creditAvailable, userRating }: Props) {
   const router = useRouter();
   const [fen, setFen] = useState(STANDARD_START_FEN);
   const [fenOk, setFenOk] = useState(true);
@@ -59,7 +61,10 @@ export function CreatePositionForm({ walletAvailableCents, userRating }: Props) 
   const [customBaseMin, setCustomBaseMin] = useState(20);
   const [customIncSec, setCustomIncSec] = useState(0);
   const [side, setSide] = useState<SideChoice>('random');
-  const [feeUsd, setFeeUsd] = useState(0);
+  const [fundingType, setFundingType] = useState<FundingType>(
+    creditAvailable > 0 ? 'credits' : 'cash',
+  );
+  const [feeUsd, setFeeUsd] = useState(1);
   const [games, setGames] = useState(1);
   const [ratingMin, setRatingMin] = useState<string>(userRating != null ? String(userRating) : '');
   const [ratingMax, setRatingMax] = useState<string>(
@@ -70,9 +75,13 @@ export function CreatePositionForm({ walletAvailableCents, userRating }: Props) 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const totalCents = Math.round(feeUsd * 100) * games;
-  const insufficient = totalCents > walletAvailableCents;
-  const isFree = totalCents === 0;
+  const feeCents = fundingType === 'cash' ? Math.round(feeUsd * 100) : 0;
+  const totalCents = feeCents * games;
+  const creditCost = fundingType === 'credits' ? games : 0;
+  const insufficientCash = fundingType === 'cash' && totalCents > walletAvailableCents;
+  const insufficientCredits = fundingType === 'credits' && creditCost > creditAvailable;
+  const invalidCashFee = fundingType === 'cash' && feeCents <= 0;
+  const cannotPublish = insufficientCash || insufficientCredits || invalidCashFee;
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -82,8 +91,16 @@ export function CreatePositionForm({ walletAvailableCents, userRating }: Props) 
       setError(fenError ?? 'Position is invalid.');
       return;
     }
-    if (insufficient) {
+    if (insufficientCash) {
       setError('Wallet balance is too low. Add funds or reduce the fee.');
+      return;
+    }
+    if (insufficientCredits) {
+      setError(`Not enough credits. You need ${creditCost}.`);
+      return;
+    }
+    if (invalidCashFee) {
+      setError('Cash challenges require a fee greater than $0.');
       return;
     }
 
@@ -103,7 +120,8 @@ export function CreatePositionForm({ walletAvailableCents, userRating }: Props) 
       creatorColor: side === 'random' ? null : side,
       timeControl: effectiveTcStr,
       timeClass: effectiveTcClass,
-      feeCents: Math.round(feeUsd * 100),
+      feeCents,
+      fundingType,
       gamesRequested: games,
       ratingMin: ratingMin ? Number(ratingMin) : null,
       ratingMax: ratingMax ? Number(ratingMax) : null,
@@ -275,27 +293,68 @@ export function CreatePositionForm({ walletAvailableCents, userRating }: Props) 
 
         <div>
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-            Fee per game (USD)
+            Funding
           </h2>
-          <div className="flex items-center gap-2">
-            <span className="text-lg">$</span>
-            <input
-              type="number"
-              min={0}
-              max={500}
-              step={0.5}
-              value={feeUsd}
-              onChange={(e) => setFeeUsd(Math.max(0, Number(e.target.value) || 0))}
-              className="w-24 rounded-md border border-border bg-background px-2 py-1.5 text-base"
-            />
-            <span className="text-xs text-muted-foreground">
-              {isFree ? 'free game' : `total $${(totalCents / 100).toFixed(2)}`}
-            </span>
+          <div className="mb-2 flex gap-2">
+            <button
+              type="button"
+              onClick={() => setFundingType('credits')}
+              className={`flex-1 rounded-md border px-3 py-2 text-left text-xs ${
+                fundingType === 'credits'
+                  ? 'border-accent bg-accent text-accent-foreground'
+                  : 'border-border bg-background hover:bg-muted'
+              }`}
+            >
+              <span className="block font-semibold">Credits</span>
+              <span className={fundingType === 'credits' ? 'opacity-80' : 'text-muted-foreground'}>
+                1 per game
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setFundingType('cash')}
+              className={`flex-1 rounded-md border px-3 py-2 text-left text-xs ${
+                fundingType === 'cash'
+                  ? 'border-accent bg-accent text-accent-foreground'
+                  : 'border-border bg-background hover:bg-muted'
+              }`}
+            >
+              <span className="block font-semibold">Cash</span>
+              <span className={fundingType === 'cash' ? 'opacity-80' : 'text-muted-foreground'}>
+                Opponent earns fee
+              </span>
+            </button>
           </div>
-          {insufficient && (
+          {fundingType === 'cash' ? (
+            <div className="flex items-center gap-2">
+              <span className="text-lg">$</span>
+              <input
+                type="number"
+                min={0.5}
+                max={500}
+                step={0.5}
+                value={feeUsd}
+                onChange={(e) => setFeeUsd(Math.max(0, Number(e.target.value) || 0))}
+                className="w-24 rounded-md border border-border bg-background px-2 py-1.5 text-base"
+              />
+              <span className="text-xs text-muted-foreground">
+                total ${(totalCents / 100).toFixed(2)}
+              </span>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Cost: {creditCost} credit{creditCost === 1 ? '' : 's'}. You have {creditAvailable}.
+            </p>
+          )}
+          {insufficientCash && (
             <p className="mt-2 text-xs text-destructive">
-              Wallet has ${(walletAvailableCents / 100).toFixed(2)} — not enough for the full
+              Wallet has ${(walletAvailableCents / 100).toFixed(2)} - not enough for the full
               deposit.
+            </p>
+          )}
+          {insufficientCredits && (
+            <p className="mt-2 text-xs text-destructive">
+              You need {creditCost} credit{creditCost === 1 ? '' : 's'} to publish this request.
             </p>
           )}
         </div>
@@ -369,18 +428,18 @@ export function CreatePositionForm({ walletAvailableCents, userRating }: Props) 
       <div className="flex items-center gap-3">
         <button
           type="submit"
-          disabled={submitting || !fenOk || insufficient}
+          disabled={submitting || !fenOk || cannotPublish}
           className="rounded-md bg-accent px-6 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-60"
         >
           {submitting
-            ? 'Publishing…'
-            : isFree
-              ? 'Publish (free)'
-              : `Publish — $${(totalCents / 100).toFixed(2)}`}
+            ? 'Publishing...'
+            : fundingType === 'credits'
+              ? `Publish - ${creditCost} credit${creditCost === 1 ? '' : 's'}`
+              : `Publish - $${(totalCents / 100).toFixed(2)}`}
         </button>
         <span className="text-xs text-muted-foreground">
-          {isFree
-            ? 'No fee — opponents play for fun.'
+          {fundingType === 'credits'
+            ? 'Credits are returned if no one accepts and the challenge expires.'
             : 'The deposit is refunded if no one accepts and the challenge expires.'}
         </span>
       </div>

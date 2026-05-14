@@ -21,7 +21,11 @@ export default async function PracticeCreatePage() {
   // verified online accounts as the default rating-band center; if none are
   // linked, fall back to skill_rating (Chessco's Glicko, default 1500).
   const [{ data: wallet }, { data: linked }, { data: ratingRow }] = await Promise.all([
-    supabase.from('wallets').select('available_cents').eq('profile_id', user.id).maybeSingle(),
+    supabase
+      .from('wallets')
+      .select('available_cents, credit_available')
+      .eq('profile_id', user.id)
+      .maybeSingle(),
     supabase
       .from('external_accounts')
       .select('rating_rapid, rating_blitz, rating_classical')
@@ -62,7 +66,8 @@ export default async function PracticeCreatePage() {
             <span>Create</span>
           </div>
           <nav className="text-sm text-muted-foreground">
-            Wallet: ${((wallet?.available_cents ?? 0) / 100).toFixed(2)}
+            Wallet: ${((wallet?.available_cents ?? 0) / 100).toFixed(2)} / Credits:{' '}
+            {wallet?.credit_available ?? 0}
           </nav>
         </div>
       </header>
@@ -81,6 +86,7 @@ export default async function PracticeCreatePage() {
 
         <CreatePositionForm
           walletAvailableCents={wallet?.available_cents ?? 0}
+          creditAvailable={wallet?.credit_available ?? 0}
           userRating={userRating}
         />
       </main>

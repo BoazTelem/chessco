@@ -7,6 +7,7 @@ import {
   fetchLichessAccount,
   lichessRatings,
 } from '@/lib/lichess';
+import { grantLinkCredits } from '@/lib/credits';
 
 const LICHESS_COOKIE = 'chessco_lichess_oauth';
 
@@ -125,6 +126,13 @@ export async function GET(request: NextRequest) {
   if (upsertErr) {
     console.error('external_accounts upsert failed', upsertErr);
     return back(`lichess_error=${encodeURIComponent('save_failed')}`);
+  }
+
+  try {
+    await grantLinkCredits(user.id, 'lichess', account.username);
+  } catch (e) {
+    console.error('credit grant failed for Lichess link', e);
+    return back(`lichess_error=${encodeURIComponent('credit_grant_failed')}`);
   }
 
   return back(`linked=lichess&handle=${encodeURIComponent(account.username)}`);

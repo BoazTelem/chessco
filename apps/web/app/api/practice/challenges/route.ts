@@ -22,12 +22,13 @@ const Input = z.object({
   creatorColor: z.enum(['w', 'b']).nullable(),
   timeControl: z.string().regex(TIME_CONTROL_RE, 'time_control must look like "5+0"'),
   timeClass: z.enum(TIME_CLASS),
-  feeCents: z.number().int().min(0).max(50_000), // $0 (free) .. $500
+  feeCents: z.number().int().min(0).max(50_000), // $0 credits-only .. $500 cash
   gamesRequested: z.number().int().min(1).max(5),
   ratingMin: z.number().int().min(0).max(3500).nullable(),
   ratingMax: z.number().int().min(0).max(3500).nullable(),
   notes: z.string().max(500).optional().nullable(),
   anonymous: z.boolean().optional(),
+  fundingType: z.enum(['cash', 'credits']).optional(),
 });
 
 export type PracticeChallengeInput = z.infer<typeof Input>;
@@ -64,12 +65,29 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: `position invalid: ${fenCheck.reason}` }, { status: 400 });
   }
 
+  if (parsed.feeCents > 0 && parsed.fundingType === 'credits') {
+    return NextResponse.json(
+      { error: 'credit-funded challenges cannot include a cash fee' },
+      { status: 400 },
+    );
+  }
+
+  const fundingType: 'cash' | 'credits' | null =
+    parsed.feeCents > 0 ? 'cash' : parsed.fundingType === 'credits' ? 'credits' : null;
+  if (!fundingType) {
+    return NextResponse.json(
+      { error: 'Publishing requires either a cash fee or credits.' },
+      { status: 402 },
+    );
+  }
+
   // The board is the source of truth for the opening — derive name + ECO from
   // the FEN against the bundled book. Most user-published positions aren't
   // book lines and return null, which the lobby renders as no opening label.
   const detected = detectOpening(fenCheck.fen);
 
-  const totalCents = parsed.feeCents * parsed.gamesRequested;
+  const totalCents = fundingType === 'cash' ? parsed.feeCents * parsed.gamesRequested : 0;
+  const creditCost = fundingType === 'credits' ? parsed.gamesRequested : 0;
   const sql = getPracticeDb();
 
   // Snapshot the creator's best-known rating at publish time, so the lobby
@@ -101,40 +119,61 @@ export async function POST(req: Request): Promise<NextResponse> {
     const result = (await sql.begin(async (tx) => {
       // Lock the wallet row; ensure sufficient available_cents.
       const wallets = (await tx`
-        SELECT available_cents FROM wallets WHERE profile_id = ${user.id} FOR UPDATE
-      `) as Array<{ available_cents: number }>;
+        SELECT available_cents, credit_available FROM wallets WHERE profile_id = ${user.id} FOR UPDATE
+      `) as Array<{ available_cents: number; credit_available: number }>;
       const wallet = wallets[0];
       if (!wallet) throw new HttpError(400, 'no wallet on file');
-      if (wallet.available_cents < totalCents) {
+      if (fundingType === 'cash' && wallet.available_cents < totalCents) {
         throw new HttpError(402, `insufficient balance — need $${(totalCents / 100).toFixed(2)}`);
       }
+      if (fundingType === 'credits' && wallet.credit_available < creditCost) {
+        throw new HttpError(402, `insufficient credits - need ${creditCost}`);
+      }
 
-      // Reserve: available -= total, pending += total. No ledger entry yet;
-      // the ledger only records movements between distinct accounts.
-      await tx`
-        UPDATE wallets
-        SET available_cents = available_cents - ${totalCents},
-            pending_cents = pending_cents + ${totalCents}
-        WHERE profile_id = ${user.id}
-      `;
+      // Reserve the creator's funding source while the challenge is open.
+      if (fundingType === 'cash') {
+        await tx`
+          UPDATE wallets
+          SET available_cents = available_cents - ${totalCents},
+              pending_cents = pending_cents + ${totalCents}
+          WHERE profile_id = ${user.id}
+        `;
+      } else {
+        await tx`
+          UPDATE wallets
+          SET credit_available = credit_available - ${creditCost},
+              credit_pending = credit_pending + ${creditCost}
+          WHERE profile_id = ${user.id}
+        `;
+      }
 
       const inserted = (await tx`
         INSERT INTO challenges (
           creator_id, fen, pgn_prefix, creator_color, time_control, time_class,
           fee_cents, currency, rating_min, rating_max, games_requested, notes,
-          opening_name, eco_code, anonymous, creator_rating
+          opening_name, eco_code, anonymous, creator_rating, funding_type, credit_cost
         ) VALUES (
           ${user.id}, ${fenCheck.fen}, ${parsed.pgnPrefix ?? null}, ${parsed.creatorColor},
           ${parsed.timeControl}, ${parsed.timeClass},
-          ${parsed.feeCents}, 'USD', ${parsed.ratingMin}, ${parsed.ratingMax},
+          ${fundingType === 'cash' ? parsed.feeCents : 0}, 'USD', ${parsed.ratingMin}, ${parsed.ratingMax},
           ${parsed.gamesRequested}, ${parsed.notes ?? null},
           ${detected?.name ?? null}, ${detected?.ecoCode ?? null},
-          ${parsed.anonymous ?? false}, ${creatorRating}
+          ${parsed.anonymous ?? false}, ${creatorRating}, ${fundingType}, ${creditCost}
         )
         RETURNING id
       `) as Array<{ id: string }>;
       const row = inserted[0];
       if (!row) throw new HttpError(500, 'insert failed');
+      if (fundingType === 'credits' && creditCost > 0) {
+        await tx`
+          INSERT INTO credit_ledger_entries (
+            profile_id, direction, amount, category, reference_type, reference_id, metadata
+          ) VALUES (
+            ${user.id}, 'D', ${creditCost}, 'challenge_reserve', 'challenge', ${row.id},
+            ${JSON.stringify({ games_requested: parsed.gamesRequested })}::jsonb
+          )
+        `;
+      }
       return row.id;
     })) as string;
 

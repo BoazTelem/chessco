@@ -1,5 +1,5 @@
 -- ============================================================================
--- Migration: 0026_profile_visibility
+-- Migration: 0028_profile_visibility
 -- Free per-user privacy setting. Independent of the per-challenge
 -- challenges.anonymous toggle (which stays as-is). A user can be globally
 -- public yet post one anonymous challenge, or globally private yet name

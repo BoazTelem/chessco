@@ -15,6 +15,7 @@ import {
   fetchChesscomStats,
   profileContainsToken,
 } from '@/lib/chesscom';
+import { grantLinkCredits } from '@/lib/credits';
 
 const LICHESS_COOKIE = 'chessco_lichess_oauth';
 const COOKIE_TTL_SECONDS = 10 * 60;
@@ -221,6 +222,13 @@ export async function verifyChesscomToken(): Promise<ChesscomVerifyResult> {
     { onConflict: 'platform,external_id' },
   );
   if (upsertErr) return { ok: false, error: upsertErr.message };
+
+  try {
+    await grantLinkCredits(user.id, 'chess.com', handle);
+  } catch (e) {
+    console.error('credit grant failed for chess.com link', e);
+    return { ok: false, error: 'Account linked, but credit grant failed. Try refreshing.' };
+  }
 
   // Burn the token.
   await supabase

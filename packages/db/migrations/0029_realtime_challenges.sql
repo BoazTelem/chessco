@@ -1,5 +1,5 @@
 -- ============================================================================
--- Migration: 0028_realtime_challenges
+-- Migration: 0029_realtime_challenges
 -- Publish the `challenges` table so the Practice lobby can react in real time
 -- when a new challenge is published — viewers should not have to refresh to
 -- see a fresh card. RLS (challenges_select_open) is still enforced per

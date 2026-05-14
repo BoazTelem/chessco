@@ -426,6 +426,9 @@ export const challenges = pgTable('challenges', {
   ecoCode: text('eco_code'),
   anonymous: boolean('anonymous').notNull().default(false),
   creatorRating: integer('creator_rating'),
+  fundingType: text('funding_type').$type<'cash' | 'credits'>().notNull().default('cash'),
+  creditCost: integer('credit_cost').notNull().default(0),
+  lastHeartbeat: timestamptz('last_heartbeat').notNull().defaultNow(),
   createdAt: timestamptz('created_at').notNull().defaultNow(),
   updatedAt: timestamptz('updated_at').notNull().defaultNow(),
 });
@@ -447,6 +450,9 @@ export const matches = pgTable('matches', {
     .notNull()
     .references(() => challenges.id, { onDelete: 'cascade' }),
   opponentId: uuid('opponent_id')
+    .notNull()
+    .references(() => profiles.id, { onDelete: 'restrict' }),
+  creatorId: uuid('creator_id')
     .notNull()
     .references(() => profiles.id, { onDelete: 'restrict' }),
   feeCents: integer('fee_cents').notNull(),
@@ -514,10 +520,59 @@ export const wallets = pgTable('wallets', {
     .references(() => profiles.id, { onDelete: 'cascade' }),
   availableCents: integer('available_cents').notNull().default(0),
   pendingCents: integer('pending_cents').notNull().default(0),
+  creditAvailable: integer('credit_available').notNull().default(0),
+  creditPending: integer('credit_pending').notNull().default(0),
   currency: char('currency', { length: 3 }).notNull().default('USD'),
   createdAt: timestamptz('created_at').notNull().defaultNow(),
   updatedAt: timestamptz('updated_at').notNull().defaultNow(),
 });
+
+export const creditLedgerEntries = pgTable(
+  'credit_ledger_entries',
+  {
+    id: pkUuid(),
+    profileId: uuid('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    direction: char('direction', { length: 1 }).$type<'D' | 'C'>().notNull(),
+    amount: integer('amount').notNull(),
+    category: text('category')
+      .$type<
+        | 'link_bonus'
+        | 'challenge_reserve'
+        | 'challenge_refund'
+        | 'challenge_consume'
+        | 'manual_adjustment'
+      >()
+      .notNull(),
+    referenceType: text('reference_type').$type<
+      'external_account' | 'challenge' | 'match' | 'manual'
+    >(),
+    referenceId: text('reference_id'),
+    metadata: jsonb('metadata'),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('credit_ledger_entries_profile_idx').on(t.profileId, t.createdAt)],
+);
+
+export const creditGrants = pgTable(
+  'credit_grants',
+  {
+    id: pkUuid(),
+    profileId: uuid('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    sourceType: text('source_type').$type<'external_account_link' | 'manual'>().notNull(),
+    sourceId: text('source_id').notNull(),
+    amount: integer('amount').notNull(),
+    metadata: jsonb('metadata'),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('credit_grants_profile_source_key').on(t.profileId, t.sourceType, t.sourceId),
+    index('credit_grants_profile_idx').on(t.profileId, t.createdAt),
+  ],
+);
 
 export const ledgerEntries = pgTable('ledger_entries', {
   id: pkUuid(),

@@ -4,6 +4,7 @@ import { brand } from '@chessco/ui';
 import { getUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getPracticeDb } from '@/lib/practice/db';
 import { ChesscoMark } from '@/lib/logo';
 import { CountryBadge, TitleBadge } from '../../scout/result-card';
 
@@ -72,31 +73,39 @@ export default async function PublicUserProfile({ params }: RouteProps) {
     );
   }
 
-  // Full view: fetch linked accounts, completed games, rating snapshot in parallel.
-  // Use the admin client so RLS on live_games (participant-only) doesn't hide
-  // them from logged-out viewers or non-participants — same pattern as
-  // /account/history/page.tsx.
+  // Full view: fetch linked accounts, public completed games, and rating
+  // snapshot in parallel. Anonymous-origin games stay off public profiles.
   const admin = createAdminClient();
-  const [linkedRes, gamesRes, ratingRes] = await Promise.all([
+  const sql = getPracticeDb();
+  const [linkedRes, games, ratingRes] = await Promise.all([
     admin
       .from('external_accounts')
       .select('platform, external_id, rating_bullet, rating_blitz, rating_rapid, rating_classical')
       .eq('profile_id', target.id)
       .eq('verified', true),
-    admin
-      .from('live_games')
-      .select(
-        'match_id, result, termination, white_user_id, black_user_id, time_control, completed_at, started_at',
-      )
-      .or(`white_user_id.eq.${target.id},black_user_id.eq.${target.id}`)
-      .eq('status', 'completed')
-      .order('completed_at', { ascending: false })
-      .limit(30),
+    sql`
+      SELECT
+        lg.match_id,
+        lg.result,
+        lg.termination,
+        lg.white_user_id,
+        lg.black_user_id,
+        lg.time_control,
+        lg.completed_at,
+        lg.started_at
+      FROM live_games lg
+      JOIN matches m ON m.id = lg.match_id
+      JOIN challenges c ON c.id = m.challenge_id
+      WHERE (lg.white_user_id = ${target.id} OR lg.black_user_id = ${target.id})
+        AND lg.status = 'completed'
+        AND (${isSelf}::boolean OR c.anonymous = false)
+      ORDER BY lg.completed_at DESC NULLS LAST, lg.started_at DESC
+      LIMIT 30
+    ` as Promise<GameRow[]>,
     admin.from('ratings').select('skill_rating').eq('profile_id', target.id).maybeSingle(),
   ]);
 
   const linked = (linkedRes.data ?? []) as ExternalAccountRow[];
-  const games = (gamesRes.data ?? []) as GameRow[];
 
   // Best-known rating across verified online accounts, fallback to Chessco skill.
   const onlineBest = linked.reduce<number | null>((best, row) => {

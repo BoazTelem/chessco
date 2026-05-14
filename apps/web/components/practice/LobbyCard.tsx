@@ -27,6 +27,8 @@ export interface LobbyChallenge {
   time_control: string;
   time_class: string;
   fee_cents: number;
+  funding_type: 'cash' | 'credits';
+  credit_cost: number;
   rating_min: number | null;
   rating_max: number | null;
   games_requested: number;
@@ -107,7 +109,7 @@ export function LobbyCard({
       : null;
 
   const remaining = challenge.games_requested - challenge.games_completed;
-  const isFree = challenge.fee_cents === 0;
+  const isCreditPractice = challenge.funding_type === 'credits';
 
   return (
     <article className="rounded-lg border border-border bg-card p-4">
@@ -155,13 +157,13 @@ export function LobbyCard({
             <div className="shrink-0 text-right">
               <p
                 className={`font-display text-2xl font-bold tabular-nums ${
-                  isFree ? 'text-muted-foreground' : ''
+                  isCreditPractice ? 'text-muted-foreground' : ''
                 }`}
               >
-                {isFree ? 'Free' : `$${(challenge.fee_cents / 100).toFixed(2)}`}
+                {isCreditPractice ? 'Credit' : `$${(challenge.fee_cents / 100).toFixed(2)}`}
               </p>
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                {isFree ? '' : 'per game'}
+                {isCreditPractice ? 'practice' : 'per game'}
               </p>
             </div>
           </header>
@@ -190,10 +192,10 @@ export function LobbyCard({
                 className="rounded-md bg-accent px-4 py-1.5 text-xs font-semibold text-accent-foreground disabled:opacity-60"
               >
                 {accepting
-                  ? 'Accepting…'
-                  : isFree
-                    ? 'Accept · play free'
-                    : `Accept · earn $${(challenge.fee_cents / 100).toFixed(2)}`}
+                  ? 'Accepting...'
+                  : isCreditPractice
+                    ? 'Accept - practice'
+                    : `Accept - earn $${(challenge.fee_cents / 100).toFixed(2)}`}
               </button>
             )}
           </footer>

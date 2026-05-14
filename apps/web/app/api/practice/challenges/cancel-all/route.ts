@@ -24,30 +24,56 @@ export async function POST(): Promise<NextResponse> {
   try {
     const cancelled = (await sql.begin(async (tx) => {
       const rows = (await tx`
-        SELECT id, fee_cents, games_requested, games_completed
+        SELECT id, fee_cents, funding_type, credit_cost, games_requested, games_completed
         FROM challenges
         WHERE creator_id = ${user.id} AND status = 'open'
         FOR UPDATE
       `) as Array<{
         id: string;
         fee_cents: number;
+        funding_type: 'cash' | 'credits';
+        credit_cost: number;
         games_requested: number;
         games_completed: number;
       }>;
       if (rows.length === 0) return 0;
 
       // Refund the unmatched-games portion of each challenge's reservation.
-      let refund = 0;
+      let cashRefund = 0;
+      let creditRefund = 0;
       for (const r of rows) {
         const remaining = r.games_requested - r.games_completed;
-        if (remaining > 0) refund += r.fee_cents * remaining;
+        if (remaining <= 0) continue;
+        if (r.funding_type === 'cash') {
+          cashRefund += r.fee_cents * remaining;
+        } else {
+          const perGame =
+            r.credit_cost > 0 ? Math.max(1, Math.floor(r.credit_cost / r.games_requested)) : 0;
+          creditRefund += perGame * remaining;
+        }
       }
-      if (refund > 0) {
+      if (cashRefund > 0) {
         await tx`
           UPDATE wallets
-          SET available_cents = available_cents + ${refund},
-              pending_cents = pending_cents - ${refund}
+          SET available_cents = available_cents + ${cashRefund},
+              pending_cents = pending_cents - ${cashRefund}
           WHERE profile_id = ${user.id}
+        `;
+      }
+      if (creditRefund > 0) {
+        await tx`
+          UPDATE wallets
+          SET credit_available = credit_available + ${creditRefund},
+              credit_pending = credit_pending - ${creditRefund}
+          WHERE profile_id = ${user.id}
+        `;
+        await tx`
+          INSERT INTO credit_ledger_entries (
+            profile_id, direction, amount, category, reference_type, reference_id, metadata
+          ) VALUES (
+            ${user.id}, 'C', ${creditRefund}, 'challenge_refund', 'manual', 'cancel-all',
+            ${JSON.stringify({ cancelled_challenges: rows.map((r) => r.id) })}::jsonb
+          )
         `;
       }
 
