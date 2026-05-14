@@ -34,6 +34,7 @@ export type ServerMsg =
       status: 'live' | 'completed' | 'aborted' | 'abandoned';
       result: Result | null;
       termination: Termination | null;
+      paused: boolean;
     }
   | {
       type: 'move';
@@ -44,7 +45,7 @@ export type ServerMsg =
       whiteTimeMs: number;
       blackTimeMs: number;
     }
-  | { type: 'clock'; whiteTimeMs: number; blackTimeMs: number }
+  | { type: 'clock'; whiteTimeMs: number; blackTimeMs: number; paused: boolean }
   | {
       type: 'end';
       result: Result;
@@ -54,6 +55,13 @@ export type ServerMsg =
     }
   | { type: 'draw_offer'; from: Color }
   | { type: 'draw_decline'; from: Color }
+  | {
+      type: 'presence';
+      color: Color;
+      connected: boolean;
+      reason: 'waiting' | 'first_move' | 'disconnected' | 'reconnected';
+      deadlineMs: number | null;
+    }
   | {
       type: 'error';
       code: 'illegal_move' | 'not_your_turn' | 'game_over' | 'auth' | 'unknown';

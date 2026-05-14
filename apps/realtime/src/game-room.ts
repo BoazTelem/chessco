@@ -43,6 +43,14 @@ function graceMsFor(timeControl: string): number {
   return 120_000;
 }
 
+// How long the present player waits before we abort a game whose opponent
+// never connected at all. 60s absorbs slow page-load / flaky-internet without
+// stranding the joiner indefinitely.
+const WAITING_MS = 60_000;
+// Once both players are at the board, the side-to-move has this long to play
+// the first ply. Mirrors Lichess's first-move abort timer.
+const FIRST_MOVE_MS = 30_000;
+
 export class GameRoom {
   private chess: Chess;
   private clock: ClockState;
@@ -54,6 +62,8 @@ export class GameRoom {
   private clockBroadcastTimer: NodeJS.Timeout | null = null;
   private flagCheckTimer: NodeJS.Timeout | null = null;
   private abandonmentTimer: NodeJS.Timeout | null = null;
+  private waitingTimer: NodeJS.Timeout | null = null;
+  private firstMoveTimer: NodeJS.Timeout | null = null;
   private readonly graceMs: number;
 
   static async load(matchId: string): Promise<GameRoom | null> {
@@ -89,7 +99,7 @@ export class GameRoom {
       whiteMs: liveGame.white_time_ms ?? initialClock.whiteMs,
       blackMs: liveGame.black_time_ms ?? initialClock.blackMs,
       // Pause until at least one move has been played AND both players are connected.
-      paused: !liveGame.pgn,
+      paused: !this.hasFirstMove(),
     };
     this.graceMs = graceMsFor(liveGame.time_control);
   }
@@ -99,6 +109,10 @@ export class GameRoom {
   }
   get isEnded(): boolean {
     return this.ended;
+  }
+
+  private hasFirstMove(): boolean {
+    return this.chess.history().length > 0;
   }
 
   attach(userId: string, role: Color, socket: WebSocket): void {
@@ -114,25 +128,74 @@ export class GameRoom {
 
     this.members.set(userId, { userId, color: role, socket, disconnectedAt: null });
 
-    // Cancel abandonment timer if it was running for this user.
-    if (this.abandonmentTimer && this.allConnected()) {
-      clearTimeout(this.abandonmentTimer);
-      this.abandonmentTimer = null;
-      if (this.liveGame.pgn) {
-        this.clock = resumeClock(this.clock);
-        this.startTimers();
-      }
-    }
-
     socket.on('message', (data) => this.handleMessage(userId, data.toString()));
     socket.on('close', () => this.handleDisconnect(userId));
     socket.on('error', () => this.handleDisconnect(userId));
 
     this.sendState(socket, role);
 
-    if (this.allConnected() && this.liveGame.pgn && !this.ended) {
-      this.clock = resumeClock(this.clock);
-      this.startTimers();
+    if (this.ended) return;
+
+    if (this.allConnected()) {
+      // Both seats filled. Clear any "absent opponent" timers.
+      if (this.waitingTimer) {
+        clearTimeout(this.waitingTimer);
+        this.waitingTimer = null;
+      }
+      if (this.abandonmentTimer) {
+        clearTimeout(this.abandonmentTimer);
+        this.abandonmentTimer = null;
+      }
+
+      // Announce this player's arrival/return so the opponent's banner clears.
+      this.broadcast({
+        type: 'presence',
+        color: role,
+        connected: true,
+        reason: 'reconnected',
+        deadlineMs: null,
+      });
+
+      if (this.hasFirstMove()) {
+        // Game already in progress — resume clock and tell clients.
+        this.clock = resumeClock(this.clock);
+        this.startTimers();
+        this.broadcast({
+          type: 'clock',
+          whiteTimeMs: this.clock.whiteMs,
+          blackTimeMs: this.clock.blackMs,
+          paused: this.clock.paused,
+        });
+      } else if (!this.firstMoveTimer) {
+        // Both present, no moves yet — start first-move abort timer.
+        const deadlineMs = Date.now() + FIRST_MOVE_MS;
+        this.firstMoveTimer = setTimeout(() => {
+          if (this.ended || this.hasFirstMove()) return;
+          void this.endGame('*', 'aborted');
+        }, FIRST_MOVE_MS);
+        this.broadcast({
+          type: 'presence',
+          color: this.clock.sideToMove,
+          connected: true,
+          reason: 'first_move',
+          deadlineMs,
+        });
+      }
+    } else if (!this.hasFirstMove() && !this.waitingTimer) {
+      // Single-occupant, no moves yet — start the waiting-for-opponent timer.
+      const deadlineMs = Date.now() + WAITING_MS;
+      this.waitingTimer = setTimeout(() => {
+        if (this.ended || this.allConnected()) return;
+        void this.endGame('*', 'aborted');
+      }, WAITING_MS);
+      const absentColor: Color = role === 'white' ? 'black' : 'white';
+      this.sendTo(userId, {
+        type: 'presence',
+        color: absentColor,
+        connected: false,
+        reason: 'waiting',
+        deadlineMs,
+      });
     }
   }
 
@@ -167,6 +230,7 @@ export class GameRoom {
       status: this.liveGame.status,
       result: null,
       termination: null,
+      paused: this.clock.paused,
     };
     socket.send(JSON.stringify(msg));
   }
@@ -254,6 +318,12 @@ export class GameRoom {
       return;
     }
 
+    // First move just landed — cancel the first-move abort timer.
+    if (this.firstMoveTimer) {
+      clearTimeout(this.firstMoveTimer);
+      this.firstMoveTimer = null;
+    }
+
     this.clock = applyClockMove(this.clock, nowMs);
     const ply = this.chess.history().length;
     const fen = this.chess.fen();
@@ -271,6 +341,8 @@ export class GameRoom {
       pgn,
       clientTs,
     });
+    this.liveGame.pgn = pgn;
+    this.liveGame.current_fen = fen;
 
     // Reset any open draw offer (a move declines it implicitly).
     this.drawOfferFrom = null;
@@ -339,7 +411,7 @@ export class GameRoom {
 
   private async handleAbort(userId: string): Promise<void> {
     // Abort is only allowed before the first move is played, by either side.
-    if (this.chess.history().length > 0) return;
+    if (this.hasFirstMove()) return;
     if (!this.members.has(userId)) return;
     await this.endGame('*', 'aborted');
   }
@@ -349,16 +421,35 @@ export class GameRoom {
     if (!m) return;
     m.disconnectedAt = Date.now();
 
-    // Pause the clock during grace so the present player isn't punished.
-    if (!this.ended && this.liveGame.pgn) {
+    // Pause the clock during grace so the present player isn't punished
+    // (only meaningful once the clock has actually started ticking).
+    if (!this.ended && this.hasFirstMove()) {
       this.clock = pauseClock(this.clock);
       this.stopTimers();
       this.broadcast({
         type: 'clock',
         whiteTimeMs: this.clock.whiteMs,
         blackTimeMs: this.clock.blackMs,
+        paused: this.clock.paused,
       });
     }
+
+    // The disconnected player can't move; the first-move timer should not
+    // keep ticking against them.
+    if (this.firstMoveTimer) {
+      clearTimeout(this.firstMoveTimer);
+      this.firstMoveTimer = null;
+    }
+
+    // Tell the remaining player(s) the opponent has X seconds to return.
+    const deadlineMs = Date.now() + this.graceMs;
+    this.broadcast({
+      type: 'presence',
+      color: m.color,
+      connected: false,
+      reason: 'disconnected',
+      deadlineMs,
+    });
 
     // Start the abandonment timer.
     if (this.abandonmentTimer) clearTimeout(this.abandonmentTimer);
@@ -366,11 +457,17 @@ export class GameRoom {
       // If they're still disconnected after grace, end the game.
       const cur = this.members.get(userId);
       if (!cur || cur.disconnectedAt === null) return;
-      const term: Termination =
-        userId === this.match.creator_id ? 'creator_abandoned' : 'opponent_abandoned';
-      // Result on abandonment: the absent side forfeits.
-      const result: Result = m.color === 'white' ? '0-1' : '1-0';
-      void this.endGame(result, term);
+      if (this.ended) return;
+      if (this.hasFirstMove()) {
+        // Mid-game abandonment — absent side forfeits.
+        const term: Termination =
+          userId === this.match.creator_id ? 'creator_abandoned' : 'opponent_abandoned';
+        const result: Result = m.color === 'white' ? '0-1' : '1-0';
+        void this.endGame(result, term);
+      } else {
+        // No moves were ever played — abort, refund creator, no rating change.
+        void this.endGame('*', 'aborted');
+      }
     }, this.graceMs);
   }
 
@@ -382,6 +479,7 @@ export class GameRoom {
         type: 'clock',
         whiteTimeMs: this.clock.whiteMs,
         blackTimeMs: this.clock.blackMs,
+        paused: this.clock.paused,
       });
     }, 1000);
 
@@ -413,6 +511,14 @@ export class GameRoom {
     if (this.abandonmentTimer) {
       clearTimeout(this.abandonmentTimer);
       this.abandonmentTimer = null;
+    }
+    if (this.waitingTimer) {
+      clearTimeout(this.waitingTimer);
+      this.waitingTimer = null;
+    }
+    if (this.firstMoveTimer) {
+      clearTimeout(this.firstMoveTimer);
+      this.firstMoveTimer = null;
     }
 
     try {

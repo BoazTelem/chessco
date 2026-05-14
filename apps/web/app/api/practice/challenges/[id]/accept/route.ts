@@ -75,9 +75,9 @@ export async function POST(_req: Request, ctx: RouteContext): Promise<NextRespon
 
       // Reject if the creator's heartbeat is stale — the lobby already
       // filters these out, but a race or a direct API call could still
-      // land us here. Treats anything older than 45 s as offline.
+      // land us here. Matches the lobby cutoff in /practice/page.tsx.
       const heartbeatAgeMs = Date.now() - new Date(ch.last_heartbeat).getTime();
-      if (heartbeatAgeMs > 45_000) {
+      if (heartbeatAgeMs > 25_000) {
         throw new HttpError(409, 'creator is offline');
       }
 

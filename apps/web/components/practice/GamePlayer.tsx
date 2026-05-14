@@ -63,6 +63,12 @@ interface GameState {
   status: 'live' | 'completed' | 'aborted' | 'abandoned';
   result: Result | null;
   termination: Termination | null;
+  paused: boolean;
+}
+
+interface OpponentPresence {
+  reason: 'waiting' | 'disconnected';
+  deadlineMs: number | null;
 }
 
 const SIDEBAR_WIDTH = 300;
@@ -109,6 +115,7 @@ export function GamePlayer({ matchId, initialWsUrl, initialRole, initialFen, pre
   const [state, setState] = useState<GameState | null>(null);
   const [role] = useState<Color>(initialRole);
   const [drawOfferedFrom, setDrawOfferedFrom] = useState<Color | null>(null);
+  const [opponentPresence, setOpponentPresence] = useState<OpponentPresence | null>(null);
   const [error, setError] = useState<string | null>(null);
   const localClock = useLocalClock(state);
 
@@ -213,83 +220,102 @@ export function GamePlayer({ matchId, initialWsUrl, initialRole, initialFen, pre
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId, initialWsUrl]);
 
-  const onMessage = useCallback((raw: string | ArrayBuffer | Blob) => {
-    let msg: ServerMsg;
-    try {
-      msg = JSON.parse(typeof raw === 'string' ? raw : String(raw)) as ServerMsg;
-    } catch {
-      return;
-    }
-    switch (msg.type) {
-      case 'state':
-        setState({
-          fen: msg.fen,
-          pgn: msg.pgn,
-          whiteMs: msg.whiteTimeMs,
-          blackMs: msg.blackTimeMs,
-          sideToMove: msg.sideToMove,
-          lastMove: msg.lastMove ? { uci: msg.lastMove.uci, san: msg.lastMove.san } : null,
-          status: msg.status,
-          result: msg.result,
-          termination: msg.termination,
-        });
-        // Fire the "fight start" gong once, the first time we see a live game
-        // with no moves played yet. After any move lastMove is non-null, so
-        // reconnects mid-game won't re-trigger this.
-        if (!startSoundFired.current && msg.status === 'live' && !msg.lastMove) {
-          startSoundFired.current = true;
-          sounds.play('gameStart');
-        }
+  const onMessage = useCallback(
+    (raw: string | ArrayBuffer | Blob) => {
+      let msg: ServerMsg;
+      try {
+        msg = JSON.parse(typeof raw === 'string' ? raw : String(raw)) as ServerMsg;
+      } catch {
         return;
-      case 'move':
-        setState((s) =>
-          s
-            ? {
-                ...s,
-                fen: msg.fen,
-                whiteMs: msg.whiteTimeMs,
-                blackMs: msg.blackTimeMs,
-                // Derive from FEN — otherwise an own optimistic flip + this
-                // unconditional flip would cancel out and stick on our color.
-                sideToMove: sideToMoveFromFen(msg.fen),
-                lastMove: { uci: msg.uci, san: msg.san },
-              }
-            : s,
-        );
-        if (/x/.test(msg.san)) sounds.play('capture');
-        else if (/\+|#/.test(msg.san)) sounds.play('check');
-        else sounds.play('move');
-        setDrawOfferedFrom(null);
-        return;
-      case 'clock':
-        setState((s) => (s ? { ...s, whiteMs: msg.whiteTimeMs, blackMs: msg.blackTimeMs } : s));
-        return;
-      case 'end':
-        setState((s) =>
-          s
-            ? {
-                ...s,
-                status: 'completed',
-                result: msg.result,
-                termination: msg.termination,
-                whiteMs: msg.whiteTimeMs,
-                blackMs: msg.blackTimeMs,
-              }
-            : s,
-        );
-        sounds.play('gameEnd');
-        return;
-      case 'draw_offer':
-        setDrawOfferedFrom(msg.from);
-        return;
-      case 'draw_decline':
-        setDrawOfferedFrom(null);
-        return;
-      case 'error':
-        setError(msg.message);
-        return;
-    }
-  }, []);
+      }
+      switch (msg.type) {
+        case 'state':
+          setState({
+            fen: msg.fen,
+            pgn: msg.pgn,
+            whiteMs: msg.whiteTimeMs,
+            blackMs: msg.blackTimeMs,
+            sideToMove: msg.sideToMove,
+            lastMove: msg.lastMove ? { uci: msg.lastMove.uci, san: msg.lastMove.san } : null,
+            status: msg.status,
+            result: msg.result,
+            termination: msg.termination,
+            paused: msg.paused,
+          });
+          // Fire the "fight start" gong once, the first time we see a live game
+          // with no moves played yet. After any move lastMove is non-null, so
+          // reconnects mid-game won't re-trigger this.
+          if (!startSoundFired.current && msg.status === 'live' && !msg.lastMove) {
+            startSoundFired.current = true;
+            sounds.play('gameStart');
+          }
+          return;
+        case 'move':
+          setState((s) =>
+            s
+              ? {
+                  ...s,
+                  fen: msg.fen,
+                  whiteMs: msg.whiteTimeMs,
+                  blackMs: msg.blackTimeMs,
+                  // Derive from FEN — otherwise an own optimistic flip + this
+                  // unconditional flip would cancel out and stick on our color.
+                  sideToMove: sideToMoveFromFen(msg.fen),
+                  lastMove: { uci: msg.uci, san: msg.san },
+                  // First move just landed (or any move) — the clock is running.
+                  paused: false,
+                }
+              : s,
+          );
+          if (/x/.test(msg.san)) sounds.play('capture');
+          else if (/\+|#/.test(msg.san)) sounds.play('check');
+          else sounds.play('move');
+          setDrawOfferedFrom(null);
+          return;
+        case 'clock':
+          setState((s) =>
+            s
+              ? { ...s, whiteMs: msg.whiteTimeMs, blackMs: msg.blackTimeMs, paused: msg.paused }
+              : s,
+          );
+          return;
+        case 'end':
+          setState((s) =>
+            s
+              ? {
+                  ...s,
+                  status: 'completed',
+                  result: msg.result,
+                  termination: msg.termination,
+                  whiteMs: msg.whiteTimeMs,
+                  blackMs: msg.blackTimeMs,
+                }
+              : s,
+          );
+          sounds.play('gameEnd');
+          return;
+        case 'draw_offer':
+          setDrawOfferedFrom(msg.from);
+          return;
+        case 'draw_decline':
+          setDrawOfferedFrom(null);
+          return;
+        case 'presence':
+          // Only opponent's presence transitions drive the banner.
+          if (msg.color === role) return;
+          if (msg.connected) {
+            setOpponentPresence(null);
+          } else if (msg.reason === 'waiting' || msg.reason === 'disconnected') {
+            setOpponentPresence({ reason: msg.reason, deadlineMs: msg.deadlineMs });
+          }
+          return;
+        case 'error':
+          setError(msg.message);
+          return;
+      }
+    },
+    [role],
+  );
 
   const sendMsg = useCallback((m: ClientMsg) => {
     const ws = wsRef.current;
@@ -341,6 +367,7 @@ export function GamePlayer({ matchId, initialWsUrl, initialRole, initialFen, pre
               fen: applied!.after,
               sideToMove: s.sideToMove === 'white' ? 'black' : 'white',
               lastMove: { uci, san: applied!.san },
+              paused: false,
             }
           : s,
       );
@@ -377,6 +404,12 @@ export function GamePlayer({ matchId, initialWsUrl, initialRole, initialFen, pre
   return (
     <div className="flex flex-col items-center gap-4 lg:flex-row lg:items-start lg:justify-center">
       <div className="flex flex-col" style={{ width: boardWidth }}>
+        {!ended && opponentPresence && (
+          <PresenceBanner
+            reason={opponentPresence.reason}
+            deadlineMs={opponentPresence.deadlineMs}
+          />
+        )}
         <ClockChip
           ms={topClockMs}
           active={topActive}
@@ -490,6 +523,36 @@ export function GamePlayer({ matchId, initialWsUrl, initialRole, initialFen, pre
   );
 }
 
+function useCountdown(deadlineMs: number | null): number {
+  const [now, setNow] = useState<number>(() => Date.now());
+  useEffect(() => {
+    if (deadlineMs == null) return;
+    const id = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(id);
+  }, [deadlineMs]);
+  if (deadlineMs == null) return 0;
+  return Math.max(0, Math.ceil((deadlineMs - now) / 1000));
+}
+
+function PresenceBanner({
+  reason,
+  deadlineMs,
+}: {
+  reason: 'waiting' | 'disconnected';
+  deadlineMs: number | null;
+}) {
+  const seconds = useCountdown(deadlineMs);
+  const text =
+    reason === 'waiting'
+      ? `Waiting for opponent — ${seconds}s to abort`
+      : `Opponent disconnected — ${seconds}s to return`;
+  return (
+    <div className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-center text-xs font-medium text-amber-700 dark:text-amber-300">
+      {text}
+    </div>
+  );
+}
+
 function ClockChip({ ms, active, label }: { ms: number; active: boolean; label: string }) {
   return (
     <div
@@ -529,7 +592,7 @@ function useLocalClock(state: GameState | null): { whiteMs: number; blackMs: num
       at: Date.now(),
       whiteMs: state.whiteMs,
       blackMs: state.blackMs,
-      side: state.status === 'live' ? state.sideToMove : null,
+      side: state.status === 'live' && !state.paused ? state.sideToMove : null,
     };
     setLocal({ whiteMs: state.whiteMs, blackMs: state.blackMs });
   }, [state]);

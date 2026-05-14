@@ -38,7 +38,9 @@ export default async function PracticeLobbyPage({
 
   // Main query for the visible cards. Stale-heartbeat rows are hidden so
   // accepters never end up stranded waiting for an offline creator.
-  const liveCutoff = new Date(Date.now() - 45_000).toISOString();
+  // Heartbeat interval is 20s; a 25s cutoff hides any creator whose ping has
+  // missed even a single beat, shrinking the "accept a ghost challenge" window.
+  const liveCutoff = new Date(Date.now() - 25_000).toISOString();
   let query = supabase
     .from('challenges')
     .select(
