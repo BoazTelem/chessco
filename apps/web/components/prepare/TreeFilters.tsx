@@ -2,6 +2,7 @@
 
 import type { Color, Filters, RealTimeClass, WindowPreset } from '@/lib/prepare/types';
 import { REAL_TIME_CLASSES } from '@/lib/prepare/types';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 
 interface Props {
   filters: Filters;
@@ -16,16 +17,31 @@ const TIME_CLASS_LABELS: Record<RealTimeClass, string> = {
   classical: 'Classical',
 };
 
-const WINDOW_OPTIONS: { value: WindowPreset; label: string }[] = [
-  { value: 1, label: 'Last 1y' },
-  { value: 2, label: 'Last 2y' },
-  { value: 3, label: 'Last 3y' },
-  { value: 5, label: 'Last 5y' },
+const COLOR_OPTIONS: { value: Color; label: string }[] = [
+  { value: 'white', label: 'As White' },
+  { value: 'black', label: 'As Black' },
+];
+
+// `value` is stringified for keys/equality; WindowPreset numbers like 1 map to "1".
+const WINDOW_OPTIONS: { value: string; label: string }[] = [
+  { value: '1', label: 'Last 1y' },
+  { value: '2', label: 'Last 2y' },
+  { value: '3', label: 'Last 3y' },
+  { value: '5', label: 'Last 5y' },
   { value: 'all', label: 'All time' },
   { value: 'custom', label: 'Custom' },
 ];
 
-function toggleChipClass(active: boolean): string {
+function windowKeyOf(w: WindowPreset): string {
+  return typeof w === 'number' ? String(w) : w;
+}
+
+function windowFromKey(k: string): WindowPreset {
+  if (k === 'all' || k === 'custom') return k;
+  return Number(k) as WindowPreset;
+}
+
+function multiChipClass(active: boolean): string {
   const base =
     'rounded-md border px-2.5 py-1 text-xs transition disabled:cursor-not-allowed disabled:opacity-50';
   if (active) return `${base} border-accent bg-accent text-accent-foreground`;
@@ -75,24 +91,13 @@ export function TreeFilters({ filters, onChange, disabled }: Props) {
       <div className="grid gap-3 lg:grid-cols-[auto_1fr_auto] lg:items-start">
         <div className="space-y-1.5">
           <div className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Color</div>
-          <div className="flex flex-wrap gap-1">
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => setColor('white')}
-              className={toggleChipClass(filters.color === 'white')}
-            >
-              As White
-            </button>
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => setColor('black')}
-              className={toggleChipClass(filters.color === 'black')}
-            >
-              As Black
-            </button>
-          </div>
+          <SegmentedControl
+            options={COLOR_OPTIONS}
+            value={filters.color}
+            onChange={setColor}
+            disabled={disabled}
+            ariaLabel="Color"
+          />
         </div>
 
         <div className="space-y-1.5">
@@ -109,7 +114,7 @@ export function TreeFilters({ filters, onChange, disabled }: Props) {
                 type="button"
                 disabled={disabled}
                 onClick={() => toggleTimeClass(tc)}
-                className={toggleChipClass(filters.timeClasses.has(tc))}
+                className={multiChipClass(filters.timeClasses.has(tc))}
               >
                 {TIME_CLASS_LABELS[tc]}
               </button>
@@ -121,19 +126,13 @@ export function TreeFilters({ filters, onChange, disabled }: Props) {
           <div className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
             Window
           </div>
-          <div className="flex flex-wrap gap-1">
-            {WINDOW_OPTIONS.map((opt) => (
-              <button
-                key={String(opt.value)}
-                type="button"
-                disabled={disabled}
-                onClick={() => setWindow(opt.value)}
-                className={toggleChipClass(filters.window === opt.value)}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            options={WINDOW_OPTIONS}
+            value={windowKeyOf(filters.window)}
+            onChange={(k) => setWindow(windowFromKey(k))}
+            disabled={disabled}
+            ariaLabel="Window"
+          />
         </div>
       </div>
 

@@ -6,6 +6,7 @@ import { PositionEditor } from './PositionEditor';
 import { STANDARD_START_FEN } from '@/lib/practice/fen';
 import { LowCreditsDialog } from '@/components/credits/LowCreditsDialog';
 import { useLowCreditsDialog } from '@/components/credits/useLowCreditsDialog';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 
 type TimeClass = 'bullet' | 'blitz' | 'rapid' | 'classical';
 
@@ -196,36 +197,25 @@ export function CreatePositionForm({
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
             Time control
           </h2>
-          <div className="flex flex-wrap gap-2">
-            {TIME_CONTROLS.map((t) => (
-              <button
-                key={t.tc}
-                type="button"
-                onClick={() => {
-                  setTc(t);
+          <SegmentedControl
+            options={[
+              ...TIME_CONTROLS.map((t) => ({ value: t.tc, label: t.label })),
+              { value: 'custom', label: 'Custom' },
+            ]}
+            value={customMode ? 'custom' : tc.tc}
+            onChange={(v) => {
+              if (v === 'custom') {
+                setCustomMode(true);
+              } else {
+                const next = TIME_CONTROLS.find((t) => t.tc === v);
+                if (next) {
+                  setTc(next);
                   setCustomMode(false);
-                }}
-                className={`rounded-full border px-3 py-1 text-xs ${
-                  !customMode && tc.tc === t.tc
-                    ? 'border-accent bg-accent text-accent-foreground'
-                    : 'border-border bg-background hover:bg-muted'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => setCustomMode(true)}
-              className={`rounded-full border px-3 py-1 text-xs ${
-                customMode
-                  ? 'border-accent bg-accent text-accent-foreground'
-                  : 'border-border bg-background hover:bg-muted'
-              }`}
-            >
-              Custom
-            </button>
-          </div>
+                }
+              }
+            }}
+            ariaLabel="Time control"
+          />
           {customMode && (
             <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
               <label className="flex items-center gap-2">
@@ -271,50 +261,30 @@ export function CreatePositionForm({
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
               You play as
             </h2>
-            <div className="flex gap-2">
-              {(
-                [
-                  { v: 'w', label: 'White' },
-                  { v: 'b', label: 'Black' },
-                  { v: 'random', label: 'Random' },
-                ] as Array<{ v: SideChoice; label: string }>
-              ).map((opt) => (
-                <button
-                  key={opt.v}
-                  type="button"
-                  onClick={() => setSide(opt.v)}
-                  className={`flex-1 rounded-md border px-3 py-1.5 text-sm ${
-                    side === opt.v
-                      ? 'border-accent bg-accent text-accent-foreground'
-                      : 'border-border bg-background hover:bg-muted'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl<SideChoice>
+              options={[
+                { value: 'w', label: 'White' },
+                { value: 'b', label: 'Black' },
+                { value: 'random', label: 'Random' },
+              ]}
+              value={side}
+              onChange={setSide}
+              equalWidth
+              fullWidth
+              ariaLabel="You play as"
+            />
           </div>
 
           <div>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
               Games to publish
             </h2>
-            <div className="flex gap-2">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => setGames(n)}
-                  className={`h-9 w-9 rounded-md border text-sm ${
-                    games === n
-                      ? 'border-accent bg-accent text-accent-foreground'
-                      : 'border-border bg-background hover:bg-muted'
-                  }`}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl<number>
+              options={[1, 2, 3, 4, 5].map((n) => ({ value: n, label: String(n) }))}
+              value={games}
+              onChange={setGames}
+              ariaLabel="Games to publish"
+            />
           </div>
 
           <div>

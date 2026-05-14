@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { ChesscoMark } from '@/lib/logo';
 import { LobbyCard, type LobbyChallenge } from '@/components/practice/LobbyCard';
 import { LobbyLiveUpdates } from '@/components/practice/LobbyLiveUpdates';
+import { SegmentedLinks } from '@/components/ui/SegmentedControl';
 
 export const metadata = {
   title: 'Practice — paid play from any position',
@@ -175,20 +176,19 @@ export default async function PracticeLobbyPage({
           </div>
         )}
 
-        <div className="mt-6 flex flex-wrap items-center gap-2">
-          <FilterChip
-            label="All"
-            href={filterHref({ time_class: undefined })}
-            active={!timeClassFilter}
+        <div className="mt-6">
+          <SegmentedLinks
+            options={[
+              { value: 'all', label: 'All', href: filterHref({ time_class: undefined }) },
+              ...(['bullet', 'blitz', 'rapid', 'classical'] as const).map((tc) => ({
+                value: tc,
+                label: tc[0]!.toUpperCase() + tc.slice(1),
+                href: filterHref({ time_class: tc }),
+              })),
+            ]}
+            value={timeClassFilter ?? 'all'}
+            ariaLabel="Time class filter"
           />
-          {(['bullet', 'blitz', 'rapid', 'classical'] as const).map((tc) => (
-            <FilterChip
-              key={tc}
-              label={tc[0]!.toUpperCase() + tc.slice(1)}
-              href={filterHref({ time_class: tc })}
-              active={timeClassFilter === tc}
-            />
-          ))}
         </div>
 
         {openOpenings.length > 0 && (

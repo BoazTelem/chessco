@@ -1,9 +1,25 @@
 'use client';
 
 import { useState } from 'react';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 
 type BoardTheme = 'classic' | 'wood' | 'green' | 'blue' | 'gray';
 type PieceSet = 'cburnett' | 'merida' | 'alpha' | 'staunton';
+
+const BOARD_THEMES: { value: BoardTheme; label: string }[] = [
+  { value: 'classic', label: 'Classic' },
+  { value: 'wood', label: 'Wood' },
+  { value: 'green', label: 'Green' },
+  { value: 'blue', label: 'Blue' },
+  { value: 'gray', label: 'Gray' },
+];
+
+const PIECE_SETS: { value: PieceSet; label: string }[] = [
+  { value: 'cburnett', label: 'Cburnett' },
+  { value: 'merida', label: 'Merida' },
+  { value: 'alpha', label: 'Alpha' },
+  { value: 'staunton', label: 'Staunton' },
+];
 
 interface Prefs {
   boardTheme: BoardTheme;
@@ -56,44 +72,24 @@ export function PracticePrefsForm({ initial }: { initial: Prefs }) {
         <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Board theme
         </label>
-        <div className="flex flex-wrap gap-2">
-          {(['classic', 'wood', 'green', 'blue', 'gray'] as BoardTheme[]).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => update('boardTheme', t)}
-              className={`rounded-md border px-3 py-1.5 text-sm capitalize ${
-                prefs.boardTheme === t
-                  ? 'border-accent bg-accent text-accent-foreground'
-                  : 'border-border bg-background hover:bg-muted'
-              }`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          options={BOARD_THEMES}
+          value={prefs.boardTheme}
+          onChange={(v) => update('boardTheme', v)}
+          ariaLabel="Board theme"
+        />
       </section>
 
       <section>
         <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Piece set
         </label>
-        <div className="flex flex-wrap gap-2">
-          {(['cburnett', 'merida', 'alpha', 'staunton'] as PieceSet[]).map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => update('pieceSet', p)}
-              className={`rounded-md border px-3 py-1.5 text-sm capitalize ${
-                prefs.pieceSet === p
-                  ? 'border-accent bg-accent text-accent-foreground'
-                  : 'border-border bg-background hover:bg-muted'
-              }`}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          options={PIECE_SETS}
+          value={prefs.pieceSet}
+          onChange={(v) => update('pieceSet', v)}
+          ariaLabel="Piece set"
+        />
       </section>
 
       <section className="space-y-2">
