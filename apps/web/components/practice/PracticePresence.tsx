@@ -23,13 +23,17 @@ import { createClient } from '@/lib/supabase/client';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 const HEARTBEAT_MS = 20_000;
+const LAST_JOINED_KEY = 'practice:last-joined-match';
 
 export function PracticePresence() {
   const router = useRouter();
   const pathname = usePathname();
   const [openCount, setOpenCount] = useState(0);
   // Tracks the most recent matchId we've already routed to, so the heartbeat
-  // fallback doesn't keep re-pushing the same route on every 20 s tick.
+  // fallback doesn't keep re-pushing the same route on every 20 s tick — and
+  // doesn't bounce the user straight back into a game they just left if they
+  // reload /practice within the auto-join window. Persisted to sessionStorage
+  // so a refresh of the lobby tab honors the "already joined" decision.
   const lastJoinedRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -38,15 +42,31 @@ export function PracticePresence() {
     let timer: ReturnType<typeof setInterval> | null = null;
     let channel: RealtimeChannel | null = null;
 
+    // Hydrate from sessionStorage so a reload doesn't re-trigger the join.
+    try {
+      lastJoinedRef.current = sessionStorage.getItem(LAST_JOINED_KEY);
+    } catch {
+      /* sessionStorage unavailable — fall through with null */
+    }
+
+    function rememberJoined(matchId: string): void {
+      lastJoinedRef.current = matchId;
+      try {
+        sessionStorage.setItem(LAST_JOINED_KEY, matchId);
+      } catch {
+        /* ignore */
+      }
+    }
+
     function maybeJoin(matchId: string | null): void {
       if (!matchId) return;
       if (lastJoinedRef.current === matchId) return;
       // Don't yank the user out of a game already in progress.
       if (window.location.pathname.startsWith('/practice/g/')) {
-        lastJoinedRef.current = matchId;
+        rememberJoined(matchId);
         return;
       }
-      lastJoinedRef.current = matchId;
+      rememberJoined(matchId);
       router.push(`/practice/g/${matchId}`);
     }
 

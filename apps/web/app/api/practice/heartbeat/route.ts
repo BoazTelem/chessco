@@ -14,6 +14,15 @@
  */
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getPracticeDb } from '@/lib/practice/db';
+
+// Only treat a match as "you should be auto-routed into this right now" if it
+// was accepted very recently. The fallback poll exists to catch the ~5 s
+// window where Realtime might drop the matches INSERT event — anything older
+// than this is either a match the user already saw and left, or a stale
+// never-settled row from a broken-WS test session. Either way, do NOT yank
+// them back into it.
+const AUTO_JOIN_WINDOW_MS = 90_000;
 
 export async function POST(): Promise<NextResponse> {
   const supabase = await createClient();
@@ -33,18 +42,25 @@ export async function POST(): Promise<NextResponse> {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Look up any in-flight match this user is in (creator or opponent) so the
-  // client can route them in even if Realtime didn't deliver.
-  const { data: matchRows } = await supabase
-    .from('matches')
-    .select('id, accepted_at')
-    .or(`creator_id.eq.${user.id},opponent_id.eq.${user.id}`)
-    .in('status', ['accepted', 'starting', 'live'])
-    .order('accepted_at', { ascending: false })
-    .limit(1);
+  // Auto-join candidate: only matches that are (a) freshly accepted and
+  // (b) backed by a live_games row still in 'live' state. Joining live_games
+  // means a settled/abandoned game won't trigger a redirect even if its
+  // matches.status hasn't been flipped yet.
+  const sql = getPracticeDb();
+  const cutoffIso = new Date(Date.now() - AUTO_JOIN_WINDOW_MS).toISOString();
+  const matchRows = (await sql`
+    SELECT m.id
+    FROM matches m
+    JOIN live_games lg ON lg.match_id = m.id
+    WHERE (m.creator_id = ${user.id} OR m.opponent_id = ${user.id})
+      AND lg.status = 'live'
+      AND m.accepted_at > ${cutoffIso}
+    ORDER BY m.accepted_at DESC
+    LIMIT 1
+  `) as Array<{ id: string }>;
 
   return NextResponse.json({
     bumped: bumpedRows?.length ?? 0,
-    latestLiveMatchId: matchRows?.[0]?.id ?? null,
+    latestLiveMatchId: matchRows[0]?.id ?? null,
   });
 }
