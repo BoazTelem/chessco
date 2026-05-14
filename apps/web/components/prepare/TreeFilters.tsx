@@ -2,7 +2,7 @@
 
 import type { Color, Filters, RealTimeClass, WindowPreset } from '@/lib/prepare/types';
 import { REAL_TIME_CLASSES } from '@/lib/prepare/types';
-import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { MultiSegmentedControl, SegmentedControl } from '@/components/ui/SegmentedControl';
 
 interface Props {
   filters: Filters;
@@ -16,6 +16,10 @@ const TIME_CLASS_LABELS: Record<RealTimeClass, string> = {
   rapid: 'Rapid',
   classical: 'Classical',
 };
+
+const TIME_CLASS_OPTIONS: { value: RealTimeClass; label: string }[] = REAL_TIME_CLASSES.map(
+  (tc) => ({ value: tc, label: TIME_CLASS_LABELS[tc] }),
+);
 
 const COLOR_OPTIONS: { value: Color; label: string }[] = [
   { value: 'white', label: 'As White' },
@@ -39,13 +43,6 @@ function windowKeyOf(w: WindowPreset): string {
 function windowFromKey(k: string): WindowPreset {
   if (k === 'all' || k === 'custom') return k;
   return Number(k) as WindowPreset;
-}
-
-function multiChipClass(active: boolean): string {
-  const base =
-    'rounded-md border px-2.5 py-1 text-xs transition disabled:cursor-not-allowed disabled:opacity-50';
-  if (active) return `${base} border-accent bg-accent text-accent-foreground`;
-  return `${base} border-border bg-card text-foreground hover:border-accent/60`;
 }
 
 function dateInputValue(d: Date | null): string {
@@ -107,19 +104,13 @@ export function TreeFilters({ filters, onChange, disabled }: Props) {
               {filters.timeClasses.size === 0 ? '(none = all)' : `(${filters.timeClasses.size})`}
             </span>
           </div>
-          <div className="flex flex-wrap gap-1">
-            {REAL_TIME_CLASSES.map((tc) => (
-              <button
-                key={tc}
-                type="button"
-                disabled={disabled}
-                onClick={() => toggleTimeClass(tc)}
-                className={multiChipClass(filters.timeClasses.has(tc))}
-              >
-                {TIME_CLASS_LABELS[tc]}
-              </button>
-            ))}
-          </div>
+          <MultiSegmentedControl
+            options={TIME_CLASS_OPTIONS}
+            values={filters.timeClasses}
+            onToggle={toggleTimeClass}
+            disabled={disabled}
+            ariaLabel="Time class"
+          />
         </div>
 
         <div className="space-y-1.5">

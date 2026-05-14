@@ -79,6 +79,52 @@ export function SegmentedControl<V extends string | number>({
   );
 }
 
+interface MultiSegmentedControlProps<V extends string | number> extends CommonProps {
+  options: SegmentedOption<V>[];
+  values: ReadonlySet<V> | readonly V[];
+  onToggle: (value: V) => void;
+  disabled?: boolean;
+  ariaLabel?: string;
+}
+
+export function MultiSegmentedControl<V extends string | number>({
+  options,
+  values,
+  onToggle,
+  disabled,
+  equalWidth = false,
+  fullWidth = false,
+  className = '',
+  ariaLabel,
+}: MultiSegmentedControlProps<V>) {
+  const isActive = (v: V) =>
+    values instanceof Set ? values.has(v) : (values as readonly V[]).includes(v);
+  return (
+    <div
+      role="group"
+      aria-label={ariaLabel}
+      className={`${containerClass(fullWidth)} ${className}`}
+    >
+      {options.map((opt) => {
+        const active = isActive(opt.value);
+        return (
+          <button
+            key={String(opt.value)}
+            type="button"
+            role="checkbox"
+            aria-checked={active}
+            disabled={disabled || opt.disabled}
+            onClick={() => onToggle(opt.value)}
+            className={segmentClass(active, equalWidth)}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 interface SegmentedLinkOption<V extends string | number> extends SegmentedOption<V> {
   href: string;
 }
