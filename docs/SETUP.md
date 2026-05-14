@@ -87,6 +87,8 @@ For each project: **Project Settings → API**. You'll need three values per pro
   - `https://*.vercel.app/**` (covers branch previews)
   - `http://localhost:3000/**` (covers local dev)
 
+**Authentication → Emails → SMTP Settings:** custom SMTP through Resend is configured for prod. See [docs/EMAIL.md](./EMAIL.md) for credentials, sender identity, troubleshooting, and the pattern for adding app-sent transactional email.
+
 ---
 
 ## 3. Wire Vercel ↔ Supabase
