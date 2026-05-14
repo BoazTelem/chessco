@@ -67,22 +67,25 @@ export async function moveEvalCoverage(args: {
   const { platform, handleNormalized, recentGames = 100 } = args;
   const sql = getGamesDb();
 
+  // Use white_handle_snapshot / black_handle_snapshot (always populated) rather
+  // than white_player_id / black_player_id (sparsely populated on chess.com).
+  // UNION ALL keeps the planner using both color-specific partial indexes
+  // (games_white_handle_snap_idx / games_black_handle_snap_idx); a single
+  // OR predicate falls back to a sequential scan over the partitioned table.
   const rows = (await sql`
-    WITH target_handle AS (
-      SELECT id FROM handles
-      WHERE platform = ${platform} AND LOWER(handle) = ${handleNormalized}
-      LIMIT 1
-    ),
-    target_games AS (
-      SELECT g.id
-      FROM games g
-      WHERE g.source = ${platform}
-        AND (
-          g.white_player_id = (SELECT id FROM target_handle)
-          OR g.black_player_id = (SELECT id FROM target_handle)
-        )
-      ORDER BY g.played_at DESC
-      LIMIT ${recentGames}
+    WITH target_games AS (
+      SELECT id FROM (
+        (SELECT g.id, g.played_at FROM games g
+          WHERE g.source = ${platform}
+            AND LOWER(g.white_handle_snapshot) = ${handleNormalized}
+          ORDER BY g.played_at DESC LIMIT ${recentGames})
+        UNION ALL
+        (SELECT g.id, g.played_at FROM games g
+          WHERE g.source = ${platform}
+            AND LOWER(g.black_handle_snapshot) = ${handleNormalized}
+          ORDER BY g.played_at DESC LIMIT ${recentGames})
+      ) x
+      ORDER BY played_at DESC LIMIT ${recentGames}
     )
     SELECT
       COUNT(*)::int AS total_moves,

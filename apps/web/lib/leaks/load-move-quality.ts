@@ -33,26 +33,25 @@ export async function loadMoveQuality(args: {
   // their opponents' moves. With 1-based ply numbering (parse-game.ts:107),
   // white plays on odd plies and black on even plies. We carry each game's
   // target_color forward and filter moves accordingly.
+  // Use *_handle_snapshot (always populated) for the join; *_player_id is
+  // sparse on chess.com games. UNION ALL keeps the planner using both
+  // color-specific snapshot indexes (added in games-corpus 0012).
+  // target_color drives the parity filter so we only count the target's
+  // own moves, not their opponents'.
   const rows = await games<Row[]>`
-    WITH target_handle AS (
-      SELECT id FROM handles
-      WHERE platform = ${platform} AND LOWER(handle) = ${handleNormalized}
-      LIMIT 1
-    ),
-    target_games AS (
-      SELECT g.id,
-             CASE
-               WHEN g.white_player_id = (SELECT id FROM target_handle) THEN 'white'
-               WHEN g.black_player_id = (SELECT id FROM target_handle) THEN 'black'
-             END AS target_color
-      FROM games g
-      WHERE g.source = ${platform}
-        AND (
-          g.white_player_id = (SELECT id FROM target_handle)
-          OR g.black_player_id = (SELECT id FROM target_handle)
-        )
-      ORDER BY g.played_at DESC
-      LIMIT ${RECENT_GAMES}
+    WITH target_games AS (
+      SELECT id, target_color FROM (
+        (SELECT g.id, g.played_at, 'white' AS target_color FROM games g
+          WHERE g.source = ${platform}
+            AND LOWER(g.white_handle_snapshot) = ${handleNormalized}
+          ORDER BY g.played_at DESC LIMIT ${RECENT_GAMES})
+        UNION ALL
+        (SELECT g.id, g.played_at, 'black' AS target_color FROM games g
+          WHERE g.source = ${platform}
+            AND LOWER(g.black_handle_snapshot) = ${handleNormalized}
+          ORDER BY g.played_at DESC LIMIT ${RECENT_GAMES})
+      ) x
+      ORDER BY played_at DESC LIMIT ${RECENT_GAMES}
     ),
     target_moves AS (
       SELECT m.fen_before_id, m.uci, m.cp_loss,

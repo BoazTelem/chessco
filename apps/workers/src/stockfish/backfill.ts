@@ -106,29 +106,29 @@ async function pullChunk(
 
   // Per-handle mode: re-analyze recent games for one opponent regardless of
   // analyzed_at, to populate per-ply moves rows for the leaks feature.
+  // Uses *_handle_snapshot (always populated) + UNION ALL to keep the
+  // planner on the color-specific snapshot indexes (games-corpus 0012);
+  // a single OR on the snapshots falls back to a seqscan.
   if (args.platform !== null && args.handle !== null) {
-    const skipFilter =
-      alreadyPulledGameIds.size > 0
-        ? client`AND g.id <> ALL (${[...alreadyPulledGameIds]}::uuid[])`
-        : client``;
+    const handleLower = args.handle;
+    const skipIds = [...alreadyPulledGameIds];
     return client<UnanalyzedRow[]>`
-      WITH target_handle AS (
-        SELECT id FROM handles
-        WHERE platform = ${args.platform}
-          AND LOWER(handle) = ${args.handle}
-        LIMIT 1
-      )
-      SELECT g.id, g.played_at::text, g.pgn, g.ply_count
-      FROM games g
-      WHERE g.source = ${args.platform}
-        AND length(g.pgn) > 0
-        AND (
-          g.white_player_id = (SELECT id FROM target_handle)
-          OR g.black_player_id = (SELECT id FROM target_handle)
-        )
-        ${skipFilter}
-      ORDER BY g.played_at DESC
-      LIMIT ${size}
+      SELECT id, played_at::text, pgn, ply_count FROM (
+        (SELECT g.id, g.played_at, g.pgn, g.ply_count FROM games g
+          WHERE g.source = ${args.platform}
+            AND length(g.pgn) > 0
+            AND LOWER(g.white_handle_snapshot) = ${handleLower}
+            AND (${skipIds.length === 0} OR g.id <> ALL (${skipIds}::uuid[]))
+          ORDER BY g.played_at DESC LIMIT ${size})
+        UNION ALL
+        (SELECT g.id, g.played_at, g.pgn, g.ply_count FROM games g
+          WHERE g.source = ${args.platform}
+            AND length(g.pgn) > 0
+            AND LOWER(g.black_handle_snapshot) = ${handleLower}
+            AND (${skipIds.length === 0} OR g.id <> ALL (${skipIds}::uuid[]))
+          ORDER BY g.played_at DESC LIMIT ${size})
+      ) x
+      ORDER BY played_at DESC LIMIT ${size}
     `;
   }
 

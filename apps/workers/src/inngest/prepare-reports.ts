@@ -107,22 +107,23 @@ async function checkCoverage(args: {
   platform: 'lichess' | 'chess.com';
   handle: string;
 }): Promise<{ coverage: number; totalMoves: number; withCpLoss: number }> {
+  const handleLower = args.handle.toLowerCase();
+  // UNION ALL keeps the planner using games_white_handle_snap_idx /
+  // games_black_handle_snap_idx (added by games-corpus migration 0012).
   const rows = await args.games<{ total_moves: number; with_cp_loss: number }[]>`
-    WITH target_handle AS (
-      SELECT id FROM handles
-      WHERE platform = ${args.platform} AND LOWER(handle) = ${args.handle.toLowerCase()}
-      LIMIT 1
-    ),
-    target_games AS (
-      SELECT g.id
-      FROM games g
-      WHERE g.source = ${args.platform}
-        AND (
-          g.white_player_id = (SELECT id FROM target_handle)
-          OR g.black_player_id = (SELECT id FROM target_handle)
-        )
-      ORDER BY g.played_at DESC
-      LIMIT ${RECENT_GAMES_FOR_COVERAGE}
+    WITH target_games AS (
+      SELECT id FROM (
+        (SELECT g.id, g.played_at FROM games g
+          WHERE g.source = ${args.platform}
+            AND LOWER(g.white_handle_snapshot) = ${handleLower}
+          ORDER BY g.played_at DESC LIMIT ${RECENT_GAMES_FOR_COVERAGE})
+        UNION ALL
+        (SELECT g.id, g.played_at FROM games g
+          WHERE g.source = ${args.platform}
+            AND LOWER(g.black_handle_snapshot) = ${handleLower}
+          ORDER BY g.played_at DESC LIMIT ${RECENT_GAMES_FOR_COVERAGE})
+      ) x
+      ORDER BY played_at DESC LIMIT ${RECENT_GAMES_FOR_COVERAGE}
     )
     SELECT
       COUNT(*)::int AS total_moves,
