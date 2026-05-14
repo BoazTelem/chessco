@@ -85,15 +85,15 @@ export default async function PracticeCreatePage() {
           </p>
         </div>
 
-        <div className="mb-6">
-          <InvitePicker currentUserId={user.id} />
-        </div>
-
         <CreatePositionForm
           walletAvailableCents={wallet?.available_cents ?? 0}
           creditAvailable={wallet?.credit_available ?? 0}
           userRating={userRating}
         />
+
+        <div className="mt-6">
+          <InvitePicker currentUserId={user.id} />
+        </div>
       </main>
     </div>
   );
