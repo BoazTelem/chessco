@@ -30,7 +30,7 @@ export function EvalBar({ cp, mate, heightPx }: Props) {
   return (
     <div
       className="relative flex flex-col rounded-sm border border-border bg-neutral-900"
-      style={{ width: 18, height: heightPx }}
+      style={{ width: 24, height: heightPx }}
       aria-label="Stockfish evaluation"
       title={formatEval(cp, mate)}
     >
@@ -43,7 +43,7 @@ export function EvalBar({ cp, mate, heightPx }: Props) {
         }}
       />
       <span
-        className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-[9px] font-mono font-semibold"
+        className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-[10px] font-mono font-semibold"
         style={{
           // Label always on the opposite side from the bigger half so it
           // doesn't disappear inside its own colour.

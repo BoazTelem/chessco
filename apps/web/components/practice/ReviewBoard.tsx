@@ -56,7 +56,25 @@ interface MoveEntry {
 }
 
 const DEPTH = 16;
-const MAX_BOARD = 520;
+// Responsive board sizing mirrors GamePlayer so the post-game board doesn't
+// shrink versus the live game. Tuned for the review layout's right-hand
+// 360px sidebar and extra eval-after card below the board.
+const SIDEBAR_WIDTH = 360;
+const VERTICAL_CHROME = 220;
+const MIN_BOARD = 280;
+const MAX_BOARD = 900;
+const EVAL_BAR_SLOT = 32; // 24px bar + 8px gap
+
+function computeBoardSize(evalBarOn: boolean): number {
+  if (typeof window === 'undefined') return 560;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const sidebar = vw >= 1024 ? SIDEBAR_WIDTH + 32 : 0;
+  const evalSlot = evalBarOn ? EVAL_BAR_SLOT : 0;
+  const widthCap = vw - sidebar - evalSlot - 32;
+  const heightCap = vh - VERTICAL_CHROME;
+  return Math.max(MIN_BOARD, Math.min(MAX_BOARD, Math.floor(Math.min(widthCap, heightCap))));
+}
 
 export function ReviewBoard({ pgn, initialFen, whiteName, blackName }: Props) {
   const [moves, setMoves] = useState<MoveEntry[]>(() =>
@@ -71,18 +89,32 @@ export function ReviewBoard({ pgn, initialFen, whiteName, blackName }: Props) {
   const [idx, setIdx] = useState(moves.length - 1);
   const [analyzing, setAnalyzing] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [evalBarVisible, setEvalBarVisible] = useState(false);
+  const [evalBarVisible, setEvalBarVisible] = useState(true);
+  const [boardWidth, setBoardWidth] = useState(() => computeBoardSize(true));
   const engineRef = useRef<StockfishEngine | null>(null);
 
-  // Restore persisted eval-bar preference. Default off per spec.
+  // Restore persisted eval-bar preference. Default on; only an explicit '0'
+  // turns it off, so users who already toggled it off keep that choice.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
-      setEvalBarVisible(window.localStorage.getItem(EVAL_BAR_PREF_KEY) === '1');
+      const v = window.localStorage.getItem(EVAL_BAR_PREF_KEY);
+      setEvalBarVisible(v === null ? true : v === '1');
     } catch {
       /* ignore */
     }
   }, []);
+
+  // Responsively size the board against the viewport and recompute whenever
+  // the eval bar visibility changes (it claims a 32px horizontal slot).
+  useEffect(() => {
+    function update() {
+      setBoardWidth(computeBoardSize(evalBarVisible));
+    }
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [evalBarVisible]);
 
   function toggleEvalBar(): void {
     setEvalBarVisible((v) => {
@@ -181,18 +213,21 @@ export function ReviewBoard({ pgn, initialFen, whiteName, blackName }: Props) {
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
-      <div className="mx-auto w-full" style={{ maxWidth: `${MAX_BOARD}px` }}>
+      <div
+        className="mx-auto w-full"
+        style={{ maxWidth: boardWidth + (evalBarVisible ? EVAL_BAR_SLOT : 0) }}
+      >
         <div className="flex gap-2">
           {evalBarVisible && (
-            <EvalBar cp={shownEval?.cp} mate={shownEval?.mate} heightPx={MAX_BOARD} />
+            <EvalBar cp={shownEval?.cp} mate={shownEval?.mate} heightPx={boardWidth} />
           )}
           <div
-            className="flex-1 overflow-hidden rounded-md"
+            className="overflow-hidden rounded-md"
             style={{ border: `2px solid ${BOARD_BORDER}` }}
           >
             <Chessboard
               position={currentFen}
-              boardWidth={evalBarVisible ? MAX_BOARD - 26 : MAX_BOARD}
+              boardWidth={boardWidth}
               customDarkSquareStyle={{ backgroundColor: BOARD_DARK_SQUARE }}
               customLightSquareStyle={{ backgroundColor: BOARD_LIGHT_SQUARE }}
               customSquareStyles={squareStyles}
@@ -280,7 +315,7 @@ export function ReviewBoard({ pgn, initialFen, whiteName, blackName }: Props) {
                 key={i}
                 onClick={() => setIdx(i)}
                 className={`cursor-pointer rounded px-1.5 py-0.5 ${
-                  i === idx ? 'bg-accent/20 text-accent-foreground' : 'hover:bg-muted'
+                  i === idx ? 'bg-accent font-semibold text-accent-foreground' : 'hover:bg-muted'
                 }`}
               >
                 <span className="mr-1 text-muted-foreground">
