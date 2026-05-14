@@ -7,7 +7,7 @@ import { getUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { CountryBadge, TitleBadge } from '../../result-card';
 import { SampleGameForm } from '../../sample-game-form';
-import { ConfirmButtons } from './confirm-buttons';
+import { ConfirmButtons, type CandidateFeedback } from './confirm-buttons';
 import { enrichCandidateProfiles } from '@/lib/scout/enrich-candidate-profiles';
 
 export const metadata = {
@@ -65,6 +65,7 @@ interface Candidate {
     prose?: string | null;
   };
   user_confirmed: boolean | null;
+  user_feedback: CandidateFeedback | null;
 }
 
 const PLATFORM_URL: Record<Candidate['platform'], (handle: string) => string> = {
@@ -88,7 +89,7 @@ export default async function MatchPage({ params }: { params: Promise<{ query_id
   const { data: candidates } = (await supabase
     .from('identification_candidates')
     .select(
-      'id, rank, platform, handle, confidence_label, combined_score, federation_player_id, evidence, user_confirmed',
+      'id, rank, platform, handle, confidence_label, combined_score, federation_player_id, evidence, user_confirmed, user_feedback',
     )
     .eq('query_id', query_id)
     .order('rank', { ascending: true })) as { data: Candidate[] | null };
@@ -474,13 +475,16 @@ function CandidateCard({
         ))}
       </ul>
 
-      <div className="mt-4 flex items-center justify-between border-t border-border/60 pt-3">
+      <div className="mt-4 flex flex-col gap-3 border-t border-border/60 pt-3 md:flex-row md:items-start md:justify-between">
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-          Is this {c.handle} the right account?
+          Is this result right?
         </span>
         <ConfirmButtons
           candidateId={c.id}
-          initial={c.user_confirmed}
+          initial={
+            c.user_feedback ??
+            (c.user_confirmed === true ? 'correct' : c.user_confirmed === false ? 'wrong' : null)
+          }
           signedIn={signedIn}
           nextPath={nextPath}
         />

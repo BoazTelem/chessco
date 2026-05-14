@@ -373,8 +373,40 @@ export const identificationCandidates = pgTable('identification_candidates', {
   handleScore: numeric('handle_score'),
   styleScore: numeric('style_score'),
   evidence: jsonb('evidence'),
+  userConfirmed: boolean('user_confirmed'),
+  userFeedback: text('user_feedback').$type<
+    'correct' | 'probably_correct' | 'probably_wrong' | 'wrong'
+  >(),
+  userFeedbackBy: uuid('user_feedback_by').references(() => profiles.id, { onDelete: 'set null' }),
+  userFeedbackAt: timestamptz('user_feedback_at'),
   createdAt: timestamptz('created_at').notNull().defaultNow(),
 });
+
+export const identificationCandidateFeedback = pgTable(
+  'identification_candidate_feedback',
+  {
+    id: pkBigserial(),
+    candidateId: bigint('candidate_id', { mode: 'number' })
+      .notNull()
+      .references(() => identificationCandidates.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    feedback: text('feedback')
+      .$type<'correct' | 'probably_correct' | 'probably_wrong' | 'wrong'>()
+      .notNull(),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+    updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    candidateUserUnique: uniqueIndex('identification_candidate_feedback_candidate_user_idx').on(
+      table.candidateId,
+      table.userId,
+    ),
+    candidateIdx: index('identification_candidate_feedback_candidate_idx').on(table.candidateId),
+    valueIdx: index('identification_candidate_feedback_value_idx').on(table.feedback),
+  }),
+);
 
 // ============================================================================
 // PREP REPORTS

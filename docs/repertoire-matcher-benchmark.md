@@ -82,3 +82,5 @@ first-12-SAN-prefix cosine matcher.
 - Add account-context fusion benchmark: repertoire-only vs context-only vs fused.
 - Add cross-platform sibling-account recovery.
 - Add explicit titled/amateur labels once metadata coverage is strong enough.
+- Compare offline benchmark confidence with user feedback labels:
+  `correct`, `probably_correct`, `probably_wrong`, and `wrong`.
