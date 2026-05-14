@@ -2,8 +2,8 @@
 
 /**
  * InvitePicker — lists currently-online Practice users and lets the viewer
- * send a free, direct invite from the standard starting position with the
- * chosen time control. Reads from the shared presence store fed by
+ * send a credit-funded direct invite from the standard starting position with
+ * the chosen time control. Reads from the shared presence store fed by
  * PracticePresence (mounted globally). Never opens its own Realtime channel
  * with topic `practice-presence`: `supabase.channel(topic)` returns the
  * existing instance, and adding presence callbacks after subscribe() throws.
@@ -21,12 +21,19 @@ const TIME_CONTROLS = [
   { label: '10+0 Rapid', tc: '10+0', cls: 'rapid' as const },
 ];
 
-export function InvitePicker({ currentUserId }: { currentUserId: string }) {
+export function InvitePicker({
+  currentUserId,
+  creditAvailable,
+}: {
+  currentUserId: string;
+  creditAvailable: number;
+}) {
   const presence = usePresence();
   const [tcIndex, setTcIndex] = useState(2); // 5+0 Blitz default
   const [pendingForUser, setPendingForUser] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<Set<string>>(new Set());
+  const creditsLeft = Math.max(0, creditAvailable - sentTo.size);
 
   const online = useMemo(
     () => presence.filter((u) => u.user_id !== currentUserId),
@@ -37,6 +44,10 @@ export function InvitePicker({ currentUserId }: { currentUserId: string }) {
 
   async function sendInvite(targetUserId: string): Promise<void> {
     setError(null);
+    if (creditsLeft <= 0) {
+      setError('Direct invites require 1 credit.');
+      return;
+    }
     setPendingForUser(targetUserId);
     try {
       const res = await fetch('/api/practice/invites', {
@@ -75,23 +86,26 @@ export function InvitePicker({ currentUserId }: { currentUserId: string }) {
         <div>
           <h2 className="font-display text-lg font-semibold">Direct invite</h2>
           <p className="text-xs text-muted-foreground">
-            Free practice from the starting position. The friend you pick gets a notification.
+            Costs 1 credit from the starting position. The friend you pick gets a notification.
           </p>
         </div>
-        <label className="flex items-center gap-2 text-xs">
-          <span className="text-muted-foreground">Time</span>
-          <select
-            value={tcIndex}
-            onChange={(e) => setTcIndex(Number(e.target.value))}
-            className="rounded-md border border-border bg-background px-2 py-1"
-          >
-            {TIME_CONTROLS.map((t, i) => (
-              <option key={t.tc} value={i}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-xs text-muted-foreground">Credits: {creditsLeft}</span>
+          <label className="flex items-center gap-2 text-xs">
+            <span className="text-muted-foreground">Time</span>
+            <select
+              value={tcIndex}
+              onChange={(e) => setTcIndex(Number(e.target.value))}
+              className="rounded-md border border-border bg-background px-2 py-1"
+            >
+              {TIME_CONTROLS.map((t, i) => (
+                <option key={t.tc} value={i}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
       {error && (
@@ -126,7 +140,7 @@ export function InvitePicker({ currentUserId }: { currentUserId: string }) {
                   <button
                     type="button"
                     onClick={() => sendInvite(u.user_id)}
-                    disabled={isPending || isSent}
+                    disabled={isPending || isSent || creditsLeft <= 0}
                     className="rounded-md bg-accent px-3 py-1 text-xs font-semibold text-accent-foreground disabled:opacity-60"
                   >
                     {isSent ? 'Invite sent' : isPending ? 'Sending…' : `Challenge ${tc.tc}`}

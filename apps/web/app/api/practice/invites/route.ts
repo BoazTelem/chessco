@@ -1,7 +1,7 @@
 /**
- * POST /api/practice/invites — create a direct, free Practice invite from one
- * online user to another. Unlike public lobby challenges this:
- *   - skips the wallet reserve / escrow path (fee_cents = 0)
+ * POST /api/practice/invites — create a direct Practice invite from one online
+ * user to another. Unlike public lobby challenges this:
+ *   - costs 1 publishing credit and reserves it until the game settles/cancels
  *   - sets challenges.target_opponent_id so only the invited user can accept
  *   - hides the row from the public lobby query
  *
@@ -17,6 +17,7 @@ import { detectOpening } from '@/lib/practice/openings';
 
 const TIME_CONTROL_RE = /^\d+\+\d+$/;
 const TIME_CLASS = ['bullet', 'blitz', 'rapid', 'classical'] as const;
+const DIRECT_INVITE_CREDIT_COST = 1;
 
 const Input = z.object({
   targetUserId: z.string().uuid(),
@@ -55,24 +56,70 @@ export async function POST(req: Request): Promise<NextResponse> {
   const sql = getPracticeDb();
 
   try {
-    const inserted = (await sql`
-      INSERT INTO challenges (
-        creator_id, fen, creator_color, time_control, time_class,
-        fee_cents, currency, games_requested, opening_name, eco_code,
-        target_opponent_id
-      ) VALUES (
-        ${user.id}, ${fenCheck.fen}, ${parsed.creatorColor ?? null},
-        ${parsed.timeControl}, ${parsed.timeClass},
-        0, 'USD', 1, ${detected?.name ?? null}, ${detected?.ecoCode ?? null},
-        ${parsed.targetUserId}
-      )
-      RETURNING id
-    `) as Array<{ id: string }>;
-    const row = inserted[0];
-    if (!row) return NextResponse.json({ error: 'insert failed' }, { status: 500 });
-    return NextResponse.json({ id: row.id });
+    const result = (await sql.begin(async (tx) => {
+      const wallets = (await tx`
+        SELECT credit_available FROM wallets WHERE profile_id = ${user.id} FOR UPDATE
+      `) as Array<{ credit_available: number }>;
+      const wallet = wallets[0];
+      if (!wallet) throw new HttpError(400, 'no wallet on file');
+      if (wallet.credit_available < DIRECT_INVITE_CREDIT_COST) {
+        throw new HttpError(402, 'Direct invites require 1 credit.');
+      }
+
+      await tx`
+        UPDATE wallets
+        SET credit_available = credit_available - ${DIRECT_INVITE_CREDIT_COST},
+            credit_pending = credit_pending + ${DIRECT_INVITE_CREDIT_COST}
+        WHERE profile_id = ${user.id}
+      `;
+
+      const inserted = (await tx`
+        INSERT INTO challenges (
+          creator_id, fen, creator_color, time_control, time_class,
+          fee_cents, currency, games_requested, opening_name, eco_code,
+          target_opponent_id, funding_type, credit_cost
+        ) VALUES (
+          ${user.id}, ${fenCheck.fen}, ${parsed.creatorColor ?? null},
+          ${parsed.timeControl}, ${parsed.timeClass},
+          0, 'USD', 1, ${detected?.name ?? null}, ${detected?.ecoCode ?? null},
+          ${parsed.targetUserId}, 'credits', ${DIRECT_INVITE_CREDIT_COST}
+        )
+        RETURNING id
+      `) as Array<{ id: string }>;
+      const row = inserted[0];
+      if (!row) throw new HttpError(500, 'insert failed');
+
+      await tx`
+        INSERT INTO credit_ledger_entries (
+          profile_id, direction, amount, category, reference_type, reference_id, metadata
+        ) VALUES (
+          ${user.id}, 'D', ${DIRECT_INVITE_CREDIT_COST}, 'challenge_reserve', 'challenge', ${row.id},
+          ${JSON.stringify({
+            direct_invite: true,
+            games_requested: 1,
+            target_opponent_id: parsed.targetUserId,
+          })}::jsonb
+        )
+      `;
+
+      return row.id;
+    })) as string;
+
+    return NextResponse.json({ id: result });
   } catch (err) {
+    if (err instanceof HttpError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
     console.error('[invites:POST] error', err);
     return NextResponse.json({ error: 'internal error' }, { status: 500 });
+  }
+}
+
+class HttpError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message);
   }
 }

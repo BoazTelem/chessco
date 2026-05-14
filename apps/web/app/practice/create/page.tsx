@@ -92,7 +92,7 @@ export default async function PracticeCreatePage() {
         />
 
         <div className="mt-6">
-          <InvitePicker currentUserId={user.id} />
+          <InvitePicker currentUserId={user.id} creditAvailable={wallet?.credit_available ?? 0} />
         </div>
       </main>
     </div>
