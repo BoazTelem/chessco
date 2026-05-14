@@ -184,8 +184,70 @@ function generateClaims(players: FedPlayer[], topN: number): Map<string, HandleC
   return claims;
 }
 
-/** Filter out handles already known in platform_players (lichess). Reading
- *  them once with a single IN-list is faster than per-handle lookups. */
+/** For each known handle, apply the federation claim metadata via a
+ *  COALESCE update — only fills fields that are currently NULL, so existing
+ *  claims (e.g. self_oauth links) are never overwritten. Batched at 1000
+ *  handles per UPDATE (4 cols × 1000 rows = 4k params, safely under cap).
+ *  Returns the count of affected rows (those that actually had a NULL
+ *  claim_federation_player_id at update time). */
+async function applyClaimsToKnown(
+  sql: postgres.Sql,
+  claims: Map<string, HandleClaim>,
+  known: Set<string>,
+): Promise<number> {
+  let touched = 0;
+  const knownList = [...known];
+  // 1000-row chunks: well under the jsonb_to_recordset practical limit and
+  // gives clean progress granularity.
+  const CHUNK = 1000;
+  for (let i = 0; i < knownList.length; i += CHUNK) {
+    const slice = knownList.slice(i, i + CHUNK);
+    const payload: Array<{
+      handle: string;
+      claimed_name: string;
+      claimed_name_normalized: string;
+      claimed_federation_player_id: string;
+    }> = [];
+    for (const handle of slice) {
+      const c = claims.get(handle);
+      if (!c) continue;
+      payload.push({
+        handle,
+        claimed_name: c.fedPlayerName,
+        claimed_name_normalized: c.fedPlayerNameNormalized,
+        claimed_federation_player_id: c.fedPlayerId,
+      });
+    }
+    if (payload.length === 0) continue;
+    const result = await sql<{ handle: string }[]>`
+      UPDATE platform_players SET
+        claimed_name = COALESCE(platform_players.claimed_name, src.claimed_name),
+        claimed_name_normalized = COALESCE(
+          platform_players.claimed_name_normalized,
+          src.claimed_name_normalized
+        ),
+        claimed_federation_player_id = COALESCE(
+          platform_players.claimed_federation_player_id,
+          src.claimed_federation_player_id
+        ),
+        claimed_federation_resolved_at = COALESCE(
+          platform_players.claimed_federation_resolved_at, NOW()
+        ),
+        last_seen_at = NOW()
+      FROM jsonb_to_recordset(${JSON.stringify(payload)}::jsonb)
+        AS src(handle text, claimed_name text, claimed_name_normalized text, claimed_federation_player_id uuid)
+      WHERE platform_players.platform = 'lichess'
+        AND platform_players.handle = src.handle
+        AND platform_players.claimed_federation_player_id IS NULL
+      RETURNING platform_players.handle
+    `;
+    touched += result.length;
+  }
+  return touched;
+}
+
+/** Return the subset of `handles` that already exist in platform_players
+ *  (lichess). Read once with a single IN-list. */
 async function dropAlreadyKnown(sql: postgres.Sql, handles: string[]): Promise<Set<string>> {
   const known = new Set<string>();
   // Chunk to stay under the 65k param cap; 5000 per round is comfy.
@@ -306,16 +368,32 @@ async function main(): Promise<void> {
         `(avg ${(claims.size / players.length).toFixed(1)} per player)`,
     );
 
-    // 3. Drop handles already in platform_players
+    // 3. Split into already-known (in platform_players) vs new hypotheses.
+    //    Known handles still need the federation claim metadata applied —
+    //    skipping them entirely (the previous behaviour) meant titled / country
+    //    rows discovered earlier never got their claimed_federation_player_id
+    //    set, so they couldn't be promoted to the T1 tier or surfaced via
+    //    name-anchored search. We do a cheap claim-only upsert against them
+    //    here (no API call needed; we already have their rating/title data).
     const allHandles = [...claims.keys()];
     const known = await dropAlreadyKnown(sql, allHandles);
     const toCheck = allHandles.filter((h) => !known.has(h));
     console.log(
-      `[fed-expand] ${fmt(known.size)} already in platform_players; ` +
-        `${fmt(toCheck.length)} new hypotheses to check`,
+      `[fed-expand] ${fmt(known.size)} already in platform_players (claim-only update); ` +
+        `${fmt(toCheck.length)} new hypotheses to check via API`,
     );
+
+    let claimUpdated = 0;
+    if (!args.dryRun && known.size > 0) {
+      claimUpdated = await applyClaimsToKnown(sql, claims, known);
+      console.log(
+        `[fed-expand] claim-only update touched ${fmt(claimUpdated)} known rows ` +
+          `(rows where claimed_federation_player_id was NULL)`,
+      );
+    }
+
     if (toCheck.length === 0) {
-      console.log('[fed-expand] nothing new to check — exiting.');
+      console.log('[fed-expand] no new hypotheses to API-check — exiting.');
       return;
     }
 
@@ -382,8 +460,8 @@ async function main(): Promise<void> {
     console.log(`\n[fed-expand] DONE in ${totalDt}s`);
     console.log(`  fed players read: ${fmt(players.length)}`);
     console.log(`  unique hypotheses: ${fmt(claims.size)}`);
-    console.log(`  already known: ${fmt(known.size)}`);
-    console.log(`  checked: ${fmt(toCheck.length)} in ${fmt(batches.length)} batches`);
+    console.log(`  already known: ${fmt(known.size)} (${fmt(claimUpdated)} claim-only updates)`);
+    console.log(`  checked via API: ${fmt(toCheck.length)} in ${fmt(batches.length)} batches`);
     console.log(`  live discovered: ${fmt(live)}`);
     console.log(`  upserted into platform_players: ${fmt(upserted)}`);
     console.log(
