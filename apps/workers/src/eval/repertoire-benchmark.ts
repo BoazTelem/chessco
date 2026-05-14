@@ -319,7 +319,13 @@ async function loadMetadata(accounts: Account[]): Promise<Map<string, AccountMet
           .map((a) => a.handle.toLowerCase());
         if (handles.length === 0) continue;
         const rows = await client<
-          { platform: Platform; handle: string; country: string | null; title: string | null; claimed_name: string | null }[]
+          {
+            platform: Platform;
+            handle: string;
+            country: string | null;
+            title: string | null;
+            claimed_name: string | null;
+          }[]
         >`
           SELECT platform, handle, country, title, claimed_name
           FROM platform_players
@@ -339,7 +345,9 @@ async function loadMetadata(accounts: Account[]): Promise<Map<string, AccountMet
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.warn(`[benchmark] Supabase metadata unavailable; continuing without title/country segments: ${msg}`);
+    console.warn(
+      `[benchmark] Supabase metadata unavailable; continuing without title/country segments: ${msg}`,
+    );
   }
   return meta;
 }
@@ -552,8 +560,7 @@ function sampleQuality(
   const black = sample.length - white;
   const ecos = new Set(sample.map((g) => g.openingEco).filter((e): e is string => Boolean(e)));
   const opp = sample.map((g) => g.opponentRating).filter((r): r is number => r !== null);
-  const avgOpponentRating =
-    opp.length > 0 ? opp.reduce((sum, r) => sum + r, 0) / opp.length : null;
+  const avgOpponentRating = opp.length > 0 ? opp.reduce((sum, r) => sum + r, 0) / opp.length : null;
   let coverageSum = 0;
   let coverageCount = 0;
   for (const k of queryVector.keys()) {
@@ -564,7 +571,13 @@ function sampleQuality(
   }
   const avgCoverage = coverageCount > 0 ? coverageSum / coverageCount : null;
   const openingUniqueness =
-    avgCoverage === null ? 'unknown' : avgCoverage <= 0.05 ? 'rare' : avgCoverage >= 0.2 ? 'common' : 'mixed';
+    avgCoverage === null
+      ? 'unknown'
+      : avgCoverage <= 0.05
+        ? 'rare'
+        : avgCoverage >= 0.2
+          ? 'common'
+          : 'mixed';
   return {
     games: sample.length,
     whiteGames: white,
@@ -654,7 +667,9 @@ function calibration(rows: BenchmarkRow[]): CalibrationBin[] {
   return out;
 }
 
-function metricsBySampleSize(rows: BenchmarkRow[]): Array<{ sample_size: number; metrics: Metrics }> {
+function metricsBySampleSize(
+  rows: BenchmarkRow[],
+): Array<{ sample_size: number; metrics: Metrics }> {
   const sizes = [...new Set(rows.map((r) => r.sample_size))].sort((a, b) => a - b);
   return sizes.map((sampleSize) => ({
     sample_size: sampleSize,
@@ -760,7 +775,11 @@ async function main(): Promise<void> {
             const vector =
               candidateKey === targetKey ? targetTrainVector : fullVectors.get(candidateKey);
             if (!vector || vector.size === 0) continue;
-            scores.push({ key: candidateKey, account: candidate, score: cosine(queryVector, vector) });
+            scores.push({
+              key: candidateKey,
+              account: candidate,
+              score: cosine(queryVector, vector),
+            });
           }
           scores.sort((a, b) => b.score - a.score);
           const rank = scores.findIndex((s) => s.key === targetKey) + 1;
@@ -792,9 +811,15 @@ async function main(): Promise<void> {
             segments: {
               platform: target.platform,
               rating_band: targetStats.ratingBand,
-              title_status: targetMeta ? (targetMeta.title ? 'titled' : 'amateur_or_unknown') : 'metadata_missing',
+              title_status: targetMeta
+                ? targetMeta.title
+                  ? 'titled'
+                  : 'amateur_or_unknown'
+                : 'metadata_missing',
               context_available:
-                targetMeta && (targetMeta.country || targetMeta.claimed_name || targetMeta.title) ? 'yes' : 'no',
+                targetMeta && (targetMeta.country || targetMeta.claimed_name || targetMeta.title)
+                  ? 'yes'
+                  : 'no',
               account_game_count: targetStats.accountGameCountBand,
               opening_diversity: targetStats.openingDiversityBand,
               sample_color_balance: quality.colorBalance,

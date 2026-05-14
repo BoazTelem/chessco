@@ -76,15 +76,7 @@ function num(v: number): string {
   return v.toLocaleString();
 }
 
-function Stat({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value: string;
-  detail?: string;
-}) {
+function Stat({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return (
     <div className="rounded-md border border-border bg-card p-4">
       <p className="text-xs text-muted-foreground">{label}</p>
@@ -131,8 +123,8 @@ export default function BenchmarksPage() {
         </h1>
         <p className="mt-4 max-w-3xl text-base leading-7 text-muted-foreground">
           These results measure whether Chessco can recover an account from held-out games that are
-          excluded from that account&apos;s candidate repertoire. The benchmark exists so product copy
-          can say the right number of PGNs based on evidence, not guesswork.
+          excluded from that account&apos;s candidate repertoire. The benchmark exists so product
+          copy can say the right number of PGNs based on evidence, not guesswork.
         </p>
       </section>
 
@@ -165,7 +157,8 @@ export default function BenchmarksPage() {
         <div className="border-b border-border bg-card px-4 py-3">
           <h2 className="font-display text-lg font-semibold">Accuracy by sample size</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Last run: {Number.isFinite(runDate.getTime()) ? runDate.toLocaleString() : benchmark.run_at}
+            Last run:{' '}
+            {Number.isFinite(runDate.getTime()) ? runDate.toLocaleString() : benchmark.run_at}
           </p>
         </div>
         <div className="overflow-x-auto">
@@ -206,8 +199,8 @@ export default function BenchmarksPage() {
           <p className="mt-3 text-sm leading-6 text-muted-foreground">{benchmark.methodology}</p>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
             Config: depth {benchmark.config.depth}, min train games{' '}
-            {benchmark.config.min_train_games}, seeds {benchmark.config.seeds.join(', ')},
-            platform {benchmark.config.platform ?? 'all'}.
+            {benchmark.config.min_train_games}, seeds {benchmark.config.seeds.join(', ')}, platform{' '}
+            {benchmark.config.platform ?? 'all'}.
           </p>
         </div>
         <div className="rounded-md border border-border bg-card p-5">

@@ -134,8 +134,8 @@ export default async function AdHocPlayerPage({
                 AI matching by sample game
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Have games of {player.name}? Paste PGNs for repertoire matching by play pattern.
-                It works even when their handle looks nothing like their name; game-count guidance
+                Have games of {player.name}? Paste PGNs for repertoire matching by play pattern. It
+                works even when their handle looks nothing like their name; game-count guidance
                 comes from /benchmarks.
               </p>
               <div className="mt-3">

@@ -248,8 +248,7 @@ export function SampleGameForm({
     <form onSubmit={onSubmit} className="space-y-3">
       <div>
         <label className="text-sm font-medium">
-          Paste PGN games of{' '}
-          {subjectLabel ? <strong>{subjectLabel}</strong> : 'the target player'}
+          Paste PGN games of {subjectLabel ? <strong>{subjectLabel}</strong> : 'the target player'}
         </label>
         <p className="mt-1 text-xs text-muted-foreground">
           AI matches play patterns against stored account repertoires. A few games can surface
