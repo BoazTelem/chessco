@@ -196,9 +196,15 @@ export default async function MatchPage({ params }: { params: Promise<{ query_id
         {query.status === 'ready' && candidates && candidates.length > 0 && (
           <section className="mt-8 space-y-3">
             {query.query_payload.ai_verdict && (
-              <AiVerdictBanner verdict={query.query_payload.ai_verdict} />
+              <AiVerdictBanner
+                verdict={query.query_payload.ai_verdict}
+                sampleGameAvailable={sampleGameFallbackIndex !== null}
+              />
             )}
-            <DiscriminationNote candidates={candidates} />
+            <DiscriminationNote
+              candidates={candidates}
+              sampleGameAvailable={sampleGameFallbackIndex !== null}
+            />
             <p className="text-xs text-muted-foreground">
               Showing top {candidates.length}. Confidence is computed from handle similarity,
               country, rating-band, and title alignment.
@@ -271,13 +277,20 @@ function getSampleGameFallbackInsertionIndex(candidates: Candidate[]): number {
  * close-call breakers (e.g., GM with cp-loss 100 = unlikely) point the
  * other way.
  */
-function AiVerdictBanner({ verdict }: { verdict: AiVerdict }) {
+function AiVerdictBanner({
+  verdict,
+  sampleGameAvailable,
+}: {
+  verdict: AiVerdict;
+  sampleGameAvailable: boolean;
+}) {
   const color =
     verdict.confidence === 'high'
       ? 'border-emerald-500/40 bg-emerald-500/5 text-emerald-500'
       : verdict.confidence === 'medium'
         ? 'border-amber-500/40 bg-amber-500/5 text-amber-500'
         : 'border-rose-500/40 bg-rose-500/5 text-rose-500';
+  const showFallbackCta = sampleGameAvailable && verdict.confidence !== 'high';
   return (
     <div className={`rounded-lg border ${color.split(' ').slice(0, 2).join(' ')} p-4`}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -294,11 +307,25 @@ function AiVerdictBanner({ verdict }: { verdict: AiVerdict }) {
         Best match: <span className="font-mono text-accent">{verdict.best_match}</span>
       </p>
       <p className="mt-2 text-sm leading-relaxed text-foreground/90">{verdict.reasoning}</p>
+      {showFallbackCta && (
+        <a
+          href="#sample-game-fallback"
+          className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-accent hover:underline"
+        >
+          Not confident? Paste a few of their games to match by play pattern ↓
+        </a>
+      )}
     </div>
   );
 }
 
-function DiscriminationNote({ candidates }: { candidates: Candidate[] }) {
+function DiscriminationNote({
+  candidates,
+  sampleGameAvailable,
+}: {
+  candidates: Candidate[];
+  sampleGameAvailable: boolean;
+}) {
   if (candidates.length === 0) return null;
   const top = candidates.slice(0, 5).map((c) => c.combined_score);
   const max = top[0] ?? 0;
@@ -315,8 +342,16 @@ function DiscriminationNote({ candidates }: { candidates: Candidate[] }) {
         {tied
           ? `Name + country matched ${candidates.length} handles with nearly identical confidence — we can't pick a winner from this signal alone.`
           : `No candidate reached a confident match. The strongest signal we have is fuzzy name match plus country.`}{' '}
-        Phase 1 W5 adds <em>sample-game</em> matching — paste one of the target&apos;s games and AI
-        finds them by play style.
+        {sampleGameAvailable ? (
+          <>
+            Paste a few of the target&apos;s games and AI finds them by play style —{' '}
+            <a href="#sample-game-fallback" className="font-semibold text-accent hover:underline">
+              jump to PGN importer ↓
+            </a>
+          </>
+        ) : (
+          <>Paste a few of the target&apos;s games and AI finds them by play style.</>
+        )}
       </p>
     </div>
   );
@@ -334,7 +369,10 @@ function SampleGameFallback({
   subjectLabel?: string;
 }) {
   return (
-    <section className="rounded-lg border border-accent/40 bg-accent/5 p-5">
+    <section
+      id="sample-game-fallback"
+      className="scroll-mt-24 rounded-lg border border-accent/40 bg-accent/5 p-5"
+    >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-display text-lg font-semibold">None look right?</h2>
         <span className="text-[10px] uppercase tracking-[0.2em] text-accent">AI matching</span>
