@@ -142,6 +142,8 @@ Tooling: pnpm + Turborepo, TS strict, ESLint + Prettier + Husky + lint-staged, V
 
 ## National Federations Coverage Roadmap
 
+> **2026-05-14 — source-availability audit invalidates most of this table.** Live-probed Wave B (ECF, DSB, FFE) and all three were blocked: ECF's `ecf-publications` URL is 404 with no bulk endpoint on the new `rating.englishchess.org.uk`; DSB's CSV ZIP exists but the readme forbids publication without DWZ-Referent permission; FFE's `Joueurs.aspx` is search-only with a server-enforced row cap. The pattern is general — national federations have systematically locked down bulk access between 2024–2026. Going forward, **FIDE country-slice is the primary national-coverage source** (e.g. FIDE country='FRA' for France's ~57k), and the `/scout/federation/[code]` amber banner is the steady state, not a temporary fallback. Only flip a code to green when there's either a confirmed publishable bulk source or a federation-side data-license agreement. Per-federation parsers are still possible with the existing registry pattern; the constraint is the supply of usable sources. See `memory/wave_b_federations_blocked.md` for the verified blockers.
+
 Every national federation needs a custom HTML scraper because they all publish ratings differently — there's no shared standard. Each parser is ~150–250 LOC and reuses the upsert/normalize/run-tracker code from the FIDE worker. Average effort per federation: **~3–5 days** (research source + write parser + run + verify).
 
 Each row below is a separate `apps/workers/src/<federation>/` worker.
