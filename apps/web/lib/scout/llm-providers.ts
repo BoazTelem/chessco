@@ -103,18 +103,21 @@ class AnthropicProvider implements LlmProvider {
  *
  * SCOUT_PROSE_PROVIDER: 'deepseek' (default) | 'anthropic'
  * Required key per provider: DEEPSEEK_API_KEY | ANTHROPIC_API_KEY
+ *
+ * Optional `model` override lets the call site pick a reasoning-tier model
+ * (e.g. 'deepseek-reasoner') for close-call escalation without restructuring.
  */
-export function getProseProvider(): LlmProvider | null {
+export function getProseProvider(opts: { model?: string } = {}): LlmProvider | null {
   const name = (process.env.SCOUT_PROSE_PROVIDER ?? 'deepseek').toLowerCase();
   if (name === 'deepseek') {
     const key = process.env.DEEPSEEK_API_KEY;
     if (!key) return null;
-    return new DeepSeekProvider(key);
+    return new DeepSeekProvider(key, opts.model);
   }
   if (name === 'anthropic') {
     const key = process.env.ANTHROPIC_API_KEY;
     if (!key) return null;
-    return new AnthropicProvider(key);
+    return new AnthropicProvider(key, opts.model);
   }
   return null;
 }

@@ -34,6 +34,7 @@
     "features:inspect": "tsx src/features/inspect.ts",
     "eval:repertoire": "tsx src/eval/repertoire-benchmark.ts",
     "stage3": "tsx src/stage3/run.ts",
+    "llm:smoke": "tsx src/scout/llm-smoke.ts",
     "games-db:migrate": "tsx src/games-db-migrate.ts",
     "games-db:verify": "tsx src/games-db-verify.ts",
     "typecheck": "tsc --noEmit",
