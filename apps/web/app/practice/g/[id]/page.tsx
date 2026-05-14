@@ -3,8 +3,10 @@ import { notFound, redirect } from 'next/navigation';
 import { brand } from '@chessco/ui';
 import { requireUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
+import { getPracticeDb } from '@/lib/practice/db';
 import { ChesscoMark } from '@/lib/logo';
 import { GamePlayer } from '@/components/practice/GamePlayer';
+import type { PlayerInfo } from '@/components/practice/PlayerCard';
 import { signTicket } from '@/lib/practice/ws-ticket';
 
 export const metadata = {
@@ -13,6 +15,16 @@ export const metadata = {
 
 interface RouteProps {
   params: Promise<{ id: string }>;
+}
+
+interface PlayerRow {
+  id: string;
+  username: string | null;
+  display_name: string | null;
+  country: string | null;
+  chess_title: string | null;
+  profile_visibility: 'public' | 'private' | 'coach_public_player_private' | null;
+  skill_rating: number | null;
 }
 
 export default async function PracticeGamePage({ params }: RouteProps) {
@@ -58,8 +70,40 @@ export default async function PracticeGamePage({ params }: RouteProps) {
     animationsEnabled: prefsRow?.animations_enabled ?? true,
   };
 
+  // Player cards: name, title, country flag, rating. Anonymity propagates
+  // from the originating challenge — same rule the lobby card already uses.
+  // skill_rating is numeric in Postgres; ROUND() it server-side so the
+  // JSON driver delivers a clean integer rather than a string.
+  const sql = getPracticeDb();
+  const playerRows = (await sql`
+    SELECT
+      p.id,
+      p.username,
+      p.display_name,
+      p.country,
+      p.chess_title,
+      p.profile_visibility,
+      ROUND(r.skill_rating)::int AS skill_rating
+    FROM profiles p
+    LEFT JOIN ratings r ON r.profile_id = p.id
+    WHERE p.id IN (${lg.white_user_id}, ${lg.black_user_id})
+  `) as PlayerRow[];
+
+  const anonRows = (await sql`
+    SELECT c.anonymous
+    FROM matches m
+    JOIN challenges c ON c.id = m.challenge_id
+    WHERE m.id = ${matchId}
+    LIMIT 1
+  `) as Array<{ anonymous: boolean }>;
+  const matchAnonymous = anonRows[0]?.anonymous ?? false;
+
+  const byId = new Map(playerRows.map((p) => [p.id, p]));
+  const whitePlayer = buildPlayerInfo(byId.get(lg.white_user_id), lg.white_user_id, matchAnonymous);
+  const blackPlayer = buildPlayerInfo(byId.get(lg.black_user_id), lg.black_user_id, matchAnonymous);
+
   const ticket = signTicket({ matchId, userId: user.id, role });
-  const wsBase = process.env.NEXT_PUBLIC_PRACTICE_WS_URL ?? 'ws://localhost:3001';
+  const wsBase = process.env.NEXT_PUBLIC_PRACTICE_WS_URL || 'ws://localhost:3001';
   const initialWsUrl = `${wsBase}/game/${matchId}?ticket=${encodeURIComponent(ticket)}`;
 
   return (
@@ -84,8 +128,38 @@ export default async function PracticeGamePage({ params }: RouteProps) {
           initialRole={role}
           initialFen={lg.initial_fen}
           prefs={prefs}
+          whitePlayer={whitePlayer}
+          blackPlayer={blackPlayer}
         />
       </main>
     </div>
   );
+}
+
+function buildPlayerInfo(
+  row: PlayerRow | undefined,
+  userId: string,
+  matchAnonymous: boolean,
+): PlayerInfo {
+  if (matchAnonymous || !row) {
+    return {
+      userId,
+      displayName: 'Anonymous',
+      profileHref: null,
+      countryIso2: null,
+      chessTitle: null,
+      rating: null,
+    };
+  }
+  const displayName = row.display_name ?? row.username ?? 'A player';
+  const profileHref =
+    row.profile_visibility === 'public' && row.username ? `/u/${row.username}` : null;
+  return {
+    userId,
+    displayName,
+    profileHref,
+    countryIso2: row.country,
+    chessTitle: row.chess_title,
+    rating: row.skill_rating,
+  };
 }

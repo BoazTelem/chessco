@@ -20,6 +20,7 @@ import type { Piece, Square } from 'react-chessboard/dist/chessboard/types';
 import type { ClientMsg, Color, Result, ServerMsg, Termination } from '@/lib/practice/protocol';
 import { sounds } from '@/lib/practice/sounds';
 import { MovesPanel } from './MovesPanel';
+import { PlayerCard, type PlayerInfo } from './PlayerCard';
 import {
   BOARD_BORDER,
   BOARD_DARK_SQUARE,
@@ -51,6 +52,8 @@ interface Props {
   initialRole: Color;
   initialFen: string;
   prefs: Prefs;
+  whitePlayer: PlayerInfo;
+  blackPlayer: PlayerInfo;
 }
 
 interface GameState {
@@ -93,18 +96,15 @@ function sideToMoveFromFen(fen: string): Color {
   return fen.split(' ')[1] === 'b' ? 'black' : 'white';
 }
 
-function fmtClock(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  if (ms < 10_000) {
-    const tenths = Math.floor((ms % 1000) / 100);
-    return `${m}:${String(s).padStart(2, '0')}.${tenths}`;
-  }
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
-
-export function GamePlayer({ matchId, initialWsUrl, initialRole, initialFen, prefs }: Props) {
+export function GamePlayer({
+  matchId,
+  initialWsUrl,
+  initialRole,
+  initialFen,
+  prefs,
+  whitePlayer,
+  blackPlayer,
+}: Props) {
   const router = useRouter();
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempt = useRef(0);
@@ -122,6 +122,12 @@ export function GamePlayer({ matchId, initialWsUrl, initialRole, initialFen, pre
   useEffect(() => {
     sounds.setEnabled(prefs.soundEnabled);
   }, [prefs.soundEnabled]);
+
+  // Preload sound samples so the first move/capture doesn't stall on a
+  // cold network fetch from /sounds/practice/.
+  useEffect(() => {
+    sounds.preload();
+  }, []);
 
   // Best-effort fairplay telemetry: tab focus/blur and paste detection.
   // Service-role insert via /api/practice/telemetry; no user-facing UI.
@@ -292,7 +298,13 @@ export function GamePlayer({ matchId, initialWsUrl, initialRole, initialFen, pre
                 }
               : s,
           );
-          sounds.play('gameEnd');
+          if (msg.result === '1/2-1/2') sounds.play('draw');
+          else if (
+            (msg.result === '1-0' && role === 'white') ||
+            (msg.result === '0-1' && role === 'black')
+          )
+            sounds.play('win');
+          else sounds.play('loss');
           return;
         case 'draw_offer':
           setDrawOfferedFrom(msg.from);
@@ -400,6 +412,10 @@ export function GamePlayer({ matchId, initialWsUrl, initialRole, initialFen, pre
   const topActive = state.sideToMove !== role;
   const bottomActive = state.sideToMove === role;
   const ended = state.status !== 'live';
+  const topPlayer = role === 'white' ? blackPlayer : whitePlayer;
+  const bottomPlayer = role === 'white' ? whitePlayer : blackPlayer;
+  const topColor: 'white' | 'black' = role === 'white' ? 'black' : 'white';
+  const bottomColor: 'white' | 'black' = role;
 
   return (
     <div className="flex flex-col items-center gap-4 lg:flex-row lg:items-start lg:justify-center">
@@ -410,10 +426,12 @@ export function GamePlayer({ matchId, initialWsUrl, initialRole, initialFen, pre
             deadlineMs={opponentPresence.deadlineMs}
           />
         )}
-        <ClockChip
+        <PlayerCard
+          player={topPlayer}
+          color={topColor}
+          isYou={false}
           ms={topClockMs}
           active={topActive}
-          label={role === 'white' ? 'Black' : 'White'}
         />
         <div
           className="my-2 overflow-hidden rounded-md"
@@ -432,10 +450,12 @@ export function GamePlayer({ matchId, initialWsUrl, initialRole, initialFen, pre
             animationDuration={prefs.animationsEnabled ? 200 : 0}
           />
         </div>
-        <ClockChip
+        <PlayerCard
+          player={bottomPlayer}
+          color={bottomColor}
+          isYou={true}
           ms={bottomClockMs}
           active={bottomActive}
-          label={role === 'white' ? 'White (you)' : 'Black (you)'}
         />
       </div>
 
@@ -549,23 +569,6 @@ function PresenceBanner({
   return (
     <div className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-center text-xs font-medium text-amber-700 dark:text-amber-300">
       {text}
-    </div>
-  );
-}
-
-function ClockChip({ ms, active, label }: { ms: number; active: boolean; label: string }) {
-  return (
-    <div
-      className={`flex items-center justify-between rounded-md px-3 py-2 ${
-        active ? 'bg-accent/15 ring-1 ring-accent/40' : 'bg-card'
-      }`}
-    >
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
-      <span
-        className={`font-display text-2xl font-bold tabular-nums ${ms < 10_000 ? 'text-destructive' : ''}`}
-      >
-        {fmtClock(ms)}
-      </span>
     </div>
   );
 }

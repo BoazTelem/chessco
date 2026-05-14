@@ -17,19 +17,21 @@ async function main() {
         kind: string;
         archive_url: string | null;
         attempts: number;
+        status: string;
         completed_at: string | null;
         last_error: string | null;
       }[]
     >`
-      SELECT id, handle, kind, archive_url, attempts, completed_at::text, last_error
+      SELECT id, handle, kind, archive_url, attempts, status, completed_at::text, last_error
       FROM chesscom_crawl_queue
-      WHERE status = 'error_permanent'
-      ORDER BY completed_at DESC NULLS LAST
+      WHERE status IN ('error_permanent', 'error_retry')
+      ORDER BY status DESC, completed_at DESC NULLS LAST
+      LIMIT 20
     `;
-    console.log(`error_permanent rows: ${rows.length}`);
+    console.log(`error rows (permanent + recent retry): ${rows.length}`);
     for (const r of rows) {
       console.log('---');
-      console.log(`  id=${r.id} handle=${r.handle} kind=${r.kind}`);
+      console.log(`  id=${r.id} status=${r.status} handle=${r.handle} kind=${r.kind}`);
       if (r.archive_url) console.log(`  url=${r.archive_url}`);
       console.log(`  attempts=${r.attempts}  completed_at=${r.completed_at ?? '-'}`);
       console.log(`  last_error: ${r.last_error?.slice(0, 500) ?? '(none)'}`);

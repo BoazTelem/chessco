@@ -44,7 +44,7 @@ export async function POST(_req: Request, ctx: RouteContext): Promise<NextRespon
   else return NextResponse.json({ error: 'not a participant' }, { status: 403 });
 
   const ticket = signTicket({ matchId, userId: user.id, role });
-  const wsBase = process.env.NEXT_PUBLIC_PRACTICE_WS_URL ?? 'ws://localhost:3001';
+  const wsBase = process.env.NEXT_PUBLIC_PRACTICE_WS_URL || 'ws://localhost:3001';
   const url = `${wsBase}/game/${matchId}?ticket=${encodeURIComponent(ticket)}`;
 
   return NextResponse.json({ url, ticket, role });
