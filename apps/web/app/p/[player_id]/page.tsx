@@ -193,9 +193,17 @@ export default async function PlayerProfilePage({
                       {a.platform}
                     </p>
                   </div>
-                  <span className="text-xs font-medium uppercase tracking-wider text-emerald-500">
-                    Confirmed
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <Link
+                      href={`/prepare/${a.platform === 'lichess' ? 'lichess' : 'chesscom'}/${encodeURIComponent(a.handle)}`}
+                      className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground hover:opacity-90"
+                    >
+                      Prep report →
+                    </Link>
+                    <span className="text-xs font-medium uppercase tracking-wider text-emerald-500">
+                      Confirmed
+                    </span>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -250,14 +258,36 @@ export default async function PlayerProfilePage({
 
         <section className="mt-10">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-            Coming soon
+            What's next
           </h2>
-          <div className="mt-3 grid gap-3">
-            <PlaceholderCard
-              label="Phase 1 W7-W9"
-              title="Build prep report"
-              body="Per-opponent battle plan: their repertoire, leaks, recommended lines, practice positions."
-            />
+          <div className="mt-3 rounded-lg border border-border bg-card p-5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent">
+              Prep report
+            </p>
+            <p className="mt-1 font-medium">Their repertoire vs yours</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Once you&rsquo;ve found their account, we cross-reference their opening tree against
+              your imported games — surfacing the lines they play that you don&rsquo;t know, the
+              leaks in their repertoire you can punish, and the gaps in yours you&rsquo;ll need to
+              plug before the game.
+            </p>
+            {confirmedAccounts.length > 0 ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {confirmedAccounts.map((a) => (
+                  <Link
+                    key={`prep-${a.platform}-${a.handle}`}
+                    href={`/prepare/${a.platform === 'lichess' ? 'lichess' : 'chesscom'}/${encodeURIComponent(a.handle)}`}
+                    className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground hover:opacity-90"
+                  >
+                    Open prep report — {a.handle} ({a.platform})
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Find their online account above to unlock the report.
+              </p>
+            )}
           </div>
         </section>
       </main>
@@ -307,16 +337,6 @@ function RatingChart({ history }: { history: Snapshot[] }) {
         </span>
         <span>{history[history.length - 1]?.snapshot_date}</span>
       </div>
-    </div>
-  );
-}
-
-function PlaceholderCard({ label, title, body }: { label: string; title: string; body: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-card p-5">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent">{label}</p>
-      <p className="mt-1 font-medium">{title}</p>
-      <p className="mt-1 text-sm text-muted-foreground">{body}</p>
     </div>
   );
 }
