@@ -5,19 +5,45 @@ let cachedGamesDb: ReturnType<typeof postgres> | null = null;
 
 /**
  * Connection to the Google Cloud SQL `chessco-games` corpus DB used by
- * workers. Mirrors apps/workers/src/db.ts:getGamesDb but for web routes.
- * Requires GAMES_DATABASE_URL in the web env.
+ * workers. Mirrors apps/workers/src/db.ts:getGamesDb — accepts either
+ * GAMES_DATABASE_URL or the split GAMES_DATABASE_HOST/PORT/USER/PASSWORD/NAME
+ * envs. The split path avoids URL-encoding gotchas in passwords.
  */
 export function getGamesDb(): ReturnType<typeof postgres> {
   if (cachedGamesDb) return cachedGamesDb;
-  const url = process.env.GAMES_DATABASE_URL;
-  if (!url) {
-    throw new Error('GAMES_DATABASE_URL not set');
-  }
   const sslmode = process.env.GAMES_DATABASE_SSLMODE ?? 'require';
   const ssl: false | { rejectUnauthorized: boolean } =
     sslmode === 'disable' ? false : { rejectUnauthorized: false };
-  cachedGamesDb = postgres(url, {
+
+  const url = process.env.GAMES_DATABASE_URL;
+  if (url) {
+    cachedGamesDb = postgres(url, {
+      max: 4,
+      idle_timeout: 30,
+      connect_timeout: 10,
+      prepare: false,
+      ssl,
+    });
+    return cachedGamesDb;
+  }
+
+  const host = process.env.GAMES_DATABASE_HOST;
+  const port = process.env.GAMES_DATABASE_PORT;
+  const user = process.env.GAMES_DATABASE_USER;
+  const password = process.env.GAMES_DATABASE_PASSWORD;
+  const database = process.env.GAMES_DATABASE_NAME ?? 'postgres';
+  if (!host || !port || !user || !password) {
+    throw new Error(
+      'Games DB not configured. Set GAMES_DATABASE_URL or all of ' +
+        'GAMES_DATABASE_HOST / GAMES_DATABASE_PORT / GAMES_DATABASE_USER / GAMES_DATABASE_PASSWORD.',
+    );
+  }
+  cachedGamesDb = postgres({
+    host,
+    port: parseInt(port, 10),
+    database,
+    username: user,
+    password,
     max: 4,
     idle_timeout: 30,
     connect_timeout: 10,
