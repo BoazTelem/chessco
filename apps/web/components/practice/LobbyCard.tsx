@@ -82,6 +82,11 @@ export function LobbyCard({
         const j = (await res.json().catch(() => ({}))) as { error?: string };
         setError(j.error ?? 'Failed to accept.');
         setAccepting(false);
+        // 409 = stale state (status no longer 'open', creator went offline,
+        // direct-invite mismatch). The card we just clicked is out of date —
+        // refresh the lobby so it disappears immediately instead of sitting
+        // there with an error label.
+        if (res.status === 409) router.refresh();
         return;
       }
       const { matchId } = (await res.json()) as { matchId: string };
