@@ -422,7 +422,7 @@ export const prepReports = pgTable('prep_reports', {
     .notNull()
     .references(() => players.id, { onDelete: 'cascade' }),
   status: text('status')
-    .$type<'pending' | 'building' | 'ready' | 'failed'>()
+    .$type<'pending' | 'building' | 'data_pending' | 'ready' | 'failed'>()
     .notNull()
     .default('pending'),
   summary: text('summary'),
@@ -432,10 +432,46 @@ export const prepReports = pgTable('prep_reports', {
   practicePositions: jsonb('practice_positions'),
   rawFindings: jsonb('raw_findings'),
   pdfUrl: text('pdf_url'),
+  targetPlatform: text('target_platform').$type<'lichess' | 'chess.com'>(),
+  targetHandleNormalized: text('target_handle_normalized'),
+  leaksJson: jsonb('leaks_json'),
+  errorText: text('error_text'),
   createdAt: timestamptz('created_at').notNull().defaultNow(),
   completedAt: timestamptz('completed_at'),
   expiresAt: timestamptz('expires_at'),
 });
+
+export const prepLeakUnlocks = pgTable(
+  'prep_leak_unlocks',
+  {
+    id: pkUuid(),
+    profileId: uuid('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    targetPlatform: text('target_platform').$type<'lichess' | 'chess.com'>().notNull(),
+    targetHandleNormalized: text('target_handle_normalized').notNull(),
+    leakFingerprint: text('leak_fingerprint').notNull(),
+    prepReportId: uuid('prep_report_id').references(() => prepReports.id, {
+      onDelete: 'set null',
+    }),
+    costCredits: integer('cost_credits').$type<0 | 1>().notNull(),
+    unlockedAt: timestamptz('unlocked_at').notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('prep_leak_unlocks_user_opp_fp_key').on(
+      t.profileId,
+      t.targetPlatform,
+      t.targetHandleNormalized,
+      t.leakFingerprint,
+    ),
+    index('prep_leak_unlocks_user_opp_idx').on(
+      t.profileId,
+      t.targetPlatform,
+      t.targetHandleNormalized,
+      t.unlockedAt,
+    ),
+  ],
+);
 
 // ============================================================================
 // MARKETPLACE
@@ -586,10 +622,11 @@ export const creditLedgerEntries = pgTable(
         | 'challenge_consume'
         | 'manual_adjustment'
         | 'referral_bonus'
+        | 'prep_leak_reveal'
       >()
       .notNull(),
     referenceType: text('reference_type').$type<
-      'external_account' | 'challenge' | 'match' | 'manual' | 'profile'
+      'external_account' | 'challenge' | 'match' | 'manual' | 'profile' | 'prep_leak_unlock'
     >(),
     referenceId: text('reference_id'),
     metadata: jsonb('metadata'),
@@ -858,6 +895,9 @@ export type Move = typeof moves.$inferSelect;
 export type IdentificationQuery = typeof identificationQueries.$inferSelect;
 export type IdentificationCandidate = typeof identificationCandidates.$inferSelect;
 export type PrepReport = typeof prepReports.$inferSelect;
+export type NewPrepReport = typeof prepReports.$inferInsert;
+export type PrepLeakUnlock = typeof prepLeakUnlocks.$inferSelect;
+export type NewPrepLeakUnlock = typeof prepLeakUnlocks.$inferInsert;
 export type Challenge = typeof challenges.$inferSelect;
 export type Match = typeof matches.$inferSelect;
 export type LiveGame = typeof liveGames.$inferSelect;

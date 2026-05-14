@@ -267,7 +267,7 @@ function gamesInBucket(games: GameRecord[], bucketDays: number | null, now: Date
   return games.filter((g) => g.playedAt.getTime() >= cutoff);
 }
 
-interface PersistStats {
+export interface PersistStats {
   buckets_written: number;
   total_white_nodes: number;
   total_black_nodes: number;
@@ -276,7 +276,41 @@ interface PersistStats {
   games_black: number;
 }
 
-async function buildAndPersist(
+/**
+ * Resolve a (platform, handle) pair to its corpus-side handles.id. Returns
+ * null if the handle is unknown (never crawled). Caller decides how to
+ * react — typically by enqueueing a discovery / crawl step.
+ */
+export async function lookupHandleId(
+  sql: postgres.Sql,
+  platform: string,
+  handle: string,
+): Promise<{ id: string; platform: string; handle: string } | null> {
+  const rows = await sql<{ id: string; handle: string; platform: string }[]>`
+    SELECT id::text, handle, platform FROM handles
+    WHERE platform = ${platform} AND LOWER(handle) = ${handle.toLowerCase()}
+    LIMIT 1
+  `;
+  return rows[0] ?? null;
+}
+
+/**
+ * Returns the time-bucket × color combos already present in
+ * player_repertoires for this handle. Used by the leaks worker to decide
+ * whether to (re)build before scoring.
+ */
+export async function existingRepertoireCombos(
+  sql: postgres.Sql,
+  playerId: string,
+  depth: number,
+): Promise<Array<{ color: 'white' | 'black'; time_bucket: string }>> {
+  return sql<Array<{ color: 'white' | 'black'; time_bucket: string }>>`
+    SELECT color, time_bucket FROM player_repertoires
+    WHERE player_id = ${playerId}::uuid AND depth = ${depth}
+  `;
+}
+
+export async function buildAndPersist(
   sql: postgres.Sql,
   playerId: string,
   platform: string,
@@ -487,7 +521,10 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('[repertoires] failed:', err);
-  process.exit(1);
-});
+const invokedAsCli = typeof process.argv[1] === 'string' && process.argv[1].endsWith('build.ts');
+if (invokedAsCli) {
+  main().catch((err) => {
+    console.error('[repertoires] failed:', err);
+    process.exit(1);
+  });
+}

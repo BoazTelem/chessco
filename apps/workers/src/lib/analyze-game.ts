@@ -27,6 +27,30 @@ export interface AnalyzeOptions {
   depth?: number;
   /** Centipawn loss threshold for a "blunder". Default 200 = 2 pawns lost. */
   blunderCp?: number;
+  /** Centipawn loss threshold for a "mistake". Default 100. */
+  mistakeCp?: number;
+  /** Centipawn loss threshold for an "inaccuracy". Default 50. */
+  inaccuracyCp?: number;
+  /** If true, build perPly array for downstream per-move DB writes. */
+  collectPerPly?: boolean;
+}
+
+export interface PerPlyEval {
+  /** 0-based ply of the move evaluated. Matches moves.ply convention. */
+  ply: number;
+  /** Stockfish eval before the move, side-to-move POV, centipawns. */
+  eval_before_cp: number | null;
+  /** Stockfish eval after the move, side-to-move POV (opponent's view), centipawns. */
+  eval_after_cp: number | null;
+  /** Mate distance before the move, side-to-move POV. */
+  eval_before_mate: number | null;
+  /** Mate distance after the move, side-to-move POV. */
+  eval_after_mate: number | null;
+  /** Centipawn loss for the mover (>= 0). */
+  cp_loss: number | null;
+  is_inaccuracy: boolean;
+  is_mistake: boolean;
+  is_blunder: boolean;
 }
 
 export interface GameAnalysis {
@@ -39,6 +63,8 @@ export interface GameAnalysis {
   /** Per-side breakdown — useful for "this player blunders as black" signals. */
   mean_cp_loss_white: number | null;
   mean_cp_loss_black: number | null;
+  /** Per-ply detail. Present only when `collectPerPly: true`. */
+  per_ply?: PerPlyEval[];
 }
 
 export async function analyzeGame(
@@ -50,6 +76,9 @@ export async function analyzeGame(
   const endPly = opts.endPly ?? 60;
   const depth = opts.depth ?? 10;
   const blunderCp = opts.blunderCp ?? 200;
+  const mistakeCp = opts.mistakeCp ?? 100;
+  const inaccuracyCp = opts.inaccuracyCp ?? 50;
+  const collectPerPly = opts.collectPerPly ?? false;
 
   const chess = new Chess();
   try {
@@ -77,11 +106,26 @@ export async function analyzeGame(
 
   // Evaluate each position between startPly and the last needed ply.
   // We need eval[i] AND eval[i+1] for cp-loss of move i, so analyze startPly..endPly inclusive.
-  const evals: Array<{ cp: number | null; mover: 'white' | 'black' }> = [];
+  interface EvalRow {
+    cp: number | null;
+    mate: number | null;
+    mover: 'white' | 'black';
+    ply: number;
+  }
+  const evals: EvalRow[] = [];
   for (let i = startPly; i < positions.length; i++) {
     const p = positions[i]!;
     const result = await engine.evalPosition(p.fen, depth);
-    evals.push({ cp: scoreToCp(result), mover: p.mover });
+    // positions[i] is the position BEFORE move (i+1) is played, where
+    // ply numbering is 1-based per parse-game.ts (white plays on odd plies).
+    // We attribute the cp-loss between positions[i] and positions[i+1]
+    // to DB move row ply = i + 1.
+    evals.push({
+      cp: scoreToCp(result),
+      mate: result.mate,
+      mover: p.mover,
+      ply: i + 1,
+    });
   }
 
   // Compute cp-loss per ply, attributing to the mover of that ply.
@@ -92,10 +136,26 @@ export async function analyzeGame(
   let lossCountWhite = 0;
   let lossCountBlack = 0;
   let blunderCount = 0;
+  const perPly: PerPlyEval[] = [];
   for (let i = 0; i + 1 < evals.length; i++) {
     const before = evals[i]!;
     const after = evals[i + 1]!;
-    if (before.cp === null || after.cp === null) continue;
+    if (before.cp === null || after.cp === null) {
+      if (collectPerPly) {
+        perPly.push({
+          ply: before.ply,
+          eval_before_cp: before.cp,
+          eval_after_cp: after.cp,
+          eval_before_mate: before.mate,
+          eval_after_mate: after.mate,
+          cp_loss: null,
+          is_inaccuracy: false,
+          is_mistake: false,
+          is_blunder: false,
+        });
+      }
+      continue;
+    }
     // cp_loss for the mover = before + after  (both reported from side-to-move POV)
     const loss = Math.max(0, before.cp + after.cp);
     lossSum += loss;
@@ -108,15 +168,31 @@ export async function analyzeGame(
       lossCountBlack += 1;
     }
     if (loss >= blunderCp) blunderCount += 1;
+
+    if (collectPerPly) {
+      perPly.push({
+        ply: before.ply,
+        eval_before_cp: before.cp,
+        eval_after_cp: after.cp,
+        eval_before_mate: before.mate,
+        eval_after_mate: after.mate,
+        cp_loss: loss,
+        is_inaccuracy: loss >= inaccuracyCp && loss < mistakeCp,
+        is_mistake: loss >= mistakeCp && loss < blunderCp,
+        is_blunder: loss >= blunderCp,
+      });
+    }
   }
 
-  return {
+  const out: GameAnalysis = {
     plies_analyzed: lossCount,
     mean_cp_loss: lossCount > 0 ? lossSum / lossCount : null,
     blunder_count: blunderCount,
     mean_cp_loss_white: lossCountWhite > 0 ? lossSumWhite / lossCountWhite : null,
     mean_cp_loss_black: lossCountBlack > 0 ? lossSumBlack / lossCountBlack : null,
   };
+  if (collectPerPly) out.per_ply = perPly;
+  return out;
 }
 
 function emptyAnalysis(): GameAnalysis {

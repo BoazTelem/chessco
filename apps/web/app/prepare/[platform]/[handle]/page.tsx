@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { OpeningTreeSection } from './OpeningTreeSection';
+import { PersonalizedLeaks } from '@/components/prepare/PersonalizedLeaks';
 import { getUser } from '@/lib/auth';
 import { probeChesscomOne, probeLichess, upsertProbeHits } from '@/lib/scout/lazy-probe';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -115,30 +116,12 @@ export default async function PrepareStubPage({ params }: { params: Promise<Rout
 
         <OpeningTreeSection platform={platform} handle={hit.handle} />
 
-        <section className="mx-auto w-full max-w-3xl rounded-xl border border-border bg-card p-6">
-          <h2 className="font-display text-xl font-semibold">Personalized leaks</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Positions where {hit.handle} has played poorly that you can reach from your own
-            repertoire — plus 2–3 surprise lines to catch them off-guard.
-          </p>
-          {user ? (
-            <div className="mt-4 rounded-md border border-dashed border-border bg-background/60 px-4 py-6 text-center text-xs uppercase tracking-wider text-muted-foreground">
-              Leak report — generating from your imported games (Phase 1 W7)
-            </div>
-          ) : (
-            <div className="mt-4 flex flex-col items-start gap-3 rounded-md border border-accent/30 bg-accent/5 px-4 py-4">
-              <p className="text-sm text-foreground">
-                Sign in to correlate leaks with your repertoire.
-              </p>
-              <Link
-                href={`/login?redirect=${encodeURIComponent(`/prepare/${platformSlug}/${rawHandle}`)}`}
-                className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground transition hover:opacity-90"
-              >
-                Sign in
-              </Link>
-            </div>
-          )}
-        </section>
+        <PersonalizedLeaks
+          signedIn={Boolean(user)}
+          platform={platform}
+          handle={hit.handle}
+          loginHref={`/login?redirect=${encodeURIComponent(`/prepare/${platformSlug}/${rawHandle}`)}`}
+        />
       </div>
     </main>
   );

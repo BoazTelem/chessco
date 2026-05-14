@@ -2,6 +2,14 @@
  * Parallel Stockfish backfill — analyze unanalyzed games in `games` and
  * write per-game cp-loss aggregates back into the row.
  *
+ * Two modes:
+ *   1. Global (default): analyze all unanalyzed games. Writes only per-game
+ *      aggregates onto `games`.
+ *   2. Per-handle (--platform + --handle): analyze the N most-recent games
+ *      for one opponent, regardless of analyzed_at state. Writes per-game
+ *      aggregates AND per-ply rows into `moves` (cp_loss, is_*, eval_*).
+ *      This is the on-demand path the Personalized Leaks feature uses.
+ *
  * Concurrency: N child Stockfish processes coordinated from one Node host.
  * Each worker pulls from a shared queue and runs analyzeGame independently;
  * results stream back to a single Postgres writer that does small batched
@@ -9,6 +17,8 @@
  *
  *   pnpm --filter @chessco/workers exec tsx \
  *     src/stockfish/backfill.ts --workers 4 --depth 10 --batch 200
+ *   pnpm --filter @chessco/workers exec tsx \
+ *     src/stockfish/backfill.ts --platform lichess --handle drnykterstein --limit 100 --start-ply 1 --end-ply 60
  *
  * Flags:
  *   --workers N    parallel Stockfish engines (default 4)
@@ -16,19 +26,27 @@
  *   --batch B      games per chunk pulled from DB (default 200)
  *   --limit L      stop after L games analyzed (default ∞)
  *   --source S     only analyze 'lichess' | 'chess.com' games (default: both)
+ *   --platform P   per-handle mode: 'lichess' | 'chess.com'
+ *   --handle H     per-handle mode: handle string (case-insensitive)
+ *   --start-ply N  first ply to analyze (default 10; for openings pass 1)
+ *   --end-ply N    last ply to analyze, exclusive (default 60)
  */
 import 'dotenv/config';
 import type postgres from 'postgres';
 import { getGamesDb } from '../db';
-import { analyzeGame } from '../lib/analyze-game';
+import { analyzeGame, type PerPlyEval } from '../lib/analyze-game';
 import { StockfishEngine } from '../lib/stockfish';
 
-interface CliArgs {
+export interface CliArgs {
   workers: number;
   depth: number;
   batch: number;
   limit: number;
   source: 'lichess' | 'chess.com' | null;
+  platform: 'lichess' | 'chess.com' | null;
+  handle: string | null;
+  startPly: number;
+  endPly: number;
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -37,6 +55,10 @@ function parseArgs(argv: string[]): CliArgs {
   let batch = 200;
   let limit = Number.POSITIVE_INFINITY;
   let source: CliArgs['source'] = null;
+  let platform: CliArgs['platform'] = null;
+  let handle: string | null = null;
+  let startPly = 10;
+  let endPly = 60;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--workers' && argv[i + 1]) workers = parseInt(argv[++i]!, 10);
@@ -44,9 +66,16 @@ function parseArgs(argv: string[]): CliArgs {
     else if (a === '--batch' && argv[i + 1]) batch = parseInt(argv[++i]!, 10);
     else if (a === '--limit' && argv[i + 1]) limit = parseInt(argv[++i]!, 10);
     else if (a === '--source' && argv[i + 1]) source = argv[++i]! as 'lichess' | 'chess.com';
+    else if (a === '--platform' && argv[i + 1]) platform = argv[++i]! as 'lichess' | 'chess.com';
+    else if (a === '--handle' && argv[i + 1]) handle = argv[++i]!.trim().toLowerCase();
+    else if (a === '--start-ply' && argv[i + 1]) startPly = parseInt(argv[++i]!, 10);
+    else if (a === '--end-ply' && argv[i + 1]) endPly = parseInt(argv[++i]!, 10);
     else throw new Error(`unknown arg: ${a}`);
   }
-  return { workers, depth, batch, limit, source };
+  if ((platform === null) !== (handle === null)) {
+    throw new Error('--platform and --handle must be given together');
+  }
+  return { workers, depth, batch, limit, source, platform, handle, startPly, endPly };
 }
 
 interface UnanalyzedRow {
@@ -64,14 +93,45 @@ interface AnalysisResult {
   mean_cp_loss_black: number | null;
   blunder_count: number;
   plies_analyzed: number;
+  per_ply?: PerPlyEval[];
 }
 
 async function pullChunk(
   client: postgres.Sql,
   args: CliArgs,
   remaining: number,
+  alreadyPulledGameIds: Set<string>,
 ): Promise<UnanalyzedRow[]> {
   const size = Math.min(args.batch, remaining);
+
+  // Per-handle mode: re-analyze recent games for one opponent regardless of
+  // analyzed_at, to populate per-ply moves rows for the leaks feature.
+  if (args.platform !== null && args.handle !== null) {
+    const skipFilter =
+      alreadyPulledGameIds.size > 0
+        ? client`AND g.id <> ALL (${[...alreadyPulledGameIds]}::uuid[])`
+        : client``;
+    return client<UnanalyzedRow[]>`
+      WITH target_handle AS (
+        SELECT id FROM handles
+        WHERE platform = ${args.platform}
+          AND LOWER(handle) = ${args.handle}
+        LIMIT 1
+      )
+      SELECT g.id, g.played_at::text, g.pgn, g.ply_count
+      FROM games g
+      WHERE g.source = ${args.platform}
+        AND length(g.pgn) > 0
+        AND (
+          g.white_player_id = (SELECT id FROM target_handle)
+          OR g.black_player_id = (SELECT id FROM target_handle)
+        )
+        ${skipFilter}
+      ORDER BY g.played_at DESC
+      LIMIT ${size}
+    `;
+  }
+
   if (args.source) {
     return client<UnanalyzedRow[]>`
       SELECT id, played_at::text, pgn, ply_count
@@ -95,9 +155,17 @@ async function pullChunk(
 
 async function flushResults(client: postgres.Sql, results: AnalysisResult[]): Promise<number> {
   if (results.length === 0) return 0;
-  // Single round-trip UPDATE FROM (VALUES ...) keyed by composite (id, played_at)
-  // because `games` is partitioned and the PK includes played_at.
-  const json = JSON.stringify(results);
+  // Strip per_ply for the per-game UPDATE — written separately.
+  const gameRows = results.map((r) => ({
+    id: r.id,
+    played_at: r.played_at,
+    mean_cp_loss: r.mean_cp_loss,
+    mean_cp_loss_white: r.mean_cp_loss_white,
+    mean_cp_loss_black: r.mean_cp_loss_black,
+    blunder_count: r.blunder_count,
+    plies_analyzed: r.plies_analyzed,
+  }));
+  const json = JSON.stringify(gameRows);
   const updated = await client<{ id: string }[]>`
     UPDATE games AS g
     SET mean_cp_loss       = (v.r->>'mean_cp_loss')::numeric,
@@ -117,15 +185,70 @@ async function flushResults(client: postgres.Sql, results: AnalysisResult[]): Pr
   return updated.length;
 }
 
+/**
+ * Write per-ply eval data to the `moves` table. Used by per-handle mode.
+ * `moves.id` is bigserial, so we UPDATE by (game_id, ply) which has an index.
+ * Done in chunks via UPDATE FROM (jsonb_array_elements(...)) to keep
+ * round-trips small.
+ */
+async function flushPerPly(client: postgres.Sql, results: AnalysisResult[]): Promise<number> {
+  const rows: Array<{
+    game_id: string;
+    ply: number;
+    eval_before_cp: number | null;
+    eval_after_cp: number | null;
+    eval_before_mate: number | null;
+    eval_after_mate: number | null;
+    cp_loss: number | null;
+    is_inaccuracy: boolean;
+    is_mistake: boolean;
+    is_blunder: boolean;
+  }> = [];
+  for (const r of results) {
+    if (!r.per_ply || r.per_ply.length === 0) continue;
+    for (const p of r.per_ply) {
+      rows.push({ game_id: r.id, ...p });
+    }
+  }
+  if (rows.length === 0) return 0;
+  const json = JSON.stringify(rows);
+  const updated = await client<{ id: number }[]>`
+    UPDATE moves AS m
+    SET eval_before_cp   = NULLIF(v.r->>'eval_before_cp', '')::int,
+        eval_after_cp    = NULLIF(v.r->>'eval_after_cp', '')::int,
+        eval_before_mate = NULLIF(v.r->>'eval_before_mate', '')::int,
+        eval_after_mate  = NULLIF(v.r->>'eval_after_mate', '')::int,
+        cp_loss          = NULLIF(v.r->>'cp_loss', '')::int,
+        is_inaccuracy    = (v.r->>'is_inaccuracy')::boolean,
+        is_mistake       = (v.r->>'is_mistake')::boolean,
+        is_blunder       = (v.r->>'is_blunder')::boolean
+    FROM (
+      SELECT (val)::jsonb AS r
+      FROM jsonb_array_elements(${json}::jsonb) val
+    ) v
+    WHERE m.game_id = (v.r->>'game_id')::uuid
+      AND m.ply = (v.r->>'ply')::int
+    RETURNING m.id
+  `;
+  return updated.length;
+}
+
 interface WorkerState {
   engine: StockfishEngine;
   idx: number;
 }
 
+interface WorkerOptions {
+  depth: number;
+  startPly: number;
+  endPly: number;
+  collectPerPly: boolean;
+}
+
 async function workerLoop(
   state: WorkerState,
   queue: UnanalyzedRow[],
-  depth: number,
+  opts: WorkerOptions,
   onResult: (r: AnalysisResult) => void,
   onSkip: (id: string, reason: string) => void,
 ): Promise<void> {
@@ -133,7 +256,12 @@ async function workerLoop(
     const game = queue.shift();
     if (!game) return;
     try {
-      const a = await analyzeGame(state.engine, game.pgn, { depth });
+      const a = await analyzeGame(state.engine, game.pgn, {
+        depth: opts.depth,
+        startPly: opts.startPly,
+        endPly: opts.endPly,
+        collectPerPly: opts.collectPerPly,
+      });
       if (a.plies_analyzed === 0) {
         // Mark as analyzed-with-null so we don't keep retrying. The page-
         // level UPDATE writes NULL aggregates which means "tried, no signal."
@@ -156,6 +284,7 @@ async function workerLoop(
         mean_cp_loss_black: a.mean_cp_loss_black,
         blunder_count: a.blunder_count,
         plies_analyzed: a.plies_analyzed,
+        per_ply: a.per_ply,
       });
     } catch (e) {
       onSkip(game.id, (e as Error).message);
@@ -163,17 +292,27 @@ async function workerLoop(
   }
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
+export interface BackfillStats {
+  totalAnalyzed: number;
+  totalSkipped: number;
+  gameUpdates: number;
+  moveUpdates: number;
+  elapsedSec: number;
+}
+
+export async function runBackfill(args: CliArgs): Promise<BackfillStats> {
+  const perHandle = args.platform !== null && args.handle !== null;
   console.log(
-    `[backfill-cp] workers=${args.workers} depth=${args.depth} batch=${args.batch} limit=${args.limit === Infinity ? '∞' : args.limit} source=${args.source ?? '(all)'}`,
+    `[backfill-cp] workers=${args.workers} depth=${args.depth} batch=${args.batch} limit=${args.limit === Infinity ? '∞' : args.limit} source=${args.source ?? '(all)'}${perHandle ? ` per-handle=${args.platform}/${args.handle} plies=${args.startPly}..${args.endPly} per-ply-writes=on` : ''}`,
   );
 
   const { client } = getGamesDb();
   let totalAnalyzed = 0;
   let totalSkipped = 0;
   let totalUpdated = 0;
+  let totalMovesUpdated = 0;
   const startedAt = Date.now();
+  const pulled = new Set<string>();
 
   console.log(`[backfill-cp] spawning ${args.workers} stockfish engines…`);
   const engines: WorkerState[] = [];
@@ -182,14 +321,22 @@ async function main() {
   }
   console.log(`[backfill-cp] engines ready.`);
 
+  const workerOpts: WorkerOptions = {
+    depth: args.depth,
+    startPly: args.startPly,
+    endPly: args.endPly,
+    collectPerPly: perHandle,
+  };
+
   try {
     while (totalAnalyzed < args.limit) {
       const remaining = args.limit - totalAnalyzed;
-      const chunk = await pullChunk(client, args, remaining);
+      const chunk = await pullChunk(client, args, remaining, pulled);
       if (chunk.length === 0) {
-        console.log(`[backfill-cp] no more unanalyzed games — done.`);
+        console.log(`[backfill-cp] no more games to analyze — done.`);
         break;
       }
+      for (const g of chunk) pulled.add(g.id);
       const chunkStart = Date.now();
 
       const queue = [...chunk];
@@ -201,7 +348,7 @@ async function main() {
           workerLoop(
             w,
             queue,
-            args.depth,
+            workerOpts,
             (r) => results.push(r),
             (id, reason) => skipped.push({ id, reason }),
           ),
@@ -209,15 +356,20 @@ async function main() {
       );
 
       const written = await flushResults(client, results);
+      let movesWritten = 0;
+      if (perHandle) {
+        movesWritten = await flushPerPly(client, results);
+      }
       totalAnalyzed += results.length;
       totalSkipped += skipped.length;
       totalUpdated += written;
+      totalMovesUpdated += movesWritten;
 
       const dt = (Date.now() - chunkStart) / 1000;
       const elapsedMin = ((Date.now() - startedAt) / 60_000).toFixed(1);
       const rate = results.length / dt;
       console.log(
-        `[backfill-cp] chunk: ${results.length} analyzed (${written} written, ${skipped.length} skip) in ${dt.toFixed(1)}s @ ${rate.toFixed(1)}/s — total ${totalAnalyzed.toLocaleString()} after ${elapsedMin}min`,
+        `[backfill-cp] chunk: ${results.length} analyzed (${written} games, ${movesWritten} moves, ${skipped.length} skip) in ${dt.toFixed(1)}s @ ${rate.toFixed(1)}/s — total ${totalAnalyzed.toLocaleString()} after ${elapsedMin}min`,
       );
       if (skipped.length > 0 && skipped.length <= 3) {
         for (const s of skipped)
@@ -230,15 +382,60 @@ async function main() {
     await client.end({ timeout: 5 });
   }
 
-  const totalMin = ((Date.now() - startedAt) / 60_000).toFixed(1);
+  const elapsedSec = (Date.now() - startedAt) / 1000;
+  const totalMin = (elapsedSec / 60).toFixed(1);
   console.log(`\n[backfill-cp] DONE`);
-  console.log(`  analyzed   = ${totalAnalyzed.toLocaleString()}`);
-  console.log(`  skipped    = ${totalSkipped.toLocaleString()}`);
-  console.log(`  db updates = ${totalUpdated.toLocaleString()}`);
-  console.log(`  elapsed    = ${totalMin} min`);
+  console.log(`  analyzed         = ${totalAnalyzed.toLocaleString()}`);
+  console.log(`  skipped          = ${totalSkipped.toLocaleString()}`);
+  console.log(`  game updates     = ${totalUpdated.toLocaleString()}`);
+  if (perHandle) console.log(`  move updates     = ${totalMovesUpdated.toLocaleString()}`);
+  console.log(`  elapsed          = ${totalMin} min`);
+
+  return {
+    totalAnalyzed,
+    totalSkipped,
+    gameUpdates: totalUpdated,
+    moveUpdates: totalMovesUpdated,
+    elapsedSec,
+  };
 }
 
-main().catch((err) => {
-  console.error('[backfill-cp] failed:', err);
-  process.exit(1);
-});
+/**
+ * Convenience wrapper for the leaks worker: run a small per-handle backfill
+ * with sensible defaults (opening plies, modest concurrency).
+ */
+export function runScopedBackfillForHandle(args: {
+  platform: 'lichess' | 'chess.com';
+  handle: string;
+  limit?: number;
+  depth?: number;
+  workers?: number;
+  startPly?: number;
+  endPly?: number;
+}): Promise<BackfillStats> {
+  return runBackfill({
+    workers: args.workers ?? 2,
+    depth: args.depth ?? 10,
+    batch: args.limit ?? 100,
+    limit: args.limit ?? 100,
+    source: null,
+    platform: args.platform,
+    handle: args.handle.trim().toLowerCase(),
+    startPly: args.startPly ?? 1,
+    endPly: args.endPly ?? 60,
+  });
+}
+
+async function main(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2));
+  await runBackfill(args);
+}
+
+// Only run as CLI when invoked directly, not on import.
+const invokedAsCli = typeof process.argv[1] === 'string' && process.argv[1].endsWith('backfill.ts');
+if (invokedAsCli) {
+  main().catch((err) => {
+    console.error('[backfill-cp] failed:', err);
+    process.exit(1);
+  });
+}
