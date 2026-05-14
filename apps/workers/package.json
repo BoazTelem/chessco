@@ -29,6 +29,7 @@
     "chesscom:crawl:refresh": "tsx src/chesscom-crawl/refresh-stale.ts",
     "stage2": "tsx src/identification/run.ts",
     "features:run": "tsx src/features/run.ts",
+    "features:fast-lane": "tsx src/features/fast-lane.ts",
     "features:card": "tsx src/features/cardinality.ts",
     "features:inspect": "tsx src/features/inspect.ts",
     "eval:repertoire": "tsx src/eval/repertoire-benchmark.ts",
