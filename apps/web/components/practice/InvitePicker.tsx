@@ -3,20 +3,14 @@
 /**
  * InvitePicker — lists currently-online Practice users and lets the viewer
  * send a free, direct invite from the standard starting position with the
- * chosen time control. Uses Supabase Realtime Presence to track who's on a
- * `/practice/*` route right now (PracticePresence already tracks itself
- * into the same channel).
+ * chosen time control. Reads from the shared presence store fed by
+ * PracticePresence (mounted globally). Never opens its own Realtime channel
+ * with topic `practice-presence`: `supabase.channel(topic)` returns the
+ * existing instance, and adding presence callbacks after subscribe() throws.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
-import type { RealtimeChannel } from '@supabase/supabase-js';
-
-interface OnlineUser {
-  user_id: string;
-  display_name: string | null;
-  username: string | null;
-}
+import { useMemo, useState } from 'react';
+import { usePresence } from '@/lib/practice/presence-store';
 
 const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
@@ -28,50 +22,16 @@ const TIME_CONTROLS = [
 ];
 
 export function InvitePicker({ currentUserId }: { currentUserId: string }) {
-  const [online, setOnline] = useState<OnlineUser[]>([]);
+  const presence = usePresence();
   const [tcIndex, setTcIndex] = useState(2); // 5+0 Blitz default
   const [pendingForUser, setPendingForUser] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<Set<string>>(new Set());
-  const channelRef = useRef<RealtimeChannel | null>(null);
 
-  useEffect(() => {
-    const supabase = createClient();
-    const channel = supabase.channel('practice-presence', {
-      config: { presence: { key: currentUserId } },
-    });
-    channelRef.current = channel;
-
-    function refresh(): void {
-      const state = channel.presenceState() as Record<
-        string,
-        Array<Partial<OnlineUser> & { presence_ref: string }>
-      >;
-      const seen = new Map<string, OnlineUser>();
-      for (const [userId, metas] of Object.entries(state)) {
-        if (userId === currentUserId) continue;
-        const m = metas[0];
-        if (!m) continue;
-        seen.set(userId, {
-          user_id: userId,
-          display_name: m.display_name ?? null,
-          username: m.username ?? null,
-        });
-      }
-      setOnline(Array.from(seen.values()));
-    }
-
-    channel
-      .on('presence', { event: 'sync' }, refresh)
-      .on('presence', { event: 'join' }, refresh)
-      .on('presence', { event: 'leave' }, refresh)
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-      channelRef.current = null;
-    };
-  }, [currentUserId]);
+  const online = useMemo(
+    () => presence.filter((u) => u.user_id !== currentUserId),
+    [presence, currentUserId],
+  );
 
   const tc = TIME_CONTROLS[tcIndex]!;
 

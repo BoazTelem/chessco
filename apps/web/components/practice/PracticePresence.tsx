@@ -25,6 +25,7 @@ import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { clearPresence, setPresenceFromState } from '@/lib/practice/presence-store';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 const HEARTBEAT_MS = 20_000;
@@ -117,7 +118,20 @@ export function PracticePresence() {
         config: { presence: { key: userId } },
       });
 
+      // Presence callbacks must be attached BEFORE subscribe(). InvitePicker
+      // (and any other consumer) reads the resulting list from presence-store
+      // rather than opening its own channel — supabase.channel(topic) returns
+      // the existing channel by topic, so a second subscriber on the same
+      // topic would hit "cannot add presence callbacks after subscribe()".
+      const publishPresence = (): void => {
+        if (!channel) return;
+        setPresenceFromState(channel.presenceState() as Parameters<typeof setPresenceFromState>[0]);
+      };
+
       channel
+        .on('presence', { event: 'sync' }, publishPresence)
+        .on('presence', { event: 'join' }, publishPresence)
+        .on('presence', { event: 'leave' }, publishPresence)
         .on(
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'matches' },
@@ -189,6 +203,7 @@ export function PracticePresence() {
       window.removeEventListener('pagehide', onPageHide);
       if (timer) clearInterval(timer);
       if (channel) void supabase.removeChannel(channel);
+      clearPresence();
     };
   }, [router]);
 
