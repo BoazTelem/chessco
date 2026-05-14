@@ -28,6 +28,7 @@
     "lichess:crawl:refresh": "tsx src/lichess-crawl/refresh-stale.ts",
     "chesscom:crawl:refresh": "tsx src/chesscom-crawl/refresh-stale.ts",
     "stage2": "tsx src/identification/run.ts",
+    "identification:expand": "tsx src/identification/federation-expand.ts",
     "features:run": "tsx src/features/run.ts",
     "features:fast-lane": "tsx src/features/fast-lane.ts",
     "features:card": "tsx src/features/cardinality.ts",
