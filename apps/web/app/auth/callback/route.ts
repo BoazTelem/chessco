@@ -1,5 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
+import { grantReferralCredits } from '@/lib/credits';
+import { REFERRAL_COOKIE } from '@/app/r/[code]/route';
 
 /**
  * Handles the redirect from a Supabase magic-link or OAuth flow.
@@ -7,6 +10,9 @@ import { createClient } from '@/lib/supabase/server';
  * Exchanges the `code` for a session, then sends the user onward:
  *   - new users (no profile.country) → /onboarding
  *   - returning users → /dashboard
+ *
+ * Also redeems any pending referral cookie set by /r/[code] once the user's
+ * email is verified. The grant is best-effort and never blocks the redirect.
  */
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
@@ -28,6 +34,31 @@ export async function GET(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // Redeem a pending referral cookie, if any. Email must be verified — the
+  // /auth/callback hit after a magic-link click is itself the verification
+  // event, so `email_confirmed_at` is set by this point for new signups.
+  const cookieStore = await cookies();
+  const referralCode = cookieStore.get(REFERRAL_COOKIE)?.value;
+  if (user && referralCode) {
+    cookieStore.delete(REFERRAL_COOKIE);
+    if (user.email_confirmed_at) {
+      try {
+        const result = await grantReferralCredits(referralCode, user.id);
+        if (result.granted > 0) {
+          console.log(
+            `[auth/callback] referral credited: code=${referralCode} user=${user.id} amount=${result.granted}`,
+          );
+        } else {
+          console.log(
+            `[auth/callback] referral skipped: code=${referralCode} user=${user.id} reason=${result.reason}`,
+          );
+        }
+      } catch (err) {
+        console.error('[auth/callback] grantReferralCredits failed', err);
+      }
+    }
+  }
 
   if (next) {
     return NextResponse.redirect(`${origin}${next}`);

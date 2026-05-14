@@ -11,6 +11,8 @@
 
 import { useMemo, useState } from 'react';
 import { usePresence } from '@/lib/practice/presence-store';
+import { LowCreditsDialog } from '@/components/credits/LowCreditsDialog';
+import { useLowCreditsDialog } from '@/components/credits/useLowCreditsDialog';
 
 const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
@@ -24,9 +26,15 @@ const TIME_CONTROLS = [
 export function InvitePicker({
   currentUserId,
   creditAvailable,
+  referralCode,
+  referralCreditsEarned,
+  referralCreditsCap,
 }: {
   currentUserId: string;
   creditAvailable: number;
+  referralCode: string;
+  referralCreditsEarned: number;
+  referralCreditsCap: number;
 }) {
   const presence = usePresence();
   const [tcIndex, setTcIndex] = useState(2); // 5+0 Blitz default
@@ -34,6 +42,7 @@ export function InvitePicker({
   const [error, setError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<Set<string>>(new Set());
   const creditsLeft = Math.max(0, creditAvailable - sentTo.size);
+  const lowCredits = useLowCreditsDialog();
 
   const online = useMemo(
     () => presence.filter((u) => u.user_id !== currentUserId),
@@ -45,7 +54,7 @@ export function InvitePicker({
   async function sendInvite(targetUserId: string): Promise<void> {
     setError(null);
     if (creditsLeft <= 0) {
-      setError('Direct invites require 1 credit.');
+      lowCredits.show();
       return;
     }
     setPendingForUser(targetUserId);
@@ -60,6 +69,10 @@ export function InvitePicker({
           timeClass: tc.cls,
         }),
       });
+      if (res.status === 402) {
+        lowCredits.show();
+        return;
+      }
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error ?? 'failed to send invite');
@@ -113,6 +126,14 @@ export function InvitePicker({
           {error}
         </p>
       )}
+
+      <LowCreditsDialog
+        open={lowCredits.open}
+        onClose={lowCredits.hide}
+        referralCode={referralCode}
+        referralCreditsEarned={referralCreditsEarned}
+        referralCreditsCap={referralCreditsCap}
+      />
 
       <div className="mt-3 max-h-64 overflow-auto rounded-md border border-border bg-background">
         {sorted.length === 0 ? (

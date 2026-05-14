@@ -62,6 +62,7 @@ export const profiles = pgTable('profiles', {
     .$type<'public' | 'private' | 'coach_public_player_private'>()
     .notNull()
     .default('public'),
+  referralCode: text('referral_code').notNull().unique(),
   createdAt: timestamptz('created_at').notNull().defaultNow(),
   updatedAt: timestamptz('updated_at').notNull().defaultNow(),
   lastSeenAt: timestamptz('last_seen_at'),
@@ -552,10 +553,11 @@ export const creditLedgerEntries = pgTable(
         | 'challenge_refund'
         | 'challenge_consume'
         | 'manual_adjustment'
+        | 'referral_bonus'
       >()
       .notNull(),
     referenceType: text('reference_type').$type<
-      'external_account' | 'challenge' | 'match' | 'manual'
+      'external_account' | 'challenge' | 'match' | 'manual' | 'profile'
     >(),
     referenceId: text('reference_id'),
     metadata: jsonb('metadata'),
@@ -571,7 +573,9 @@ export const creditGrants = pgTable(
     profileId: uuid('profile_id')
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
-    sourceType: text('source_type').$type<'external_account_link' | 'manual'>().notNull(),
+    sourceType: text('source_type')
+      .$type<'external_account_link' | 'manual' | 'referral'>()
+      .notNull(),
     sourceId: text('source_id').notNull(),
     amount: integer('amount').notNull(),
     metadata: jsonb('metadata'),
@@ -581,6 +585,26 @@ export const creditGrants = pgTable(
     uniqueIndex('credit_grants_profile_source_key').on(t.profileId, t.sourceType, t.sourceId),
     index('credit_grants_profile_idx').on(t.profileId, t.createdAt),
   ],
+);
+
+export const referrals = pgTable(
+  'referrals',
+  {
+    id: pkUuid(),
+    referrerProfileId: uuid('referrer_profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    referredProfileId: uuid('referred_profile_id')
+      .notNull()
+      .unique()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    referralCode: text('referral_code').notNull(),
+    status: text('status').$type<'pending' | 'credited' | 'rejected'>().notNull(),
+    rejectionReason: text('rejection_reason'),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+    creditedAt: timestamptz('credited_at'),
+  },
+  (t) => [index('referrals_referrer_idx').on(t.referrerProfileId)],
 );
 
 export const ledgerEntries = pgTable('ledger_entries', {
