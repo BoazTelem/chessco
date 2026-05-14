@@ -655,7 +655,51 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error('fast-lane worker failed:', err);
-  process.exit(1);
-});
+/**
+ * One-handle fast-lane fingerprint run. Used by the on-link Inngest function
+ * so a freshly verified chess.com account gets its fingerprint built without
+ * waiting for the next tier-wide batch. Opens its own connection, runs
+ * processHandle, closes — caller doesn't manage pooling.
+ */
+export interface FastLaneOneResult {
+  handle: string;
+  gamesAccepted: number;
+  gamesSeen: number;
+  fingerprintWritten: boolean;
+  skipReason: string | null;
+  durationMs: number;
+}
+
+export async function runChesscomFingerprintOne(
+  handle: string,
+  opts: { monthsBack?: number; minGames?: number; dryRun?: boolean } = {},
+): Promise<FastLaneOneResult> {
+  const args: CliArgs = {
+    platform: 'chess.com',
+    handle: handle.toLowerCase(),
+    tier: null,
+    maxHandles: null,
+    monthsBack: opts.monthsBack ?? DEFAULT_MONTHS_BACK,
+    concurrency: 1,
+    minGames: opts.minGames ?? DEFAULT_MIN_GAMES,
+    dryRun: opts.dryRun ?? false,
+  };
+  const { client: cloudSql } = getGamesDb();
+  try {
+    return await processHandle(cloudSql, handle.toLowerCase(), args);
+  } finally {
+    await cloudSql.end({ timeout: 5 });
+  }
+}
+
+// Only auto-run main() when invoked as a CLI (tsx src/features/fast-lane.ts).
+// When imported by Inngest functions, skip it.
+const isCliInvocation =
+  process.argv[1]?.endsWith('fast-lane.ts') || process.argv[1]?.endsWith('fast-lane.js');
+
+if (isCliInvocation) {
+  main().catch((err) => {
+    console.error('fast-lane worker failed:', err);
+    process.exit(1);
+  });
+}

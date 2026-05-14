@@ -569,7 +569,49 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error('fast-lane-lichess worker failed:', err);
-  process.exit(1);
-});
+/**
+ * One-handle Lichess fast-lane fingerprint run. Mirror of the chess.com
+ * variant in fast-lane.ts — used by the on-link Inngest function so a
+ * freshly OAuth-linked Lichess account gets its fingerprint built without
+ * waiting for the next tier-wide batch.
+ */
+export interface FastLaneLichessOneResult {
+  handle: string;
+  gamesAccepted: number;
+  gamesSeen: number;
+  fingerprintWritten: boolean;
+  skipReason: string | null;
+  durationMs: number;
+}
+
+export async function runLichessFingerprintOne(
+  handle: string,
+  opts: { maxGames?: number; minGames?: number; dryRun?: boolean } = {},
+): Promise<FastLaneLichessOneResult> {
+  const args: CliArgs = {
+    handle: handle.toLowerCase(),
+    tier: null,
+    maxHandles: null,
+    maxGames: opts.maxGames ?? DEFAULT_MAX_GAMES,
+    concurrency: 1,
+    minGames: opts.minGames ?? DEFAULT_MIN_GAMES,
+    dryRun: opts.dryRun ?? false,
+  };
+  const { client: cloudSql } = getGamesDb();
+  try {
+    return await processHandle(cloudSql, handle.toLowerCase(), args);
+  } finally {
+    await cloudSql.end({ timeout: 5 });
+  }
+}
+
+const isCliInvocation =
+  process.argv[1]?.endsWith('fast-lane-lichess.ts') ||
+  process.argv[1]?.endsWith('fast-lane-lichess.js');
+
+if (isCliInvocation) {
+  main().catch((err) => {
+    console.error('fast-lane-lichess worker failed:', err);
+    process.exit(1);
+  });
+}

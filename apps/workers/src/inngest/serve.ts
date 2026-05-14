@@ -14,6 +14,7 @@ import 'dotenv/config';
 import http from 'node:http';
 import { serve } from 'inngest/node';
 import { inngest } from './client.js';
+import { accountFingerprintFunctions } from './account-fingerprint.js';
 import { corpusCountsHourly } from './corpus-counts.js';
 import { crawlRefreshFunctions } from './crawl-refresh.js';
 import { crawlerWatchdog } from './crawler-watchdog.js';
@@ -27,6 +28,7 @@ const handler = serve({
   functions: [
     ...federationFunctions,
     ...crawlRefreshFunctions,
+    ...accountFingerprintFunctions,
     corpusCountsHourly,
     crawlerWatchdog,
     prepareReportsPoll,
@@ -53,6 +55,7 @@ server.listen(PORT, () => {
   for (const fn of [
     ...federationFunctions,
     ...crawlRefreshFunctions,
+    ...accountFingerprintFunctions,
     corpusCountsHourly,
     crawlerWatchdog,
     prepareReportsPoll,

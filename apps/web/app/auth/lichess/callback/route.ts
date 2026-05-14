@@ -8,6 +8,7 @@ import {
   lichessRatings,
 } from '@/lib/lichess';
 import { grantLinkCredits } from '@/lib/credits';
+import { sendEvent } from '@/lib/inngest';
 
 const LICHESS_COOKIE = 'chessco_lichess_oauth';
 
@@ -134,6 +135,17 @@ export async function GET(request: NextRequest) {
     console.error('credit grant failed for Lichess link', e);
     return back(`lichess_error=${encodeURIComponent('credit_grant_failed')}`);
   }
+
+  // Enqueue the fast-lane fingerprint build so the corpus has this account's
+  // style data ready before the W10 "Import your games" surface ships. Sent
+  // fire-and-forget — a transient Inngest outage must not block the link flow.
+  await sendEvent({
+    name: 'chessco/account.linked.lichess',
+    data: {
+      profile_id: user.id,
+      handle: account.username.toLowerCase(),
+    },
+  });
 
   return back(`linked=lichess&handle=${encodeURIComponent(account.username)}`);
 }

@@ -16,6 +16,7 @@ import {
   profileContainsToken,
 } from '@/lib/chesscom';
 import { grantLinkCredits } from '@/lib/credits';
+import { sendEvent } from '@/lib/inngest';
 
 const LICHESS_COOKIE = 'chessco_lichess_oauth';
 const COOKIE_TTL_SECONDS = 10 * 60;
@@ -237,6 +238,17 @@ export async function verifyChesscomToken(): Promise<ChesscomVerifyResult> {
     .eq('profile_id', user.id)
     .eq('platform', 'chess.com')
     .eq('consumed', false);
+
+  // Enqueue the fast-lane fingerprint build so the corpus has this account's
+  // style data ready before the W10 "Import your games" surface ships. Sent
+  // fire-and-forget — a transient Inngest outage must not break the link flow.
+  await sendEvent({
+    name: 'chessco/account.linked.chesscom',
+    data: {
+      profile_id: user.id,
+      handle: handle.toLowerCase(),
+    },
+  });
 
   return { ok: true };
 }
