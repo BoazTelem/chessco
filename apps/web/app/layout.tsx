@@ -6,6 +6,7 @@ import { brand } from '@chessco/ui';
 import { Analytics } from '@vercel/analytics/next';
 import { ConditionalFooter } from '@/components/site/ConditionalFooter';
 import { PracticePresence } from '@/components/practice/PracticePresence';
+import { SessionGuard } from '@/components/auth/SessionGuard';
 import './globals.css';
 
 const inter = Inter({
@@ -44,6 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div className="flex-1">{children}</div>
         <ConditionalFooter />
         <PracticePresence />
+        <SessionGuard />
         <Analytics />
       </body>
     </html>

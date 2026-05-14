@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { getSessionIdFromJwt } from '@/lib/auth/session-jwt';
 import { grantReferralCredits } from '@/lib/credits';
 import { REFERRAL_COOKIE } from '@/app/r/[code]/route';
 
@@ -24,7 +26,7 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
+  const { data: exchange, error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
     return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(error.message)}`);
   }
@@ -34,6 +36,29 @@ export async function GET(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // Single-active-session enforcement. Record this login's session_id in
+  // user_active_session and revoke every other refresh token for the user.
+  // SessionGuard on any older browser tab subscribes to UPDATEs on that row
+  // and signs itself out the instant this write lands; revoked refresh
+  // tokens are the fallback for tabs that miss the Realtime event.
+  const accessToken = exchange.session?.access_token;
+  const sessionId = getSessionIdFromJwt(accessToken);
+  if (user && sessionId && accessToken) {
+    try {
+      const admin = createAdminClient();
+      await admin
+        .from('user_active_session')
+        .upsert(
+          { user_id: user.id, session_id: sessionId, updated_at: new Date().toISOString() },
+          { onConflict: 'user_id' },
+        );
+      await admin.auth.admin.signOut(accessToken, 'others');
+    } catch (err) {
+      // Don't block the login on enforcement errors — log and continue.
+      console.error('[auth/callback] single-session enforcement failed', err);
+    }
+  }
 
   // Redeem a pending referral cookie, if any. Email must be verified — the
   // /auth/callback hit after a magic-link click is itself the verification
