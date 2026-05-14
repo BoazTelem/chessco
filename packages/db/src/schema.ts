@@ -121,9 +121,18 @@ export const federations = pgTable('federations', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   country: text('country'),
+  // Added 2026-05-14 (Phase 0 W7 full-sweep expansion, migration 0032):
+  iso2: char('iso2', { length: 2 }),
+  iso3: char('iso3', { length: 3 }),
+  continent: text('continent').$type<'AF' | 'AS' | 'EU' | 'NA' | 'OC' | 'SA'>(),
+  scrapeStrategy: text('scrape_strategy').$type<
+    'dump' | 'fetch-html' | 'aspnet' | 'spa' | 'api' | 'cloudflare' | 'placeholder'
+  >(),
+  estPlayerCount: integer('est_player_count'),
+  notes: text('notes'),
   ratingListUrl: text('rating_list_url'),
   ratingListFormat: text('rating_list_format').$type<'xml' | 'csv' | 'json' | 'html'>(),
-  syncCadence: text('sync_cadence').$type<'monthly' | 'quarterly' | 'manual'>(),
+  syncCadence: text('sync_cadence').$type<'monthly' | 'quarterly' | 'semi_annual' | 'manual'>(),
   lastSyncedAt: timestamptz('last_synced_at'),
   active: boolean('active').default(true),
   createdAt: timestamptz('created_at').notNull().defaultNow(),

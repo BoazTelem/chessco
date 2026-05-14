@@ -2,6 +2,7 @@
 
 import { useId } from 'react';
 import { COUNTRIES } from '@/lib/scout/countries';
+import { type FederationOption, groupFederationsByContinent } from '@/lib/scout/federations';
 
 type Initial = {
   q: string;
@@ -11,13 +12,6 @@ type Initial = {
   max: string;
   federation: string;
 };
-
-const FEDERATIONS: { code: string; label: string }[] = [
-  { code: '', label: 'All federations' },
-  { code: 'FIDE', label: 'FIDE' },
-  { code: 'USCF', label: 'USCF (US)' },
-  { code: 'ICF', label: 'ICF (Israel)' },
-];
 
 const TITLES: { code: string; label: string }[] = [
   { code: '', label: 'Any title' },
@@ -31,13 +25,21 @@ const TITLES: { code: string; label: string }[] = [
   { code: 'WCM', label: 'WCM' },
 ];
 
-export function SearchForm({ initial }: { initial: Initial }) {
+export function SearchForm({
+  federations,
+  initial,
+}: {
+  federations: FederationOption[];
+  initial: Initial;
+}) {
   const id = useId();
   const hasAdvanced =
     initial.title.length > 0 ||
     initial.min.length > 0 ||
     initial.max.length > 0 ||
     initial.federation.length > 0;
+
+  const groups = groupFederationsByContinent(federations);
 
   return (
     <form method="GET" action="/scout" className="space-y-4">
@@ -90,10 +92,16 @@ export function SearchForm({ initial }: { initial: Initial }) {
               defaultValue={initial.federation}
               className={selectClass}
             >
-              {FEDERATIONS.map((f) => (
-                <option key={f.code} value={f.code}>
-                  {f.label}
-                </option>
+              <option value="">All federations</option>
+              {groups.map((group) => (
+                <optgroup key={group.continent} label={group.label}>
+                  {group.items.map((f) => (
+                    <option key={f.code} value={f.code}>
+                      {f.code} — {f.name}
+                      {f.active ? '' : ' · FIDE-only'}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </Field>

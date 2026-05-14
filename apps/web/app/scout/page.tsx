@@ -9,6 +9,7 @@ import { TrackPersonCTA } from './track-person-cta';
 import { normalizeCountry } from '@/lib/scout/country-code';
 import { searchLichessHandlesByName } from '@/lib/scout/lichess-handles';
 import { getIndexStats } from '@/lib/index-stats';
+import { getFederations } from '@/lib/scout/federations';
 import type { SearchResult } from './types';
 
 export const metadata = {
@@ -29,8 +30,6 @@ type SearchParams = {
   federation?: string;
 };
 
-const ALLOWED_FEDERATIONS = new Set(['FIDE', 'USCF', 'ICF']);
-
 // No page-level `revalidate`: getUser() reads cookies, and mixing
 // `cookies()` with `revalidate` was causing returning logged-in users
 // to see logged-out UI. The indexed-player count is cached hourly
@@ -38,7 +37,12 @@ const ALLOWED_FEDERATIONS = new Set(['FIDE', 'USCF', 'ICF']);
 
 export default async function ScoutPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
-  const [user, supabase, stats] = await Promise.all([getUser(), createClient(), getIndexStats()]);
+  const [user, supabase, stats, federations] = await Promise.all([
+    getUser(),
+    createClient(),
+    getIndexStats(),
+    getFederations(),
+  ]);
 
   const q = (params.q ?? '').trim();
   const country = params.country?.trim() || null;
@@ -46,7 +50,11 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
   const min = params.min ? parseInt(params.min, 10) : null;
   const max = params.max ? parseInt(params.max, 10) : null;
   const federationRaw = params.federation?.trim().toUpperCase() || '';
-  const federation = ALLOWED_FEDERATIONS.has(federationRaw) ? federationRaw : null;
+  // Validate against the DB-loaded list (post-2026-05-14 expansion: 207 codes).
+  // Search engine still only returns useful results for `active=true` federations,
+  // but accepting any valid code lets the UI surface FIDE-slice results for the rest
+  // via the country filter on `search_federation_players`.
+  const federation = federations.some((f) => f.code === federationRaw) ? federationRaw : null;
   const page = Math.max(1, parseInt(params.page ?? '1', 10) || 1);
   const offset = (page - 1) * PAGE_SIZE;
 
@@ -178,6 +186,7 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
 
         <div className="mt-8">
           <SearchForm
+            federations={federations}
             initial={{
               q,
               country: country ?? '',

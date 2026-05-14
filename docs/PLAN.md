@@ -18,18 +18,20 @@ This plan executes the build from zero to revenue, mapped to spec v1.1. The arch
 
 ---
 
-## Current Status (2026-05-13)
+## Current Status (2026-05-14)
+
+> **Audit note (2026-05-14):** This section was reconciled against the codebase today. Phase 3 marketplace MVP is largely shipped under the `/practice` routing (not `/challenges` — see "Naming divergences" below). The AI/SEO discoverability bundle (Phase 1 W2) **shipped 2026-05-14** (commit `4dc5a88`) — robots.ts, sitemap.ts, JSON-LD, llms.txt, dynamic OG cards, plus friendly slug routing for `/p/[id]`. See "Untouched phases & quick wins" at the end of this doc for the remaining gap report.
 
 - ✅ **Phase 0 Weeks 1–5 complete.**
   - W1 monorepo + brand tokens
-  - W2 schema (31 tables, RLS, pg_trgm, pgvector) live in Supabase (eu-central-1, single project — staging dropped per cost call)
-  - W3 Supabase Auth + Google OAuth (Apple parked to W7)
-  - W4 Lichess OAuth (PKCE) + Chess.com bio-token linking; validated end-to-end on `chessco-web.vercel.app`
+  - W2 schema (31 migrations, 0001–0031, RLS, pg_trgm, pgvector) live in Supabase (eu-central-1, single project — staging dropped per cost call)
+  - W3 Supabase Auth + Google OAuth + magic link + email/password (Apple still parked — verified 2026-05-14, see `apps/web/app/(auth)/actions.ts:133`)
+  - W4 Lichess OAuth (PKCE) + Chess.com bio-token linking; validated end-to-end on `chessco.org` (production)
   - W5 FIDE ingestion: 755,081 players in production DB
 - ✅ **Phase 0 Week 6 complete.**
   - `/scout` MVP + `/p/[player_id]` profile page live
   - Israeli CF (ICF) ingestion shipped early (was W7 target): 6,818 ICF players in production
-- 🔄 **Phase 0 Week 7 — in progress (2026-05-13).**
+- 🔄 **Phase 0 Week 7 — partially shipped (audit 2026-05-14).**
   - **USCF Playwright worker — scaffolded, but Cloudflare wall harder than hoped (2026-05-13 verification):** worker code (`apps/workers/src/uscf/`) is ready (categories list, scrape, dedupe + upsert, orchestrator, CLI, Cloud Run dispatcher, Dockerfile.uscf). Verified locally: even **real Chrome (channel: 'chrome') + `playwright-extra` stealth plugin + `webdriver=false` patch returns HTTP 403** with a Cloudflare "Just a moment…" challenge across every uschess.org endpoint (www, msa, new). USCF is on an enterprise-tier bot-management ruleset that's not defeated by client-side stealth alone. **Tactical fallback in place:** FIDE country='USA' already gives us **13,220** USA-rated players (1,038 titled, 2,802 rated 2000+) — the federation-anchored use case (titled + serious tournament players) is largely covered without USCF. **Strategic options to revisit later:** (a) paid Cloudflare bypass service (FlareSolverr / ScraperAPI / Bright Data, $30–200/mo), (b) commercial residential proxy pool, (c) USCF-issued API access. Worker stays unblocked behind `USCF_CLOUD_RUN_JOB_NAME` env so flipping to a paid-bypass image later is a one-line change. Re-evaluate when paid-launch demand confirms US TAM.
   - **ICF enrichment shipped:** `apps/workers/src/icf/enrich.ts` crawls `Player.aspx?Id=X` for rapid/blitz/title/English-transliteration/birth-year. Idempotent; orders by `raw.last_enriched_at NULLS FIRST` so each tick walks the corpus. Daily Inngest cron (`0 4 * * *`) caps each run at 1000 rows (~16 min @ 1 req/s); full ~7k corpus enriches over ~7 ticks.
   - **Federation cron infrastructure:** Inngest registered for FIDE / ICF rankings / ICF enrichment / USCF monthly schedules. Per-federation cron expressions defined in the "Federation cron registry" section below. All workers continue logging into `ingestion_runs` (new worker codes: `icf-enrich`).
@@ -50,8 +52,10 @@ This plan executes the build from zero to revenue, mapped to spec v1.1. The arch
   - Chess.com crawler prioritizes `archive_month` over `archives_list` so games flow continuously (commit `b919af1`)
   - Opening move-sequence fingerprint + LLM rerank + verdict on candidate cards (commit `1728ccf`)
   - Lives on the per-player sample-game path (`/p/[id]` → SampleGameForm → `/scout/match/[id]`); the main `/scout` name search remains Stage 1 + cached Stage 2 per spec.
-- 📋 **AI / search discoverability scoped 2026-05-12.** 762k FIDE + 6.8k ICF players live at `/p/[id]` but invisible to crawlers — without `robots.txt` + `sitemap.xml` + JSON-LD, ChatGPT/Claude/Perplexity/Google can't recommend chessco when users ask "where can I find chess opponents to prep against?" Bundle lands in Phase 1 W2 (parallel track, ~1 dev-day) alongside the chess.com fetcher. Ongoing schema hygiene added to the parallel marketing section. **Decision:** skip per-player `/llms.txt` (10k+ routes for negligible incremental recall) — `sitemap.xml` + JSON-LD `Person` schema on the profile page does the same job through normal indexing.
-- ⏭ **Next code work:** [`SETUP-CLOUDSQL.md`](SETUP-CLOUDSQL.md) provisioning checklist for user → games-corpus schema migration → Lichess dumps worker.
+- ✅ **Phase 1 W1 web track shipped (audit 2026-05-14).** 3-pillar homepage (`apps/web/app/page.tsx`), `/prepare/page.tsx` + `/api/prepare/verify`, stub `/prepare/[platform]/[handle]/page.tsx` with chess.com PubAPI opening-tree section, migration `0019_marketplace_waitlist.sql`, `/api/waitlist/position-practice`. Cloud SQL provisioning + Lichess dumps worker code (`apps/workers/src/lichess-dumps/`) scaffolded but no evidence of production runs yet.
+- ✅ **Phase 3 marketplace MVP substantially shipped under `/practice` routing (audit 2026-05-14).** This is the biggest divergence between PLAN and reality: instead of `/challenges` + `/sparring` + `/inbox` as separate surfaces, the codebase ships a unified `/practice` lobby + `/practice/create` builder + `/practice/g/[id]` live game room (Fly.io WebSocket via `apps/realtime/`, Realtime presence + lobby updates, server-authoritative clocks, `match_moves` recording, `fairplay_telemetry` writes). Soft-launched on **credits** (`0031_credits_no_free_publishing.sql`, `funding_type` column) instead of real money so Stripe + KYC remain Phase 4 work. Migrations 0024–0031 carry the marketplace schema deltas. **Phase 3 deliverables not yet shipped:** `/sparring` directory + opt-in panel, dedicated `challenge_invitations` table, `player_sparring_profiles`/`player_sparring_fees` tables, `/inbox/invitations` page (verified 2026-05-14: tables NOT present in migrations).
+- ✅ **AI / search discoverability bundle shipped 2026-05-14 (commit `4dc5a88`).** All Phase 1 W2 items landed: `apps/web/app/robots.ts` (allowlists GPTBot/ClaudeBot/PerplexityBot/Google-Extended/OAI-SearchBot/Bingbot), `apps/web/app/sitemap.ts` (Next 15 `generateSitemaps()` chunked at 50k URLs — ~16 federation chunks + ~3 platform chunks + 1 static), Person JSON-LD on `/p/[id]`, Organization + WebSite + SearchAction on `/`, `apps/web/app/llms.txt/route.ts` per llmstxt.org. Two add-ons beyond the original plan: (a) friendly slug routing `/p/{kebab-name}-{fed}-{id}` (e.g. `/p/telem-boaz-fide-2860740`) with UUID URLs 308-redirecting to canonical slug — major CTR win over UUID URLs; (b) dynamic OG cards (1200×630) per `/p/[id]` and `/prepare/[handle]` so chat/social shares render player name + ratings instead of a blank. **Decision (still locked):** skip per-player `/llms.txt`; serve site-wide `/llms.txt` only. **Open follow-ups:** submit sitemap to Google Search Console + Bing Webmaster + IndexNow on next deploy; track ≥80% indexed in 30 days per W2 gate.
+- ⏭ **Next code work:** finish Cloud SQL provisioning → Lichess dumps live → resume Phase 1 W7 leak detection → `/reports/*` builder UI (Phase 1 W9, table already exists).
 
 ---
 
@@ -206,6 +210,42 @@ Single ordered list — every federation we'll ship, in the order we'll ship the
 **Source URLs above are best-known starting points and must be confirmed when each parser is built.** Federations rename URLs / migrate to subdomains often; expect ~10% of these to need correction at build time. The URL stored in `federations.rating_list_url` is the canonical record — update there when corrected, not just in PLAN.md.
 
 **Total Phase 1 federations: 10 (entries #4–13).** Phase 1 stretches to accommodate one federation parser per week alongside the prep-report core work. This means Phase 1's W1 work (Cloud SQL provisioning + Lichess dumps) does NOT pause for federation work; they run in parallel as separate tracks. Adjust estimated Phase 1 duration accordingly: 10 weeks of core + 10 weeks of federation tracks ran in parallel by one engineer = realistic at ~10–13 weeks total; with two engineers, ~10 weeks.
+
+### Phase 0 W7 expansion — full FIDE-handbook sweep (2026-05-14)
+
+The row-by-row table above (#1–52) is the original order-of-shipment for bespoke per-federation scrapers. As of 2026-05-14 we widen scope to **all ~199 FIDE-recognized national federations** for SEO surface + immediate roster coverage.
+
+Foundation shipped this PR (Phase 0 W7):
+
+- **Directory const** at `apps/workers/src/lib/federations/directory.ts` — 207 entries with FIDE code, ISO alpha-2/alpha-3, continent, rating-list URL (where known), scrape-strategy hint, est. player count, sync cadence. Source: FIDE handbook "F. Federations Directory".
+- **Migration `0032_seed_full_federation_directory.sql`** — additive columns on `federations` (iso2/iso3/continent/scrape_strategy/est_player_count/notes), `semi_annual` added to the sync_cadence CHECK, idempotent seed of all 207 rows with `ON CONFLICT DO UPDATE` that preserves `active` on existing rows.
+- **Generic scraper framework** at `apps/workers/src/lib/{run-tracker,upsert-federation-players,run-federation-ingest,normalize-name,cheerio-pagination,aspnet-pagination,playwright-table,federations/registry}.ts` — the shared 90% of FIDE/ICF/USCF promoted to reusable lib code. Each Phase-B wave ships a `FederationIngestPipeline` (~30–80 LOC) and registers it in `registry.ts`.
+- **Dynamic /scout filter chip** — federation `<select>` now loads all 207 rows from the DB, grouped by continent in `<optgroup>` (Europe / North America / South America / Asia / Africa / Oceania), sorted by est_player_count DESC. Inactive federations get a `· FIDE-only` suffix.
+- **`/scout/federation/[code]` SSR roster pages** — one route for every federation. Three banner states: green (live native data, e.g. FIDE/ICF), amber (FIDE slice — federation has no native scraper yet but FIDE rates its players), grey (no FIDE coverage either). Static-generated for `active=true` federations; ISR (revalidate=86400) for the rest. JSON-LD `Organization` + `ItemList` per page. FIDE alpha-3 aliases (USA→USCF, ENG→ECF, GER→DSB, FRA→FFE, ITA→FSI, ISR→ICF) 301-redirect to canonical code.
+- **Sitemap** — extended `apps/web/app/sitemap.ts` static chunk (id=0) with all 207 federation URLs.
+
+Phase B wave plan (post-foundation, one wave per engineer-week):
+
+| Wave        | Cluster                        | Federations                                                                                   | Est. weeks              |
+| ----------- | ------------------------------ | --------------------------------------------------------------------------------------------- | ----------------------- |
+| 0 (done)    | —                              | FIDE, ICF                                                                                     | —                       |
+| 0a (parked) | F cloudflare                   | USCF                                                                                          | gated on paid CF bypass |
+| 1           | B fetch-html (Tier-1 EU/NA/OC) | DSB, FFE, ECF, FSI, FEDA, CFC, ACF                                                            | 2                       |
+| 2           | C aspnet                       | KBSB, PZSZ, MSSZ, BCF, SSCR, SSZ                                                              | 2                       |
+| 3           | D spa playwright               | KNSB, TCF, NOR, SWE                                                                           | 2                       |
+| 4           | A dump/CSV                     | ECF JSON, DSB-CSV alt, NCSL, LTU, EST                                                         | 1                       |
+| 5           | B Tier-2 EU+LatAm              | POR, IRL, GRE, SUI, AUT, HUN, ROU, RSCF, CRO, SLO, MEX, ARG, BRA, CHI, COL, PER, URU, CUB     | 3–4                     |
+| 6           | B/D Asia                       | CXA, JCF, KCF, AICF, IRI, KAZ, UZB, VIE, PHI, INA, SGP, MAS, HKG, MAC, TPE                    | 3–4                     |
+| 7           | B Africa sweep                 | RSA, EGY, MAR, TUN, ALG, NGR, KEN, UGA, GHA, ZAM, BWA, CMR, CIV, SEN, ETH, ZIM (~25)          | 3–4                     |
+| 8           | B LatAm long tail              | DOM, PUR, GUA, ECU, BOL, PAN, NCA, HON, ESA, CRC, HAI, BAR, JAM, TRI, VEN (~15)               | 2                       |
+| 9           | B/G Oceania + Pacific          | NZL, PNG, FIJ, SOL, VAN, TAH, GUM, PLW, FSM, NMI, NRU, SAM, TGA, TUV                          | 1–2                     |
+| 10          | B/G Caribbean + Central Asia   | BER, BAH, AHO, CAY, BIZ, MNG, KGZ, TJK, TKM, AFG, BAN, BRU, MYA, LAO, CAM, NEP, MDV, BHU, SRI | 2                       |
+| 11          | G placeholder microstates      | AND, MON, SMR, LIE, MLT, CYP, FAI, GUE, JCI, ISV, IOM, ARU, … (~20)                           | 1                       |
+| 12          | mixed                          | ~48 remaining federations needing URL discovery                                               | 4                       |
+
+**Total: ~25–30 calendar weeks (~6–7 months)** for one engineer working federations 60–70% time alongside other Phase-1 work; **~14–18 weeks (4 months)** with two engineers in parallel.
+
+Per-wave per-fed checklist: verify URL → inspect HTML/network → write `apps/workers/src/<code>/scrape.ts` using cluster helpers → register pipeline in `registry.ts` → flip `federations.active = true` via `NNNN_activate_<code>.sql` → manual smoke run → roster page auto-flips from amber to green.
 
 ### Federation cron registry
 
@@ -506,7 +546,7 @@ These files are referenced by many later phases; get them right in Phase 0:
 - Manual: signup → link Lichess → see games. ≤90s.
 - Manual: `/scout` for "magnus carlsen" returns Carlsen in <100ms.
 - Automated: Playwright E2E covers signup, OAuth callback, dashboard render, scout search.
-- DB: RLS proven by attempting cross-user row read (must fail). `federation_players` row count within 1% of FIDE published totals.
+- DB: RLS proven by attempting cross-user row read (must fail). `federation_players` row count within 1% of FIDE published totals. `federations` table holds all ~200 FIDE-handbook entries; `/scout` chip lists every code; `/scout/federation/[code]` renders for every code (FIDE-slice fallback acceptable for `active=false`).
 
 **Phase 1 gate:**
 
@@ -580,5 +620,130 @@ These are deferred to Boaz; the plan accommodates either resolution:
 - **Phases 0–4 (revenue MVP):** 36–46 weeks at 1–2 FT engineers (Phase 3 grew from 8–10 → 11–13 weeks 2026-05-13 to absorb marketplace discovery + invitations)
 - **Phases 5–6 (hardening + bots):** +14–18 weeks
 - **Cost band (spec §28):** $80–120k engineering + $5–10k legal + $5k design + $3–8k infra during build
+
+---
+
+## Naming divergences (codebase vs. PLAN)
+
+Audit 2026-05-14 surfaced these mismatches between PLAN copy and what actually shipped. PLAN naming is kept for reference where the spec-level word matters (e.g. "challenges" in legal copy), but the codebase routes are what actually exist:
+
+| PLAN name                            | Codebase reality                             | Decision                                                                                                                                                          |
+| ------------------------------------ | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/gameserver/`                   | `apps/realtime/`                             | Codebase wins. Update spec/PLAN references to `apps/realtime/`.                                                                                                   |
+| `/challenges`, `/challenges/new`     | `/practice`, `/practice/create`              | Codebase wins for marketplace lobby. Phase 6 "drill mode" name needs a different slug (proposed: `/drill` or `/practice/drill`) to avoid collision.               |
+| `/game/[match_id]`, `/matches`       | `/practice/g/[id]`, `/account/history`       | Codebase wins.                                                                                                                                                    |
+| `/sparring`, `/account/sparring`     | not shipped                                  | Defer until paid sparring directory becomes a real product surface (currently every challenge accepts any opt-in player by budget filter — directory not needed). |
+| `/inbox/invitations`                 | not shipped                                  | Defer until private/invite-only challenges ship (today every challenge is `visibility='public'`-equivalent; `0031_challenge_target_opponent.sql` adds a hook).    |
+| `challenge_invitations` table        | not shipped                                  | Defer with `/inbox/invitations`. `0031_challenge_target_opponent.sql` adds a single `target_opponent_id` column on `challenges` that covers 1-to-1 invites today. |
+| `player_sparring_profiles` / `_fees` | not shipped                                  | Defer. Phase 4 work — meaningful only once per-time-class fees gate paid sparring.                                                                                |
+| `coach_students` table (Phase 6)     | not shipped                                  | Phase 6 work; not started.                                                                                                                                        |
+| Phase 6 `/practice` drill mode       | name collides with shipped marketplace lobby | Rename in PLAN to `/drill` or fold drill mode into `/practice/g/[id]` as a "vs. opponent-style bot" toggle.                                                       |
+
+---
+
+## Untouched phases & quick wins (audit 2026-05-14)
+
+This is the gap report from auditing the codebase against PLAN today. The list below covers everything PLAN.md still treats as future work that has not been started.
+
+### Critical path — start here
+
+These three blocks block the next two product milestones (discoverability + paid launch). Quick wins are flagged with **QW**.
+
+1. ✅ **AI / search discoverability bundle (Phase 1 W2 parallel) — shipped 2026-05-14 (commit `4dc5a88`).**
+   - ✅ `apps/web/app/robots.ts` — allow-lists `GPTBot`, `ClaudeBot`, `PerplexityBot`, `Google-Extended`, `OAI-SearchBot`, `Bingbot`; disallows `/account`, `/admin`, `/api`, `/dashboard`, `/scout/history`, `/scout/match`, `/practice/g`, `/login`, `/signup`.
+   - ✅ `apps/web/app/sitemap.ts` — Next 15 `generateSitemaps()` chunked at 50k URLs (1 static chunk + federation chunks for FIDE+ICF + platform chunks for chess.com+lichess). Daily ISR, 60s `maxDuration`. Pagination sub-chunks at 1k inside each 50k file to dodge the PostgREST max-rows default.
+   - ✅ JSON-LD `Person` on `/p/[player_id]/page.tsx` via `lib/seo/jsonld.ts#personJsonLd` — `name`, `identifier` (`{FED}:{id}`), `award` (title), `nationality`, `birthDate`, `sameAs` (ratings.fide.com for FIDE), plus per-rating `additionalProperty` PropertyValue tiles.
+   - ✅ JSON-LD `Organization` + `WebSite` + `SearchAction` on `apps/web/app/page.tsx` (SearchAction target = `/scout?q={search_term_string}`).
+   - ✅ `apps/web/app/llms.txt/route.ts` — llmstxt.org-spec Markdown, weekly revalidate.
+   - ✅ **Bonus add-on (not in original W2 scope):** friendly slug URLs — `/p/{kebab-name}-{fed}-{id}` (e.g. `/p/telem-boaz-fide-2860740`); UUID-form URLs `permanentRedirect()` (308) to canonical slug via `lib/seo/slug.ts` + `lib/seo/player-fetch.ts` (React `cache()`-wrapped so `generateMetadata` and the page share one Supabase round-trip per request).
+   - ✅ **Bonus add-on:** dynamic OG cards (1200×630) per `/p/[id]` and `/prepare/[handle]` via `opengraph-image.tsx` files using `next/og` `ImageResponse`; prepare-card probe wrapped in 2s race with fallback so Twitter/Slack never time out on platform-API hiccups.
+   - ✅ `generateMetadata` on `/p/[id]` (title pattern: `Scout {Display Name} chess accounts`) and `/prepare/[platform]/[handle]` (title pattern: `Prepare to play chess against {handle} ({chess.com|lichess.org})`).
+   - 🔄 **Still to do:** submit sitemap to Google Search Console + Bing Webmaster Tools + IndexNow on next prod deploy; verify rich result eligibility via Google Rich Results Test on a slug URL; track ≥80% indexed in 30 days per W2 gate.
+
+2. **Phase 1 W7 leak detection + W9 reports builder UI — 0% shipped.** Schema is ready (`prep_reports` table populated to `/account/history`); the builder + viewer UI is not.
+   - `/reports/new` form (target player, opening filter, report config).
+   - `/reports/[id]` interactive viewer with collapsible sections + embedded boards.
+   - `/reports` index.
+   - Leak detection algorithm per spec §7 step 2 (reachability + frequency + score gap + cp loss + user familiarity → severity score).
+   - Recommended-line walker (2–4 sequences per leak).
+   - PDF export via Playwright HTML→PDF; PGN export of recommended lines.
+   - **QW within this block:** `/reports/[id]` read-only viewer rendering whatever the worker writes (1 dev-day) ships value before the leak detector is finalized.
+
+3. **Stripe Billing subscription (Phase 1 W10) — 0% shipped.** No SDK in `package.json`, no webhook handlers, env vars present in `.env.example` but unused.
+   - Required to validate willingness-to-pay before Phase 4 marketplace launch.
+   - Ship the subscription gate on full reports (preview free; paid for full report + PDF).
+
+### Phase 0 cleanup (deferred — not blocking)
+
+4. **Apple OAuth** — pattern already commented in `apps/web/app/(auth)/actions.ts:133`. **QW: ~half a dev-day** once Apple Developer Service ID + .p8 key are in hand.
+5. **Own-game PGN import** — referenced in `phase_0_polish_deferred.md`. Reuses the chess.com crawler's parse path. **QW: 1 dev-day.**
+6. **USCF ingestion** — Cloudflare-blocked; verified 2026-05-13 ([USCF Cloudflare verified block](../memory/uscf_cloudflare_verified_block.md)). Worker stays parked behind `USCF_CLOUD_RUN_JOB_NAME` env until paid Cloudflare bypass (FlareSolverr / ScraperAPI) is contracted. FIDE-USA (13,220 rows) covers the federation-anchored use case in the meantime.
+
+### Phase 1 federations not yet shipped (8 of 10)
+
+7. **ECF, DSB, FFE, FSI, FEDA, CFC, ACF, KNSB, PZSZ, KBSB.** Each is ~3–5 dev-days (parser + verify). Only FIDE + ICF live; USCF blocked. Recommend prioritizing **DSB (Germany, ~110k DWZ)** and **FFE (France, ~57k)** first — both are fetch-only, no bot wall, and unlock the two largest EU markets after IL. **QW per federation: ~3 dev-days** because the upsert/normalize/run-tracker scaffolding from FIDE/ICF is reusable.
+
+### Phase 1 ancillary workers
+
+8. **TWIC weekly worker** (`apps/workers/src/twic/`) — weekly PGN bundle of top tournaments. **QW: 1 dev-day.** ~150k games/year, trivial volume.
+9. **Claude prompt library** (`packages/ai/prompts/`) — currently `packages/ai/src/index.ts` declares model defaults but ships no prompts. Required before reports UI delivers value. **QW: 2 dev-days** to draft `prep_summary_v1.md`, `evidence_v1.md`, `style_fingerprint_v1.md`.
+
+### Phase 2 — Identification depth (0% shipped)
+
+10. Engineered feature extractor at scale (200–500 features per player) — partly underway in `apps/workers/src/features/`; verify coverage.
+11. Embedding model training (small transformer encoder, contrastive loss). Offline pipeline + model versioning in `ops/models/` not started.
+12. pgvector HNSW index on `players.embedding` — column not even created.
+13. "Find lookalikes" cross-platform sibling-account check.
+14. Style fingerprint UX (radar chart on 8 axes + Haiku prose summary).
+15. `/scout/federation/[id]` ranked-list browse mode (also a **QW for SEO** — adds 100s of high-value pages: each federation × top-N).
+16. Right-to-delist endpoint + hide-from-search flag on `federation_players`. **Privacy-critical; ship before any GDPR complaint.**
+17. Tier 2 federations sweep (rows #14–37 of the federation roadmap).
+18. Chess.com continuous crawl queue (`apps/workers/src/chesscom/crawl/`) — distinct from current `apps/workers/src/chesscom-crawl/` per-query fetcher (verify whether the existing dir already implements the queue or only the lazy fetcher).
+19. ChessBase free profile pages worker (`apps/workers/src/chessbase/`).
+
+### Phase 4 — Real payments (0% shipped beyond schema)
+
+20. Stripe Connect Express onboarding + webhooks + MCC 8299 application.
+21. Wallet UI (`/account/wallet`) — schema ready (`wallets`, `ledger_entries` tables exist from `0002_marketplace_wallet_fairplay.sql`), no UI.
+22. Glicko-2 rating implementation — `ratings` table has `skill_rating`/`skill_rd`/`volatility` columns; no algorithm runs against them.
+23. Trust score algorithm + tier gating — columns exist, logic does not.
+24. Refund system + categorical reasons + auto-resolution + `/admin/refunds` queue.
+25. Geo-blocking middleware (IL/EU/UK/CA/AU allow; IN/SA/UAE block for paid). **QW: ~1 dev-day** wrapping `apps/web/middleware.ts` around `geoip-lite` or Vercel's `request.geo`.
+26. Legal opinion sign-off — non-engineering blocker; needs scheduling now if Phase 4 is to ship in 2026.
+
+### Phase 5 — Anti-cheat & trust (telemetry collected, no analysis)
+
+27. Post-game engine correlation (re-analyze paid games at depth 12/18/25, compute engine match rate vs. baseline). `fairplay_flags` table exists; no analysis worker.
+28. Move-time-vs-complexity analyzer.
+29. Sandbagging detector (new-account fast-rise + rating-platform discrepancy).
+30. `/admin/fairplay` queue UI (severity-sorted, telemetry replay, decision UI).
+31. Action stack per spec §12 (severity 1 log → 6+ permanent ban + payout forfeit).
+32. Player report button in game room + post-game.
+33. Public ban list (opt-in transparency).
+34. Annual fair-play transparency report.
+
+### Phase 6 — Bots & coach features (0% shipped)
+
+35. Maia per-player fine-tuning pipeline + Cloud Run inference service.
+36. Drill mode against opponent-style bot — **rename needed** (collides with `/practice` lobby; propose `/drill` or `/practice/g/[id]?bot=1`).
+37. Full-game sandbox vs. style bot.
+38. Spectator mode (read-only WebSocket subscribers, 10-move delay; verified silver+ no-delay).
+39. Coach accounts + multi-student dashboards + `coach_students` join table.
+40. OTB tournament prep mode (FIDE ID → bundle prep on all known pairings).
+
+### Phase 7+ — Scale & ecosystem (not started)
+
+41. i18n (Hebrew, Spanish, German, French, Russian) — Hebrew first (IL launch market).
+42. React Native mobile app.
+43. Federation partnerships, streaming integrations (Twitch/YouTube prep card overlay), public API for content creators, US state-by-state legal expansion, HackerOne bug bounty.
+
+### Recommended order for the next 4 weeks (1 engineer)
+
+1. **Week 1 (now):** Ship the AI/SEO bundle (#1) + geo-blocking middleware (#25) + Apple OAuth (#4) — three small wins that unblock discoverability, set up Phase 4 jurisdiction guards, and finish Phase 0 polish.
+2. **Week 2:** Claude prompt library (#9) + `/reports/[id]` viewer skeleton (#2 partial) + DSB federation parser (#7).
+3. **Week 3:** Leak detection algorithm (#2 main) + `/reports/new` form + own-game PGN import (#5).
+4. **Week 4:** Stripe Billing subscription gate on `/reports/[id]` (#3) + FFE federation parser (#7) — ship soft launch to paid waitlist.
+
+After this 4-week run, Phase 1 will be substantively complete and we can re-plan Phase 2 (identification depth) vs. Phase 4 (real-money marketplace) priority based on subscription conversion data.
 
 **End of plan.**
