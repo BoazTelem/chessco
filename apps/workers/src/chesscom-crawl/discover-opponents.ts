@@ -39,11 +39,21 @@ export async function enqueueOpponents(
     priority: 0,
   }));
 
-  const result = await sql<{ id: string }[]>`
-    INSERT INTO chesscom_crawl_queue
-      ${insert(rows, 'kind', 'handle', 'priority')}
-    ON CONFLICT (handle, kind, archive_url) DO NOTHING
-    RETURNING id
-  `;
-  return result.length;
+  // Chunk inserts to stay under Postgres's 65534-bound-params ceiling.
+  // 3 cols × 5000 rows = 15000 params; heavy tournament archives can
+  // surface 25k+ distinct opponents which would otherwise blow past
+  // the limit and put the archive_month into error_permanent.
+  const CHUNK = 5000;
+  let totalInserted = 0;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK);
+    const result = await sql<{ id: string }[]>`
+      INSERT INTO chesscom_crawl_queue
+        ${insert(chunk, 'kind', 'handle', 'priority')}
+      ON CONFLICT (handle, kind, archive_url) DO NOTHING
+      RETURNING id
+    `;
+    totalInserted += result.length;
+  }
+  return totalInserted;
 }

@@ -36,11 +36,21 @@ export async function enqueueLichessOpponents(
     priority: 0,
   }));
 
-  const result = await sql<{ id: string }[]>`
-    INSERT INTO lichess_crawl_queue
-      ${insert(rows, 'handle', 'priority')}
-    ON CONFLICT (handle) DO NOTHING
-    RETURNING id
-  `;
-  return result.length;
+  // Chunk inserts to stay under Postgres's 65534-bound-params ceiling.
+  // 2 cols × 5000 rows = 10000 params; a Lichess user-export from a
+  // prolific arena player can yield tens of thousands of distinct
+  // opponents in one stream.
+  const CHUNK = 5000;
+  let totalInserted = 0;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK);
+    const result = await sql<{ id: string }[]>`
+      INSERT INTO lichess_crawl_queue
+        ${insert(chunk, 'handle', 'priority')}
+      ON CONFLICT (handle) DO NOTHING
+      RETURNING id
+    `;
+    totalInserted += result.length;
+  }
+  return totalInserted;
 }
