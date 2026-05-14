@@ -49,7 +49,6 @@ export function MoveListPanel({
   const moves = [...node.children.values()].sort((a, b) =>
     sort === 'weighted' ? b.weightedScore - a.weightedScore : b.gamesCount - a.gamesCount,
   );
-  const topWeighted = moves.reduce((m, x) => Math.max(m, x.weightedScore), 0);
   const visible = showAll ? moves : moves.slice(0, 12);
 
   return (
@@ -87,7 +86,9 @@ export function MoveListPanel({
       <ul className="divide-y divide-border rounded-md border border-border bg-card">
         {visible.map((m) => {
           const wp = winPct(m);
-          const weightedPct = topWeighted > 0 ? (m.weightedScore / topWeighted) * 100 : 0;
+          const winsPct = m.gamesCount > 0 ? (m.wins / m.gamesCount) * 100 : 0;
+          const drawsPct = m.gamesCount > 0 ? (m.draws / m.gamesCount) * 100 : 0;
+          const lossesPct = m.gamesCount > 0 ? (m.losses / m.gamesCount) * 100 : 0;
           const trend = recencyTrend(
             m.weightedScore,
             m.gamesCount,
@@ -123,13 +124,28 @@ export function MoveListPanel({
                 >
                   {trend.kind === 'trending' ? '↗' : trend.kind === 'fading' ? '↘' : ' '}
                 </span>
-                <span className="flex items-center gap-2">
-                  <span className="h-1.5 flex-1 rounded-full bg-muted">
+                <span
+                  className="flex h-2 flex-1 overflow-hidden rounded-sm bg-muted"
+                  title={`${m.wins}W / ${m.draws}D / ${m.losses}L`}
+                >
+                  {m.wins > 0 ? (
                     <span
-                      className="block h-full rounded-full bg-accent"
-                      style={{ width: `${weightedPct}%` }}
+                      className="block h-full bg-emerald-500/70"
+                      style={{ width: `${winsPct}%` }}
                     />
-                  </span>
+                  ) : null}
+                  {m.draws > 0 ? (
+                    <span
+                      className="block h-full bg-muted-foreground/40"
+                      style={{ width: `${drawsPct}%` }}
+                    />
+                  ) : null}
+                  {m.losses > 0 ? (
+                    <span
+                      className="block h-full bg-rose-500/70"
+                      style={{ width: `${lossesPct}%` }}
+                    />
+                  ) : null}
                 </span>
                 <span className="text-right font-mono text-muted-foreground">
                   {simplifyCount(m.gamesCount)}
