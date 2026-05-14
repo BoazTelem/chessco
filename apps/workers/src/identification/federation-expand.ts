@@ -237,7 +237,7 @@ async function applyClaimsToKnown(
       FROM jsonb_to_recordset(${JSON.stringify(payload)}::jsonb)
         AS src(handle text, claimed_name text, claimed_name_normalized text, claimed_federation_player_id uuid)
       WHERE platform_players.platform = 'lichess'
-        AND platform_players.handle = src.handle
+        AND platform_players.handle_normalized = src.handle
         AND platform_players.claimed_federation_player_id IS NULL
       RETURNING platform_players.handle
     `;
@@ -247,18 +247,21 @@ async function applyClaimsToKnown(
 }
 
 /** Return the subset of `handles` that already exist in platform_players
- *  (lichess). Read once with a single IN-list. */
+ *  (lichess). Matches via `handle_normalized` (the canonical lowercase
+ *  mirror) so legacy mixed-case rows aren't treated as "unknown" and then
+ *  inserted as a duplicate row, and so the strongest-claim UPDATE below
+ *  can reach them too. */
 async function dropAlreadyKnown(sql: postgres.Sql, handles: string[]): Promise<Set<string>> {
   const known = new Set<string>();
   // Chunk to stay under the 65k param cap; 5000 per round is comfy.
   const CHUNK = 5000;
   for (let i = 0; i < handles.length; i += CHUNK) {
     const slice = handles.slice(i, i + CHUNK);
-    const rows = await sql<{ handle: string }[]>`
-      SELECT handle FROM platform_players
-      WHERE platform = 'lichess' AND handle = ANY(${slice}::text[])
+    const rows = await sql<{ handle_normalized: string }[]>`
+      SELECT handle_normalized FROM platform_players
+      WHERE platform = 'lichess' AND handle_normalized = ANY(${slice}::text[])
     `;
-    for (const r of rows) known.add(r.handle.toLowerCase());
+    for (const r of rows) known.add(r.handle_normalized.toLowerCase());
   }
   return known;
 }
