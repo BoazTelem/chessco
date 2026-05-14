@@ -92,6 +92,7 @@ export async function moveEvalCoverage(args: {
       COUNT(*) FILTER (WHERE m.cp_loss IS NOT NULL)::int AS with_cp_loss
     FROM moves m
     WHERE m.game_id IN (SELECT id FROM target_games)
+      AND m.ply BETWEEN 1 AND 60
   `) as Array<{ total_moves: number; with_cp_loss: number }>;
 
   const row = rows[0] ?? { total_moves: 0, with_cp_loss: 0 };

@@ -55,6 +55,7 @@ server.listen(PORT, () => {
     ...crawlRefreshFunctions,
     corpusCountsHourly,
     crawlerWatchdog,
+    prepareReportsPoll,
   ]) {
     console.log(`  - ${fn.id()}`);
   }

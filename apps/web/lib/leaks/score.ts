@@ -4,9 +4,17 @@ import type { Leak, LeakStats, MoveQualityIndex, ScoreOptions, SerializedTree } 
 
 const STARTING_FEN_KEY = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -';
 
+// minGamesCount=1 means "a single blunder counts as evidence." That's noisy
+// at first glance, but the score formula already demotes singletons via
+// badMoveShare: when a position is visited 50 times and the opponent blunders
+// once, share=0.02 → low score → ranked far down. When the only visit IS a
+// blunder, share=1.0 but raw recency-weighted reach is tiny, also low.
+// At 100 games of per-move analysis (the default Inngest backfill volume)
+// most distinct (fen, uci) pairs occur once, so >=3 effectively zeros the
+// result set. Raise this when accumulated game counts justify it.
 const DEFAULTS = {
   maxPlies: 30,
-  minGamesCount: 3,
+  minGamesCount: 1,
   maxPersonalized: 10,
   maxSurprise: 3,
 };
