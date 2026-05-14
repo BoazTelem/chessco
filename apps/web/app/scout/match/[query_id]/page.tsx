@@ -152,20 +152,29 @@ export default async function MatchPage({ params }: { params: Promise<{ query_id
             Online accounts for
           </p>
           <h1 className="mt-1 font-display text-3xl font-bold tracking-tight">{subjectName}</h1>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Query {query.id.slice(0, 8)}… · status{' '}
-            <span
-              className={
-                query.status === 'ready'
-                  ? 'text-emerald-500'
-                  : query.status === 'failed'
-                    ? 'text-rose-500'
-                    : 'text-amber-500'
-              }
-            >
-              {query.status}
+          <p className="mt-2 flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
+            <span>
+              Status{' '}
+              <span
+                className={
+                  query.status === 'ready'
+                    ? 'text-emerald-500'
+                    : query.status === 'failed'
+                      ? 'text-rose-500'
+                      : 'text-amber-500'
+                }
+              >
+                {query.status}
+              </span>
+              {query.input_method && <> · via {query.input_method}</>}
             </span>
-            {query.input_method && <> · via {query.input_method}</>}
+            <span
+              title={`Query ID: ${query.id}`}
+              aria-label={`Query ID: ${query.id}`}
+              className="ml-1 inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full border border-muted-foreground/40 text-[9px] font-semibold leading-none text-muted-foreground/70 hover:border-muted-foreground hover:text-muted-foreground"
+            >
+              i
+            </span>
           </p>
         </section>
 
