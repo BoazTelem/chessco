@@ -57,14 +57,15 @@ export default function TermsPage() {
 
         <Section id="about" title="2. About Chessco">
           <p>
-            {brand.name} is operated as an unincorporated project; a registered legal entity may
-            assume ownership and operations before the Service offers paid features. When that
-            happens we will update these Terms with the entity name and registration details.
+            {brand.name} is operated by <strong className="text-foreground">Foto Master LLC</strong>{' '}
+            (&ldquo;we&rdquo;, &ldquo;us&rdquo;), a Delaware limited liability company at 1013
+            Centre Road, STE 403-B, Wilmington, DE 19805, United States, doing business as{' '}
+            {brand.name}.
           </p>
           <p>
-            The Service is currently in beta. All features are offered free of charge today. Paid
-            features described in our public roadmap (subscription tiers and the in-product credits
-            economy) are not yet operative.
+            The Service is currently in beta. Paid features described in our public roadmap
+            (subscription tiers and the in-product credits economy) will be made available through
+            Paddle, our merchant of record, when launched.
           </p>
         </Section>
 
@@ -138,7 +139,37 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="acceptable-use" title="7. Acceptable use">
+        <Section id="billing" title="7. Subscriptions, billing, refunds & taxes">
+          <p>
+            Paid plans on the Service are sold on a subscription basis.{' '}
+            <strong className="text-foreground">
+              Payments may be processed by Paddle, our merchant of record. We do not store your full
+              card details.
+            </strong>{' '}
+            Paddle handles billing, invoicing, and the calculation and remittance of applicable
+            sales tax, VAT, GST, or equivalent indirect taxes where required.
+          </p>
+          <p>
+            <strong className="text-foreground">Refunds.</strong> You may cancel and request a full
+            refund within 14 days of your initial paid charge without giving a reason. After the
+            14-day window, fees are non-refundable except where required by law or expressly
+            approved by us. Subscription credits that you have already consumed during a refunded
+            period will not be clawed back.
+          </p>
+          <p>
+            <strong className="text-foreground">Cancellation.</strong> If you signed up online, you
+            may cancel online. Cancellation stops future renewals but does not reverse fees already
+            incurred unless required by law or expressly approved.
+          </p>
+          <p>
+            <strong className="text-foreground">Plan changes.</strong> You may upgrade or downgrade
+            your subscription at any time. Upgrades take effect immediately and credits granted by
+            the new tier are added to your balance; downgrades take effect at the end of the current
+            billing cycle. We do not pro-rate downgrades.
+          </p>
+        </Section>
+
+        <Section id="acceptable-use" title="8. Acceptable use">
           <p>You agree not to:</p>
           <ul className="ml-5 list-disc space-y-1">
             <li>Use the Service to harass, dox, impersonate, or target any person.</li>
@@ -165,7 +196,7 @@ export default function TermsPage() {
           </ul>
         </Section>
 
-        <Section id="linked-accounts" title="8. Linked external accounts">
+        <Section id="linked-accounts" title="9. Linked external accounts">
           <p>
             When you link a chess.com or Lichess account to your {brand.name} profile, you authorize
             us to read public data about that account on an ongoing basis, plus any additional data
@@ -180,7 +211,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="user-content" title="9. User content">
+        <Section id="user-content" title="10. User content">
           <p>
             You retain ownership of any content you submit (uploaded PGNs, prep notes, profile
             details). You grant {brand.name} a worldwide, non-exclusive, royalty-free licence to
@@ -188,7 +219,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="ip" title="10. Intellectual property">
+        <Section id="ip" title="11. Intellectual property">
           <p>
             The {brand.name} name, mark, original written content, UI, and code are owned by us or
             our licensors and are protected by intellectual-property law.
@@ -202,7 +233,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="disclaimers" title="11. Disclaimers">
+        <Section id="disclaimers" title="12. Disclaimers">
           <p>
             THE SERVICE IS PROVIDED &ldquo;AS IS&rdquo; AND &ldquo;AS AVAILABLE&rdquo; WITHOUT
             WARRANTY OF ANY KIND, WHETHER EXPRESS, IMPLIED, OR STATUTORY, INCLUDING WARRANTIES OF
@@ -215,7 +246,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="liability" title="12. Limitation of liability">
+        <Section id="liability" title="13. Limitation of liability">
           <p>
             To the maximum extent permitted by law, {brand.name} and its operators will not be
             liable for any indirect, incidental, special, consequential, or punitive damages, or any
@@ -228,7 +259,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="indemnification" title="13. Indemnification">
+        <Section id="indemnification" title="14. Indemnification">
           <p>
             You agree to indemnify and hold {brand.name} and its operators harmless from any claim
             or demand, including reasonable attorneys&apos; fees, made by any third party arising
@@ -237,7 +268,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="termination" title="14. Termination">
+        <Section id="termination" title="15. Termination">
           <p>
             We may suspend or terminate your account for material breach of these Terms or for
             conduct that risks harm to the Service or to other users.
@@ -252,22 +283,14 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="law" title="15. Governing law & venue">
+        <Section id="law" title="16. Governing law and dispute resolution">
           <p>
-            These Terms are governed by the laws of the State of Israel, without regard to
-            conflict-of-laws principles. The competent courts of Tel Aviv-Yafo, Israel, have
-            exclusive jurisdiction over any dispute arising out of or relating to these Terms or
-            your use of the Service, save that we may seek injunctive relief in any court of
-            competent jurisdiction to protect our intellectual property.
-          </p>
-          <p>
-            If you are a consumer resident in the European Economic Area, the United Kingdom, or
-            another jurisdiction whose mandatory consumer-protection rules cannot be derogated from
-            by agreement, those rules continue to apply to you in addition to this clause.
+            These Terms are governed by applicable law as determined by {brand.name}. Before filing
+            a formal claim, you agree to contact us and attempt to resolve the dispute informally.
           </p>
         </Section>
 
-        <Section id="contact" title="16. Contact">
+        <Section id="contact" title="17. Contact">
           <p>
             Questions about these Terms? Email{' '}
             <a className="text-foreground underline" href={`mailto:${SUPPORT_EMAIL}`}>

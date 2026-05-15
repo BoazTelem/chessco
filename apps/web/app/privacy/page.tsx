@@ -6,7 +6,7 @@ export const metadata = {
   description: `Privacy Policy for ${brand.name}. Draft v0.1 — pre-launch, not yet in force.`,
 };
 
-const EFFECTIVE_DATE = '2026-05-13';
+const EFFECTIVE_DATE = '2026-05-15';
 const SUPPORT_EMAIL = 'support@chessco.org';
 
 function Section({
@@ -45,11 +45,11 @@ export default function PrivacyPage() {
 
         <Section id="who-we-are" title="1. Who we are">
           <p>
-            {brand.name} (&ldquo;we&rdquo;, &ldquo;us&rdquo;) operates the website at{' '}
-            <span className="text-foreground">{brand.domain}</span> and the related services
-            described on it. We are currently operated as an unincorporated project from Israel; a
-            registered legal entity may take over operations before paid features launch, and we
-            will update this Policy with its name and registered address when that happens.
+            {brand.name} (&ldquo;we&rdquo;, &ldquo;us&rdquo;) is operated by{' '}
+            <strong className="text-foreground">Foto Master LLC</strong>, a Delaware limited
+            liability company at 1013 Centre Road, STE 403-B, Wilmington, DE 19805, United States.
+            We run the website at <span className="text-foreground">{brand.domain}</span> and the
+            related services described on it.
           </p>
           <p>
             For all privacy questions, contact{' '}
@@ -85,6 +85,11 @@ export default function PrivacyPage() {
             <strong className="text-foreground">Derived data</strong> — from indexed games we
             compute style fingerprints, opening repertoires, and per-position statistics used to
             generate prep reports and Scout matches.
+          </p>
+          <p>
+            <strong className="text-foreground">Billing and transaction data</strong> — subscription
+            status, invoices, tax data, and payment confirmations provided by Paddle or other
+            billing processors we use. We do not receive or store full card numbers.
           </p>
           <p>
             <strong className="text-foreground">Server logs</strong> — IP address, user agent,
@@ -197,6 +202,11 @@ export default function PrivacyPage() {
               policy governs that interaction.
             </li>
             <li>
+              <strong className="text-foreground">Paddle</strong> — billing, payments, and tax
+              (merchant of record). UK / Global. Receives billing and transaction data described in
+              §2 when you subscribe to a paid plan.
+            </li>
+            <li>
               <strong className="text-foreground">Source platforms</strong> (chess.com, Lichess,
               FIDE, USCF, ICF) — we fetch public data from their public endpoints; they receive only
               what their endpoints would normally receive (request metadata) and not your{' '}
@@ -211,11 +221,13 @@ export default function PrivacyPage() {
 
         <Section id="transfers" title="8. International transfers">
           <p>
-            The Service is operated from Israel and uses sub-processors with infrastructure in the
-            European Economic Area and the United States, depending on the region selected for each
-            sub-processor. Where personal data is transferred from the EEA or the UK to a country
-            without an adequacy decision, we rely on the European Commission&apos;s Standard
-            Contractual Clauses (or the UK Addendum to them) as the safeguard for the transfer.
+            We use sub-processors with infrastructure in the European Economic Area, the United
+            Kingdom, and the United States, depending on the region selected for each sub-processor.
+            Paddle is based in the United Kingdom; transfers of billing data to Paddle from the EEA
+            are covered by the UK adequacy decision. Where personal data is transferred from the EEA
+            or the UK to a country without an adequacy decision, we rely on the European
+            Commission&apos;s Standard Contractual Clauses (or the UK Addendum to them) as the
+            safeguard for the transfer.
           </p>
         </Section>
 
@@ -235,9 +247,11 @@ export default function PrivacyPage() {
               unless a removal request is received (see §4).
             </li>
             <li>
-              <strong className="text-foreground">Transactional records:</strong> if and when paid
-              features go live, billing records will be retained as required by Israeli tax and
-              consumer-protection law.
+              <strong className="text-foreground">Billing records:</strong> retained by Paddle as
+              our merchant of record for the period required by applicable tax and
+              consumer-protection law (typically 7–10 years). We retain our own copy of invoice
+              metadata for the duration of your subscription plus 7 years after the last
+              transaction.
             </li>
           </ul>
         </Section>
