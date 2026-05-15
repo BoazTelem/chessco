@@ -15,6 +15,7 @@ import http from 'node:http';
 import { serve } from 'inngest/node';
 import { inngest } from './client.js';
 import { accountFingerprintFunctions } from './account-fingerprint.js';
+import { accountImportPoll } from './account-import-poll.js';
 import { corpusCountsHourly } from './corpus-counts.js';
 import { crawlRefreshFunctions } from './crawl-refresh.js';
 import { crawlerWatchdog } from './crawler-watchdog.js';
@@ -29,6 +30,7 @@ const handler = serve({
     ...federationFunctions,
     ...crawlRefreshFunctions,
     ...accountFingerprintFunctions,
+    accountImportPoll,
     corpusCountsHourly,
     crawlerWatchdog,
     prepareReportsPoll,
@@ -56,6 +58,7 @@ server.listen(PORT, () => {
     ...federationFunctions,
     ...crawlRefreshFunctions,
     ...accountFingerprintFunctions,
+    accountImportPoll,
     corpusCountsHourly,
     crawlerWatchdog,
     prepareReportsPoll,

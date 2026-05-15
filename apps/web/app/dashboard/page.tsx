@@ -177,11 +177,6 @@ export default async function DashboardPage() {
         </h2>
         <ul className="grid gap-3 sm:grid-cols-2">
           <PlaceholderCard
-            label="Phase 1 W10"
-            title="Import your games"
-            body="Pull your last 200 games from each linked account into Chessco for analysis."
-          />
-          <PlaceholderCard
             label="Post-Phase 1"
             title="USCF coverage"
             body="Add US Chess Federation top-list players to /scout (ICF already live)."
