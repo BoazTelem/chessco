@@ -22,6 +22,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getPracticeDb } from '@/lib/practice/db';
 import { computeReportLeaks } from '@/lib/leaks/compute';
 import { repertoireReadiness, getGamesDb } from '@/lib/leaks/readiness';
+import { logSearchEvent } from '@/lib/search-events/log';
 import type { Leak, Platform } from '@/lib/leaks/types';
 
 interface ReportRow {
@@ -276,7 +277,7 @@ async function autoUnlockTopLeak(args: {
       const top = combined[0];
       if (!top) return;
 
-      await tx`
+      const inserted = await tx<{ id: string }[]>`
         INSERT INTO prep_leak_unlocks
           (
             profile_id,
@@ -295,7 +296,20 @@ async function autoUnlockTopLeak(args: {
           0
         )
         ON CONFLICT DO NOTHING
+        RETURNING id::text
       `;
+      if (inserted.length > 0) {
+        // Audit feed: distinguish auto-unlocks from manual reveals via extra.auto.
+        void logSearchEvent({
+          kind: 'leak_reveal',
+          profileId,
+          targetPlatform: platform,
+          targetHandle: handleNormalized,
+          leakFingerprint: top.fingerprint,
+          costCredits: 0,
+          extra: { auto: true, leak_kind: top.kind },
+        });
+      }
     });
   } catch (err) {
     console.warn('[autoUnlockTopLeak] failed (non-fatal):', err);

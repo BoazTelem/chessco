@@ -8,6 +8,7 @@ import { normalizeCountry } from '@/lib/scout/country-code';
 import { searchLichessHandlesByName } from '@/lib/scout/lichess-handles';
 import { getIndexStats } from '@/lib/index-stats';
 import { getFederations } from '@/lib/scout/federations';
+import { logSearchEvent } from '@/lib/search-events/log';
 import type { SearchResult } from './types';
 
 export const metadata = {
@@ -112,6 +113,22 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
     if (lichessHandles.length > 0) {
       handleResults = [...handleResults, ...lichessHandles];
     }
+
+    void logSearchEvent({
+      kind: 'scout_query',
+      profileId: user?.id ?? null,
+      queryText: q || null,
+      resultCount: results.length + handleResults.length,
+      extra: {
+        country,
+        title,
+        min,
+        max,
+        federation,
+        page,
+        fide_total: totalCount,
+      },
+    });
   }
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));

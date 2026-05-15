@@ -9,7 +9,9 @@
  *         404 { exists: false } when the platform returns no such user.
  */
 import { NextResponse } from 'next/server';
+import { getUser } from '@/lib/auth';
 import { probeChesscomOne, probeLichess, upsertProbeHits } from '@/lib/scout/lazy-probe';
+import { logSearchEvent } from '@/lib/search-events/log';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 interface ReqBody {
@@ -48,6 +50,17 @@ export async function POST(req: Request): Promise<NextResponse> {
     platform === 'chess.com'
       ? await probeChesscomOne(handle)
       : ((await probeLichess([handle]))[0] ?? null);
+
+  // Log every verify attempt (hit or miss) for the super-admin audit feed.
+  const user = await getUser();
+  void logSearchEvent({
+    kind: 'prepare_verify',
+    profileId: user?.id ?? null,
+    queryText: handle,
+    targetPlatform: platform as 'lichess' | 'chess.com',
+    targetHandle: hit?.handle ?? handle,
+    resultCount: hit ? 1 : 0,
+  });
 
   if (!hit) {
     return NextResponse.json({ exists: false }, { status: 404 });

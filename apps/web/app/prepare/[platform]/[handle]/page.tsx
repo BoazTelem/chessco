@@ -4,7 +4,14 @@ import { notFound } from 'next/navigation';
 import { OpeningTreeSection } from './OpeningTreeSection';
 import { PersonalizedLeaks } from '@/components/prepare/PersonalizedLeaks';
 import { getUser } from '@/lib/auth';
-import { probeChesscomOne, probeLichess, upsertProbeHits } from '@/lib/scout/lazy-probe';
+import {
+  probeChesscomOne,
+  probeLichess,
+  readCachedProbeHit,
+  upsertProbeHits,
+  type ProbeHit,
+} from '@/lib/scout/lazy-probe';
+import { logSearchEvent } from '@/lib/search-events/log';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 // Standalone Preparation entry. The opening tree is a client-side
@@ -48,29 +55,51 @@ export async function generateMetadata({
   };
 }
 
+// Cache-first lookup: verify just upserted this row, so the live platform
+// probe is only a fallback for cold-cache deep links. The fallback exists
+// because direct URL visits (shared links, SEO crawlers) skip verify.
+async function resolveOpponent(
+  supabase: ReturnType<typeof createAdminClient>,
+  platform: 'lichess' | 'chess.com',
+  handle: string,
+): Promise<ProbeHit | null> {
+  const cached = await readCachedProbeHit(supabase, platform, handle).catch(() => null);
+  if (cached) return cached;
+
+  const live =
+    platform === 'chess.com'
+      ? await probeChesscomOne(handle)
+      : ((await probeLichess([handle]))[0] ?? null);
+  if (!live) return null;
+
+  try {
+    await upsertProbeHits(supabase, [live]);
+  } catch {
+    // intentionally swallowed — render shouldn't fail on a cache write
+  }
+  return live;
+}
+
 export default async function PrepareStubPage({ params }: { params: Promise<RouteParams> }) {
   const { platform: platformSlug, handle: rawHandle } = await params;
   const platform = PLATFORM_SLUGS[platformSlug];
   if (!platform) notFound();
 
   const handle = decodeURIComponent(rawHandle);
+  const supabase = createAdminClient();
 
-  const [user, hit] = await Promise.all([
-    getUser(),
-    platform === 'chess.com'
-      ? probeChesscomOne(handle)
-      : probeLichess([handle]).then((arr) => arr[0] ?? null),
-  ]);
+  const [user, hit] = await Promise.all([getUser(), resolveOpponent(supabase, platform, handle)]);
 
   if (!hit) notFound();
 
-  // Warm the platform_players cache so the next Scout query against this
-  // name lands instantly. Best-effort; never block render on it.
-  try {
-    await upsertProbeHits(createAdminClient(), [hit]);
-  } catch {
-    // intentionally swallowed
-  }
+  // Audit feed: this is the "found whom" event. Anonymous prep_visits aren't
+  // captured anywhere else (prep_reports only inserts when signed-in).
+  void logSearchEvent({
+    kind: 'prep_visit',
+    profileId: user?.id ?? null,
+    targetPlatform: platform,
+    targetHandle: hit.handle,
+  });
 
   const ratings = [
     hit.rating_bullet !== null ? { label: 'Bullet', value: hit.rating_bullet } : null,

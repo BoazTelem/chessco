@@ -8,6 +8,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getPracticeDb } from '@/lib/practice/db';
 import { unlockLeak } from '@/lib/leaks/unlock';
+import { logSearchEvent } from '@/lib/search-events/log';
 import type { Leak, Platform } from '@/lib/leaks/types';
 
 interface ReportRow {
@@ -73,6 +74,16 @@ export async function POST(
   if (result.status === 'insufficient_credits') {
     return NextResponse.json({ reason: 'insufficient-credits', need: 1 }, { status: 402 });
   }
+
+  void logSearchEvent({
+    kind: 'leak_reveal',
+    profileId: user.id,
+    targetPlatform: report.target_platform,
+    targetHandle: report.target_handle_normalized,
+    leakFingerprint: fingerprint,
+    costCredits: result.cost,
+    extra: { auto: false, leak_kind: leak.kind },
+  });
 
   return NextResponse.json({
     status: 'unlocked',

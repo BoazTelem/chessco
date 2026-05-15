@@ -31,19 +31,35 @@ export async function getUser() {
   return user;
 }
 
-// Returns the authenticated user only if their email matches SUPER_ADMIN_EMAIL.
-// Otherwise renders a 404 — we deliberately don't reveal that /admin/super exists.
+/**
+ * Comma-separated list of super-admin emails from env. Reads
+ * SUPER_ADMIN_EMAILS first, falls back to the legacy single SUPER_ADMIN_EMAIL
+ * for back-compat with existing deploys.
+ */
+function superAdminEmails(): Set<string> {
+  const raw = process.env.SUPER_ADMIN_EMAILS ?? process.env.SUPER_ADMIN_EMAIL ?? '';
+  return new Set(
+    raw
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+// Returns the authenticated user only if their email is in SUPER_ADMIN_EMAILS
+// (or matches the legacy SUPER_ADMIN_EMAIL). Otherwise renders a 404 — we
+// deliberately don't reveal that /admin/super exists.
 export async function requireSuperAdmin() {
   const user = await requireUser();
-  const expected = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase();
+  const allowed = superAdminEmails();
   const actual = user.email?.trim().toLowerCase();
-  if (!expected || !actual || actual !== expected) {
+  if (allowed.size === 0 || !actual || !allowed.has(actual)) {
     notFound();
   }
   return user;
 }
 
 export function isSuperAdminEmail(email: string | null | undefined): boolean {
-  const expected = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase();
-  return !!expected && !!email && email.trim().toLowerCase() === expected;
+  if (!email) return false;
+  return superAdminEmails().has(email.trim().toLowerCase());
 }

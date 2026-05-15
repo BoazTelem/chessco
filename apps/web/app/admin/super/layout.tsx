@@ -11,6 +11,7 @@ export const metadata = {
 const TABS = [
   { href: '/admin/super', label: 'Overview' },
   { href: '/admin/super/users', label: 'Users' },
+  { href: '/admin/super/searches', label: 'Searches' },
   { href: '/admin/super/revenue', label: 'Revenue' },
   { href: '/admin/super/games', label: 'Games' },
   { href: '/admin/super/prep', label: 'Prep' },
