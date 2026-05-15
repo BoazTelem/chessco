@@ -47,10 +47,18 @@ import 'dotenv/config';
 import { Chess } from 'chess.js';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type postgres from 'postgres';
 import { getGamesDb } from '../db';
 import { extractFeaturesV0, type GameRow } from '../features/extract';
 import { rankFingerprints, type Stage3Match } from '../stage3/match';
+
+// process.cwd() under `pnpm --filter` is apps/workers/, not the repo root,
+// which made the default --out resolve to apps/workers/apps/web/public/...
+// Resolve against this file's location instead: src/eval/ → repo root is 4
+// levels up (apps/workers/src/eval/ → chessco/).
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+const DEFAULT_OUT = path.resolve(REPO_ROOT, 'apps/web/public/sparse-cascade-benchmark.json');
 
 const DEFAULT_LIMIT = 200;
 const DEFAULT_SAMPLE_SIZES = [3, 5, 10, 20];
@@ -75,7 +83,7 @@ function parseArgs(argv: string[]): CliArgs {
     seeds: DEFAULT_SEEDS,
     topK: DEFAULT_TOP_K,
     platform: 'both',
-    out: path.resolve(process.cwd(), 'apps/web/public/sparse-cascade-benchmark.json'),
+    out: DEFAULT_OUT,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -99,7 +107,8 @@ function parseArgs(argv: string[]): CliArgs {
       }
       out.platform = p as CliArgs['platform'];
     } else if (a === '--out' && argv[i + 1]) {
-      out.out = path.resolve(process.cwd(), argv[++i]!);
+      // Resolve against repo root for stable behaviour under `pnpm --filter`.
+      out.out = path.resolve(REPO_ROOT, argv[++i]!);
     } else throw new Error(`Unrecognized arg: ${a}`);
   }
   return out;
