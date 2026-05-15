@@ -15,6 +15,18 @@ export function getGamesDb(): ReturnType<typeof postgres> {
   const sslmode = process.env.GAMES_DATABASE_SSLMODE ?? 'require';
   const ssl = sslmode === 'disable' ? false : { rejectUnauthorized: false };
 
+  const url = process.env.GAMES_DATABASE_URL;
+  if (url) {
+    cached = postgres(url, {
+      max: 2, // serverless: tight per-instance ceiling
+      idle_timeout: 30,
+      connect_timeout: 15,
+      prepare: false,
+      ssl,
+    });
+    return cached;
+  }
+
   const host = process.env.GAMES_DATABASE_HOST;
   const port = process.env.GAMES_DATABASE_PORT;
   const user = process.env.GAMES_DATABASE_USER;
@@ -23,7 +35,7 @@ export function getGamesDb(): ReturnType<typeof postgres> {
 
   if (!host || !port || !user || !password) {
     throw new Error(
-      'Games DB connection not configured. Set GAMES_DATABASE_HOST/PORT/USER/PASSWORD on the web env.',
+      'Games DB connection not configured. Set GAMES_DATABASE_URL, or all of GAMES_DATABASE_HOST / GAMES_DATABASE_PORT / GAMES_DATABASE_USER / GAMES_DATABASE_PASSWORD on the web env.',
     );
   }
 
