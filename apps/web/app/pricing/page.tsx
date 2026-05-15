@@ -165,7 +165,7 @@ function TierCard({ tier }: { tier: Tier }) {
       className={`relative flex h-full flex-col rounded-xl border bg-card p-5 transition ${ringClass}`}
     >
       {tier.badge && (
-        <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full border border-accent/40 bg-accent px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-accent-foreground">
+        <span className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full border border-accent/40 bg-accent px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-accent-foreground">
           {tier.badge}
         </span>
       )}
