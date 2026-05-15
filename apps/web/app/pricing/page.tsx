@@ -112,6 +112,14 @@ const FEATURE_ROWS: FeatureRow[] = [
     gm: true,
     sgm: true,
   },
+  {
+    label: 'Top up (buy credits)',
+    free: true,
+    club: true,
+    master: true,
+    gm: true,
+    sgm: true,
+  },
   { label: 'Friends list', free: false, club: true, master: true, gm: true, sgm: true },
   { label: 'Training history', free: false, club: false, master: true, gm: true, sgm: true },
   {
