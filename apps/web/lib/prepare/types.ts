@@ -66,7 +66,7 @@ export interface TreeNode {
 export type Tree = Map<string, TreeNode>;
 
 export interface FetchProgress {
-  phase: 'idle' | 'fetching' | 'parsing' | 'done' | 'error';
+  phase: 'idle' | 'hydrating' | 'fetching' | 'parsing' | 'done' | 'error';
   fetchedGames: number;
   estimatedTotal: number | null;
   currentLabel: string | null;

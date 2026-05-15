@@ -12,17 +12,20 @@ export function FetchProgressBar({ progress, filteredGameCount }: Props) {
     progress.estimatedTotal && progress.estimatedTotal > 0
       ? Math.min(100, Math.round((progress.fetchedGames / progress.estimatedTotal) * 100))
       : null;
-  const isWorking = progress.phase === 'fetching' || progress.phase === 'parsing';
+  const isHydrating = progress.phase === 'hydrating';
+  const isWorking = progress.phase === 'fetching' || progress.phase === 'parsing' || isHydrating;
   const isDone = progress.phase === 'done';
 
   // While fetching: "fetched / ~estimated games" reflects the raw pull rate.
   // When done: switch to the filtered count — that's the real corpus the tree
   // is built from. Total fetched moves to a small subtext for context.
-  const headline = isDone
-    ? `${filteredGameCount.toLocaleString()} games match filters`
-    : `${progress.fetchedGames.toLocaleString()}${
-        progress.estimatedTotal ? ` / ~${progress.estimatedTotal.toLocaleString()}` : ''
-      } games`;
+  const headline = isHydrating
+    ? 'Loading cached games…'
+    : isDone
+      ? `${filteredGameCount.toLocaleString()} games match filters`
+      : `${progress.fetchedGames.toLocaleString()}${
+          progress.estimatedTotal ? ` / ~${progress.estimatedTotal.toLocaleString()}` : ''
+        } games`;
   const subtext = isDone
     ? progress.fetchedGames > filteredGameCount
       ? `of ${progress.fetchedGames.toLocaleString()} fetched`
@@ -33,7 +36,13 @@ export function FetchProgressBar({ progress, filteredGameCount }: Props) {
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-3 text-xs">
         <span className="text-muted-foreground">
-          {isDone ? 'Done' : progress.phase === 'error' ? 'Error' : 'Building'}
+          {isDone
+            ? 'Done'
+            : progress.phase === 'error'
+              ? 'Error'
+              : isHydrating
+                ? 'Loading'
+                : 'Building'}
           {progress.currentLabel ? ` · ${progress.currentLabel}` : ''}
         </span>
         <span className="flex items-baseline gap-2 font-mono text-foreground">
