@@ -1,0 +1,169 @@
+{
+  "version": "v1",
+  "ts": "2026-05-15T07:59:36.940Z",
+  "finished_at": "2026-05-15T10:39:37.664Z",
+  "duration_seconds": 9598,
+  "config": {
+    "platform": "both",
+    "limit": 100,
+    "sample_sizes": [3, 5, 10, 20],
+    "seeds": [1, 2, 3],
+    "top_k": 50
+  },
+  "corpus_size": {
+    "chess.com": 14884,
+    "lichess": 31249
+  },
+  "total_targets": 100,
+  "total_trials": 1200,
+  "metrics_by_sample_size": [
+    {
+      "sample_size": 3,
+      "metrics": {
+        "trials": 300,
+        "top1": 0.4866666666666667,
+        "top3": 0.5833333333333334,
+        "top10": 0.7066666666666667,
+        "median_rank": 2,
+        "mrr": 0.5601324146699705
+      }
+    },
+    {
+      "sample_size": 5,
+      "metrics": {
+        "trials": 300,
+        "top1": 0.7266666666666667,
+        "top3": 0.8233333333333334,
+        "top10": 0.89,
+        "median_rank": 1,
+        "mrr": 0.7839455448501484
+      }
+    },
+    {
+      "sample_size": 10,
+      "metrics": {
+        "trials": 300,
+        "top1": 0.9466666666666667,
+        "top3": 0.9566666666666667,
+        "top10": 0.9633333333333334,
+        "median_rank": 1,
+        "mrr": 0.9517643467643468
+      }
+    },
+    {
+      "sample_size": 20,
+      "metrics": {
+        "trials": 300,
+        "top1": 0.9866666666666667,
+        "top3": 0.9866666666666667,
+        "top10": 0.9866666666666667,
+        "median_rank": 1,
+        "mrr": 0.9866666666666667
+      }
+    }
+  ],
+  "metrics_by_platform": {
+    "chess.com": [
+      {
+        "sample_size": 3,
+        "metrics": {
+          "trials": 171,
+          "top1": 0.4619883040935672,
+          "top3": 0.543859649122807,
+          "top10": 0.6783625730994152,
+          "median_rank": 2,
+          "mrr": 0.5323510267192613
+        }
+      },
+      {
+        "sample_size": 5,
+        "metrics": {
+          "trials": 171,
+          "top1": 0.6783625730994152,
+          "top3": 0.7894736842105263,
+          "top10": 0.8713450292397661,
+          "median_rank": 1,
+          "mrr": 0.7440659074950364
+        }
+      },
+      {
+        "sample_size": 10,
+        "metrics": {
+          "trials": 171,
+          "top1": 0.9298245614035088,
+          "top3": 0.9415204678362573,
+          "top10": 0.9415204678362573,
+          "median_rank": 1,
+          "mrr": 0.9341730394361973
+        }
+      },
+      {
+        "sample_size": 20,
+        "metrics": {
+          "trials": 171,
+          "top1": 0.9766081871345029,
+          "top3": 0.9766081871345029,
+          "top10": 0.9766081871345029,
+          "median_rank": 1,
+          "mrr": 0.9766081871345029
+        }
+      }
+    ],
+    "lichess": [
+      {
+        "sample_size": 3,
+        "metrics": {
+          "trials": 129,
+          "top1": 0.5193798449612403,
+          "top3": 0.6356589147286822,
+          "top10": 0.7441860465116279,
+          "median_rank": 1,
+          "mrr": 0.5969589056743999
+        }
+      },
+      {
+        "sample_size": 5,
+        "metrics": {
+          "trials": 129,
+          "top1": 0.7906976744186046,
+          "top3": 0.8682170542635659,
+          "top10": 0.9147286821705426,
+          "median_rank": 1,
+          "mrr": 0.8368092501813431
+        }
+      },
+      {
+        "sample_size": 10,
+        "metrics": {
+          "trials": 129,
+          "top1": 0.9689922480620154,
+          "top3": 0.9767441860465116,
+          "top10": 0.9922480620155039,
+          "median_rank": 1,
+          "mrr": 0.9750830564784052
+        }
+      },
+      {
+        "sample_size": 20,
+        "metrics": {
+          "trials": 129,
+          "top1": 1,
+          "top3": 1,
+          "top10": 1,
+          "median_rank": 1,
+          "mrr": 1
+        }
+      }
+    ]
+  },
+  "guidance": {
+    "quick_scan": 3,
+    "recommended": 5,
+    "high_confidence": 10,
+    "rules": {
+      "quick_scan": "smallest sample size with top-10 accuracy >= 50%",
+      "recommended": "smallest sample size with top-3 accuracy >= 70%",
+      "high_confidence": "smallest sample size with top-1 accuracy >= 75%"
+    }
+  }
+}
