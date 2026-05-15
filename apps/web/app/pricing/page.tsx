@@ -39,6 +39,8 @@ const TIERS: Tier[] = [
     monthlyCredits: 20,
     leaksPerOpponent: '5',
     extraLeakCost: '4 credits',
+    badge: 'Most popular',
+    highlight: true,
   },
   {
     code: 'master',
@@ -49,8 +51,6 @@ const TIERS: Tier[] = [
     monthlyCredits: 100,
     leaksPerOpponent: '10',
     extraLeakCost: '2 credits',
-    badge: 'Most popular',
-    highlight: true,
   },
   {
     code: 'gm',
@@ -170,7 +170,9 @@ function TierCard({ tier }: { tier: Tier }) {
         </span>
       )}
       <div className="space-y-1">
-        <p className="font-display text-sm font-semibold uppercase tracking-[0.3em] text-accent">
+        {/* min-h reserves 2 lines so "Super Grand Master" doesn't push its
+            price row down relative to single-line tier names. */}
+        <p className="min-h-[2.5rem] font-display text-sm font-semibold uppercase tracking-[0.3em] text-accent">
           {tier.name}
         </p>
         <p className="font-display text-3xl font-bold tracking-tight">
@@ -179,7 +181,10 @@ function TierCard({ tier }: { tier: Tier }) {
             {tier.priceUsd === 0 ? 'forever' : '/ month'}
           </span>
         </p>
-        <p className="pt-1 text-xs leading-relaxed text-muted-foreground">{tier.tagline}</p>
+        {/* Same idea — fixes the start of the dl block across cards. */}
+        <p className="min-h-[3rem] pt-1 text-xs leading-relaxed text-muted-foreground">
+          {tier.tagline}
+        </p>
       </div>
 
       <dl className="mt-5 space-y-2.5 text-xs">
@@ -203,7 +208,7 @@ function TierCard({ tier }: { tier: Tier }) {
         </div>
       </dl>
 
-      <div className="mt-5">
+      <div className="mt-auto pt-5">
         <button
           type="button"
           disabled
@@ -227,7 +232,7 @@ export default function PricingPage() {
         <header className="mx-auto max-w-2xl text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-accent">Pricing</p>
           <h1 className="mt-3 font-display text-4xl font-bold tracking-tight md:text-5xl">
-            Pay for the platform. Never pay per game.
+            Start free. Scale when it&apos;s worth it.
           </h1>
           <p className="mt-4 text-sm leading-relaxed text-muted-foreground md:text-base">
             Every plan comes with credits. Spend them on prep reveals and paid practice. Earn more
