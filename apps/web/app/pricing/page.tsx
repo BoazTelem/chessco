@@ -69,7 +69,11 @@ const TIERS: Tier[] = [
     tagline: 'The all-in tier. Status, signal, and 10 Seconds.',
     signupCredits: 10,
     monthlyCredits: 4000,
-    leaksPerOpponent: 'Unlimited',
+    // 'All' instead of 'Unlimited' so the dd doesn't push the dt
+    // "Weakness reveals / opponent" into a third wrapped line and break
+    // row alignment with the other tier cards. The comparison table
+    // below uses the longer 'Unlimited' since it has the width for it.
+    leaksPerOpponent: 'All',
     extraLeakCost: 'Free',
   },
 ];
