@@ -54,7 +54,7 @@ const TIERS: Tier[] = [
   },
   {
     code: 'gm',
-    name: 'Grand Master',
+    name: 'Grandmaster',
     priceUsd: 99,
     tagline: 'Serious tournament prep with priority surfaces.',
     signupCredits: 10,
@@ -64,7 +64,7 @@ const TIERS: Tier[] = [
   },
   {
     code: 'sgm',
-    name: 'Super Grand Master',
+    name: 'Super Grandmaster',
     priceUsd: 999,
     tagline: 'The all-in tier. Status, signal, and 10 Seconds.',
     signupCredits: 10,
