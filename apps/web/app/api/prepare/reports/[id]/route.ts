@@ -2,11 +2,16 @@
  * GET /api/prepare/reports/[id] — status + locked/unlocked leak DTOs.
  *
  * Behavior:
- *   - status 'pending' / 'data_pending' / 'building': returns only status.
- *   - status 'failed': returns status + error_text.
- *   - status 'ready': if leaks_json is null, compute it on-demand from the
- *     games corpus and persist it on the row (one-time cost per report).
- *     Then return leaks with per-fingerprint locked/unlocked flags.
+ *   - 'pending' / 'data_pending' / 'building': returns status (+ substage
+ *     derived from corpus state so the UI can show a more specific message
+ *     than "indexing").
+ *   - 'failed': returns status + error_text.
+ *   - 'ready': if leaks_json is null, compute on demand from the games
+ *     corpus and persist it on the row (one-time cost per report). Also
+ *     auto-unlocks the top-scoring 'personalized' leak as the user's free
+ *     pick — uses the existing prep_leak_unlocks_one_free_per_opp partial
+ *     unique index so it's idempotent. Then returns leaks with
+ *     per-fingerprint locked/unlocked flags.
  *
  * Locked leak DTOs omit board/sanPath/recommended-move detail (just opening
  * name + game count). Unlocked leaks include the full detail. Surprise lines
@@ -16,6 +21,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getPracticeDb } from '@/lib/practice/db';
 import { computeReportLeaks } from '@/lib/leaks/compute';
+import { repertoireReadiness, getGamesDb } from '@/lib/leaks/readiness';
 import type { Leak, Platform } from '@/lib/leaks/types';
 
 interface ReportRow {
@@ -31,6 +37,12 @@ interface ReportRow {
 interface UnlockRow {
   leak_fingerprint: string;
 }
+
+type Substage =
+  | 'awaiting_games'
+  | 'building_repertoire'
+  | 'awaiting_user_handle'
+  | 'engine_evaluating';
 
 export async function GET(
   _req: Request,
@@ -63,12 +75,20 @@ export async function GET(
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
-  if (
-    report.status === 'pending' ||
-    report.status === 'data_pending' ||
-    report.status === 'building'
-  ) {
-    return NextResponse.json({ status: report.status });
+  if (report.status === 'pending' || report.status === 'data_pending') {
+    const substage =
+      report.target_platform && report.target_handle_normalized
+        ? await deriveSubstage(
+            sql,
+            user.id,
+            report.target_platform,
+            report.target_handle_normalized,
+          )
+        : null;
+    return NextResponse.json({ status: report.status, substage });
+  }
+  if (report.status === 'building') {
+    return NextResponse.json({ status: report.status, substage: 'engine_evaluating' as const });
   }
   if (report.status === 'failed') {
     return NextResponse.json({ status: 'failed', error: report.error_text });
@@ -107,6 +127,21 @@ export async function GET(
     }
   }
 
+  // Auto-unlock the top personalized leak so the user always sees one full
+  // leak without spending a credit. Skip if any unlock row already exists
+  // for this opponent — the user's free slot may belong to a leak they
+  // actively revealed, and prep_leak_unlocks_one_free_per_opp limits us
+  // to a single cost_credits=0 row anyway.
+  await autoUnlockTopLeak({
+    sql,
+    profileId: user.id,
+    platform: report.target_platform,
+    handleNormalized: report.target_handle_normalized,
+    prepReportId: id,
+    leaks,
+  });
+
+  // Query unlocks AFTER the auto-unlock so the freebie shows up immediately.
   const unlocks = await sql<UnlockRow[]>`
     SELECT leak_fingerprint FROM prep_leak_unlocks
     WHERE profile_id = ${user.id}::uuid
@@ -143,4 +178,126 @@ export async function GET(
       black: leaks.black.map(dto),
     },
   });
+}
+
+/**
+ * Inspect the games corpus to figure out what stage the poller is stuck on,
+ * so the UI can show a specific message ("Waiting for games…" vs "Building
+ * opponent repertoire…") instead of one generic "Indexing" copy.
+ *
+ * We trade one extra games-DB roundtrip per poll for not adding a column to
+ * prep_reports — substage is a derived, transient hint, not durable state.
+ */
+async function deriveSubstage(
+  practice: ReturnType<typeof getPracticeDb>,
+  profileId: string,
+  platform: Platform,
+  handleNormalized: string,
+): Promise<Substage | null> {
+  try {
+    const games = getGamesDb();
+    const rows = (await games`
+      SELECT 1 FROM handles
+      WHERE platform = ${platform} AND LOWER(handle) = ${handleNormalized}
+      LIMIT 1
+    `) as Array<{ '?column?': number }>;
+    if (rows.length === 0) {
+      return 'awaiting_games';
+    }
+    const readiness = await repertoireReadiness({ platform, handleNormalized });
+    if (!readiness.white || !readiness.black) {
+      return 'building_repertoire';
+    }
+
+    const linked = await practice<{ platform: Platform; external_id: string }[]>`
+      SELECT platform, external_id
+      FROM external_accounts
+      WHERE profile_id = ${profileId}::uuid
+        AND platform IN ('lichess', 'chess.com')
+        AND verified = true
+    `;
+    if (linked.length === 0) return 'awaiting_user_handle';
+
+    for (const acc of linked) {
+      const userHandle = acc.external_id.trim().toLowerCase();
+      const userRows = (await games`
+        SELECT 1 FROM handles
+        WHERE platform = ${acc.platform} AND LOWER(handle) = ${userHandle}
+        LIMIT 1
+      `) as Array<{ '?column?': number }>;
+      if (userRows.length === 0) return 'awaiting_user_handle';
+
+      const userReadiness = await repertoireReadiness({
+        platform: acc.platform,
+        handleNormalized: userHandle,
+      });
+      if (!userReadiness.white || !userReadiness.black) return 'building_repertoire';
+    }
+
+    return 'engine_evaluating';
+  } catch (err) {
+    console.warn('[deriveSubstage] games-DB lookup failed:', err);
+    return null;
+  }
+}
+
+async function autoUnlockTopLeak(args: {
+  sql: ReturnType<typeof getPracticeDb>;
+  profileId: string;
+  platform: Platform;
+  handleNormalized: string;
+  prepReportId: string;
+  leaks: { white: Leak[]; black: Leak[]; generated_at: string };
+}): Promise<void> {
+  const { sql, profileId, platform, handleNormalized, prepReportId, leaks } = args;
+  try {
+    await sql.begin(async (tx) => {
+      // Serialize with the manual reveal endpoint, which uses the same lock
+      // before deciding whether the first unlock is free or paid.
+      await tx`SELECT pg_advisory_xact_lock(hashtext(${profileId})::bigint)`;
+
+      // Skip if the user already has any unlock for this opponent; their free
+      // slot may belong to a leak they actively revealed.
+      const existing = await tx<{ leak_fingerprint: string }[]>`
+        SELECT leak_fingerprint FROM prep_leak_unlocks
+        WHERE profile_id = ${profileId}::uuid
+          AND target_platform = ${platform}
+          AND target_handle_normalized = ${handleNormalized}
+        LIMIT 1
+      `;
+      if (existing.length > 0) return;
+
+      // Combine both colors and pick the highest-scoring `personalized` leak.
+      // 'own' / 'surprise' are already unlocked downstream; only `personalized`
+      // is gated, so unlocking one of those is what gives the user something.
+      const combined = [...leaks.white, ...leaks.black]
+        .filter((l) => l.kind === 'personalized')
+        .sort((a, b) => b.score - a.score);
+      const top = combined[0];
+      if (!top) return;
+
+      await tx`
+        INSERT INTO prep_leak_unlocks
+          (
+            profile_id,
+            target_platform,
+            target_handle_normalized,
+            leak_fingerprint,
+            prep_report_id,
+            cost_credits
+          )
+        VALUES (
+          ${profileId}::uuid,
+          ${platform},
+          ${handleNormalized},
+          ${top.fingerprint},
+          ${prepReportId}::uuid,
+          0
+        )
+        ON CONFLICT DO NOTHING
+      `;
+    });
+  } catch (err) {
+    console.warn('[autoUnlockTopLeak] failed (non-fatal):', err);
+  }
 }

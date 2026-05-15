@@ -114,7 +114,7 @@ export default async function PrepareStubPage({ params }: { params: Promise<Rout
           ) : null}
         </header>
 
-        <OpeningTreeSection platform={platform} handle={hit.handle} />
+        <OpeningTreeSection platform={platform} handle={hit.handle} signedIn={Boolean(user)} />
 
         <PersonalizedLeaks
           signedIn={Boolean(user)}

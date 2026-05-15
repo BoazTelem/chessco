@@ -5,9 +5,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { LeakCard, type LeakDto } from './LeakCard';
 
 type ReportStatus = 'pending' | 'data_pending' | 'building' | 'ready' | 'failed';
+type ReportSubstage =
+  | 'awaiting_games'
+  | 'building_repertoire'
+  | 'awaiting_user_handle'
+  | 'engine_evaluating';
 
 interface ReportPayload {
   status: ReportStatus;
+  substage?: ReportSubstage | null;
   error?: string | null;
   generated_at?: string;
   leaks?: {
@@ -24,6 +30,23 @@ interface Props {
 }
 
 const POLL_INTERVAL_MS = 5000;
+
+function progressMessage(payload: ReportPayload, handle: string): string {
+  if (payload.status === 'building' || payload.substage === 'engine_evaluating') {
+    return `Engine-evaluating ${handle}’s recent positions…`;
+  }
+  if (payload.substage === 'building_repertoire') {
+    return `Building ${handle}’s opening repertoire…`;
+  }
+  if (payload.substage === 'awaiting_games') {
+    return `Waiting for ${handle}’s recent games to land in the corpus…`;
+  }
+  if (payload.substage === 'awaiting_user_handle') {
+    return 'Waiting for your linked account to land in the corpus…';
+  }
+  // No substage hint yet — generic.
+  return `Indexing ${handle}’s recent games · this can take a minute`;
+}
 
 export function PersonalizedLeaks({ signedIn, platform, handle, loginHref }: Props) {
   const [reportId, setReportId] = useState<string | null>(null);
@@ -174,9 +197,10 @@ export function PersonalizedLeaks({ signedIn, platform, handle, loginHref }: Pro
       payload.status === 'data_pending' ||
       payload.status === 'building'
     ) {
+      const message = progressMessage(payload, handle);
       return (
         <div className="rounded-md border border-dashed border-border bg-background/60 px-4 py-6 text-center text-xs uppercase tracking-wider text-muted-foreground">
-          Indexing {handle}&rsquo;s recent games · this can take a couple of minutes
+          {message}
         </div>
       );
     }
@@ -185,6 +209,9 @@ export function PersonalizedLeaks({ signedIn, platform, handle, loginHref }: Pro
       if (helpful === 'no_linked_accounts') helpful = 'Link a chess.com or Lichess account first.';
       if (helpful === 'opponent_not_in_corpus')
         helpful = `We have not crawled ${handle}’s games yet. Try again later.`;
+      if (helpful === 'user_handles_not_in_corpus')
+        helpful =
+          'Your linked account hasn’t been indexed yet. Link a recent account or wait for the indexer.';
       return <p className="text-sm text-destructive">Report failed: {helpful}</p>;
     }
     if (payload.status === 'ready' && payload.leaks) {

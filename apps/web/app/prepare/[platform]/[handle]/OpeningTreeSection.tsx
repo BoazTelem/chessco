@@ -13,7 +13,7 @@ import { normalizeFenKey } from '@/lib/prepare/parse-pgn';
 import { parseGameOffThread, terminateParseWorker } from '@/lib/prepare/parse-worker-client';
 import { buildTree, gamePassesFilters, windowBounds } from '@/lib/prepare/tree-builder';
 import { flushStore, getStore, hydrateStore, ingestGame, listGames } from '@/lib/prepare/storage';
-import { loadCachedMeta, type CachedMeta } from '@/lib/prepare/persist';
+import { loadCachedGames, loadCachedMeta, type CachedMeta } from '@/lib/prepare/persist';
 import type {
   FetchProgress,
   Filters,
@@ -59,9 +59,15 @@ const DEFAULT_FILTERS: Filters = {
 interface Props {
   platform: Platform;
   handle: string;
+  signedIn: boolean;
 }
 
-export function OpeningTreeSection({ platform, handle }: Props) {
+type CorpusSyncStatus = 'idle' | 'uploading' | 'ready' | 'failed' | 'skipped';
+
+const CORPUS_SYNC_GAME_CAP = 500;
+const CORPUS_SYNC_PLY_CAP = 30_000;
+
+export function OpeningTreeSection({ platform, handle, signedIn }: Props) {
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [progress, setProgress] = useState<FetchProgress>({
     phase: 'idle',
@@ -75,6 +81,7 @@ export function OpeningTreeSection({ platform, handle }: Props) {
   const [cursor, setCursor] = useState(0);
   const [hoveredMove, setHoveredMove] = useState<NextMoveStats | null>(null);
   const [cachedMeta, setCachedMeta] = useState<CachedMeta | null>(null);
+  const [corpusSync, setCorpusSync] = useState<CorpusSyncStatus>(signedIn ? 'idle' : 'skipped');
   const abortRef = useRef<AbortController | null>(null);
   const lastRebuildRef = useRef(0);
   const newSinceLastRebuildRef = useRef(0);
@@ -200,6 +207,11 @@ export function OpeningTreeSection({ platform, handle }: Props) {
           currentLabel: 'Already up to date',
           errorMessage: null,
         });
+        // Already up to date — still attempt a corpus sync so a reload of
+        // a stuck/old report can wake the poller via /api/prepare/games/bulk-ingest.
+        if (signedIn) {
+          void uploadGamesToCorpus(platform, handle, setCorpusSync, ac.signal);
+        }
         return;
       }
 
@@ -281,11 +293,16 @@ export function OpeningTreeSection({ platform, handle }: Props) {
         triggerRebuild(true);
         setProgress((p) => ({ ...p, phase: 'done', fetchedGames: fetched, currentLabel: null }));
 
-        // Flush the IDB write queue then refresh the cached-meta display.
+        // Flush the IDB write queue, refresh the cached-meta display, then
+        // ship the games to the server so Personalized Leaks doesn't have
+        // to wait on the (slow, job-style) crawler queue.
         void flushStore(platform, handle).then(async () => {
           if (ac.signal.aborted) return;
           const meta = await loadCachedMeta(platform, handle);
           setCachedMeta(meta);
+          if (signedIn) {
+            void uploadGamesToCorpus(platform, handle, setCorpusSync, ac.signal);
+          }
         });
       } catch (e) {
         if (ac.signal.aborted) return;
@@ -296,7 +313,7 @@ export function OpeningTreeSection({ platform, handle }: Props) {
         }));
       }
     },
-    [filters, platform, handle, triggerRebuild],
+    [filters, platform, handle, triggerRebuild, signedIn],
   );
 
   const startFetchRef = useRef(startFetch);
@@ -534,6 +551,14 @@ export function OpeningTreeSection({ platform, handle }: Props) {
 
         <FetchProgressBar progress={progress} filteredGameCount={filteredGameCount} />
 
+        {corpusSync !== 'idle' && corpusSync !== 'skipped' ? (
+          <p className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground">
+            {corpusSync === 'uploading' ? 'Syncing recent games to corpus…' : null}
+            {corpusSync === 'ready' ? 'Games synced to corpus' : null}
+            {corpusSync === 'failed' ? 'Sync to corpus failed — leaks may be slower' : null}
+          </p>
+        ) : null}
+
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
           <div className="space-y-3">
             <BreadcrumbPath sanPath={sanPath} cursor={cursor} onJump={handleJump} />
@@ -569,4 +594,59 @@ export function OpeningTreeSection({ platform, handle }: Props) {
       </div>
     </section>
   );
+}
+
+/**
+ * Ship the browser's cached games to the games corpus. Fire-and-forget —
+ * called after the OpeningTree fetch loop completes. Skipping the upload
+ * is safe; PersonalizedLeaks will fall back to the existing crawler queue
+ * (which can take much longer).
+ */
+async function uploadGamesToCorpus(
+  platform: Platform,
+  handle: string,
+  setStatus: (s: CorpusSyncStatus) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  if (signal.aborted) return;
+  setStatus('uploading');
+  try {
+    const cached = await loadCachedGames(platform, handle);
+    if (cached.length === 0) {
+      setStatus('idle');
+      return;
+    }
+    // Most-recent-first so the 500-cap keeps the freshest games when we
+    // hit the limit, which is what the leaks scorer cares about.
+    cached.sort((a, b) => b.playedAt.getTime() - a.playedAt.getTime());
+    const slice: GameRecord[] = [];
+    let plyCount = 0;
+    for (const game of cached) {
+      if (slice.length >= CORPUS_SYNC_GAME_CAP) break;
+      const nextPlyCount = plyCount + game.movesUci.length;
+      if (nextPlyCount > CORPUS_SYNC_PLY_CAP) continue;
+      slice.push(game);
+      plyCount = nextPlyCount;
+    }
+    if (slice.length === 0) {
+      setStatus('idle');
+      return;
+    }
+    const res = await fetch('/api/prepare/games/bulk-ingest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform, handle, games: slice }),
+      signal,
+    });
+    if (signal.aborted) return;
+    if (!res.ok) {
+      setStatus('failed');
+      return;
+    }
+    setStatus('ready');
+  } catch (err) {
+    if (signal.aborted) return;
+    console.warn('[opening-tree] corpus sync failed', err);
+    setStatus('failed');
+  }
 }
