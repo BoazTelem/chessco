@@ -170,19 +170,6 @@ export default async function DashboardPage() {
           />
         </ul>
       </section>
-
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          Coming soon
-        </h2>
-        <ul className="grid gap-3 sm:grid-cols-2">
-          <PlaceholderCard
-            label="Post-Phase 1"
-            title="USCF coverage"
-            body="Add US Chess Federation top-list players to /scout (ICF already live)."
-          />
-        </ul>
-      </section>
     </div>
   );
 }
@@ -219,16 +206,6 @@ function AccountBadge({
         </Link>
       )}
     </div>
-  );
-}
-
-function PlaceholderCard({ label, title, body }: { label: string; title: string; body: string }) {
-  return (
-    <li className="rounded-lg border border-border bg-card p-5">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent">{label}</p>
-      <p className="mt-1 font-medium">{title}</p>
-      <p className="mt-1 text-sm text-muted-foreground">{body}</p>
-    </li>
   );
 }
 
