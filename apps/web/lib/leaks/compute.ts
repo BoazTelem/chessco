@@ -82,17 +82,26 @@ export async function computeReportLeaks(args: {
       continue;
     }
 
-    const leaks = scoreLeaks({
-      userTree,
-      opponentTree,
-      moveQualityByFenAndUci: moveQuality,
-      opts: {
-        platform: targetPlatform,
-        handleNormalized: targetHandleNormalized,
-        userColor,
-      },
-    });
-    out[userColor] = leaks;
+    // Isolate per-color scoring so one color's edge-case throw can't
+    // empty out the other color's leaks.
+    try {
+      out[userColor] = scoreLeaks({
+        userTree,
+        opponentTree,
+        moveQualityByFenAndUci: moveQuality,
+        opts: {
+          platform: targetPlatform,
+          handleNormalized: targetHandleNormalized,
+          userColor,
+        },
+      });
+    } catch (err) {
+      console.error(
+        `[computeReportLeaks] scoreLeaks threw for color=${userColor} target=${targetPlatform}/${targetHandleNormalized}:`,
+        err,
+      );
+      out[userColor] = [];
+    }
   }
 
   return out;

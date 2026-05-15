@@ -81,7 +81,9 @@ export async function GET(
     return NextResponse.json({ error: 'invalid_report_state' }, { status: 500 });
   }
 
-  // Compute leaks on first read for a ready report.
+  // Compute leaks on first read for a ready report. On any compute error,
+  // persist an empty payload so the frontend stops polling — better UX than
+  // an infinite "Preparing your report…" spinner on a transient 500.
   let leaks = report.leaks_json;
   if (!leaks) {
     try {
@@ -90,14 +92,18 @@ export async function GET(
         targetPlatform: report.target_platform,
         targetHandleNormalized: report.target_handle_normalized,
       });
+    } catch (err) {
+      console.error('[GET /api/prepare/reports/:id] compute failed:', err);
+      leaks = { white: [], black: [], generated_at: new Date().toISOString() };
+    }
+    try {
       await sql`
         UPDATE prep_reports
         SET leaks_json = ${JSON.stringify(leaks)}::jsonb
         WHERE id = ${id}::uuid
       `;
-    } catch (err) {
-      console.error('[GET /api/prepare/reports/:id] compute failed:', err);
-      return NextResponse.json({ error: 'compute_failed' }, { status: 500 });
+    } catch (writeErr) {
+      console.error('[GET /api/prepare/reports/:id] persist leaks failed:', writeErr);
     }
   }
 

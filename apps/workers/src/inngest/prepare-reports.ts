@@ -200,13 +200,45 @@ async function processReport(
       return { status: 'data_pending' };
     }
 
-    // 2. Ensure user repertoires for each linked account.
+    // 2. Ensure user repertoires for each linked account. If any of the
+    //    user's linked handles isn't in the corpus, mirror step-1: enqueue
+    //    a crawl and stay in data_pending so the next tick re-checks.
+    //    Without this, an empty user repertoire silently slips through and
+    //    every leak ends up in the trivial scoreSurprise fallback.
+    const unknownLichess: string[] = [];
+    const unknownChesscom: string[] = [];
     for (const acc of linked) {
-      await ensureRepertoires({
+      const res = await ensureRepertoires({
         games,
         platform: acc.platform,
         handle: acc.external_id,
       });
+      if (res.status === 'unknown_handle') {
+        if (acc.platform === 'lichess') unknownLichess.push(acc.external_id);
+        else unknownChesscom.push(acc.external_id);
+      }
+    }
+    if (unknownLichess.length > 0 || unknownChesscom.length > 0) {
+      const ageMin = report.age_seconds / 60;
+      if (ageMin > UNKNOWN_HANDLE_TIMEOUT_MIN) {
+        logger.warn(
+          `[prepare-reports ${report.id.slice(0, 8)}] user handle(s) not crawled after ` +
+            `${ageMin.toFixed(0)}m — giving up`,
+        );
+        return { status: 'failed', error: 'user_handles_not_in_corpus' };
+      }
+      if (unknownLichess.length > 0) {
+        await seedLichessHandles(games, unknownLichess, ON_DEMAND_CRAWL_PRIORITY);
+      }
+      if (unknownChesscom.length > 0) {
+        await seedChesscomHandles(games, unknownChesscom, ON_DEMAND_CRAWL_PRIORITY);
+      }
+      logger.info(
+        `[prepare-reports ${report.id.slice(0, 8)}] enqueued ${
+          unknownLichess.length + unknownChesscom.length
+        } user handle(s) for crawl; report will retry next tick (age=${ageMin.toFixed(1)}m)`,
+      );
+      return { status: 'data_pending' };
     }
 
     // 3. Check Stockfish coverage on opponent's recent games. If low, run
