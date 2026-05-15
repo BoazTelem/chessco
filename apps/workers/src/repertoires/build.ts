@@ -313,18 +313,27 @@ export async function existingRepertoireCombos(
     built_at: Date;
   }>
 > {
-  return sql<
+  // postgres.js returns timestamptz as a string when `prepare: false` is set
+  // (see apps/workers/src/db.ts). Normalize to Date at the helper boundary
+  // so callers can safely call .getTime() / compare with `>`.
+  const rows = await sql<
     Array<{
       color: 'white' | 'black';
       time_bucket: string;
-      bucket_until: Date | null;
-      built_at: Date;
+      bucket_until: string | Date | null;
+      built_at: string | Date;
     }>
   >`
     SELECT color, time_bucket, bucket_until, built_at
     FROM player_repertoires
     WHERE player_id = ${playerId}::uuid AND depth = ${depth}
   `;
+  return rows.map((r) => ({
+    color: r.color,
+    time_bucket: r.time_bucket,
+    bucket_until: r.bucket_until ? new Date(r.bucket_until) : null,
+    built_at: new Date(r.built_at),
+  }));
 }
 
 /**
@@ -342,7 +351,7 @@ export async function latestGamePlayedAt(
   handle: string,
 ): Promise<Date | null> {
   const handleLower = handle.toLowerCase();
-  const rows = await sql<{ latest: Date | null }[]>`
+  const rows = await sql<{ latest: string | Date | null }[]>`
     SELECT MAX(played_at) AS latest FROM (
       SELECT MAX(played_at) AS played_at FROM games
         WHERE source = ${platform} AND LOWER(white_handle_snapshot) = ${handleLower}
@@ -351,7 +360,8 @@ export async function latestGamePlayedAt(
         WHERE source = ${platform} AND LOWER(black_handle_snapshot) = ${handleLower}
     ) x
   `;
-  return rows[0]?.latest ?? null;
+  const latest = rows[0]?.latest;
+  return latest ? new Date(latest) : null;
 }
 
 export async function buildAndPersist(
