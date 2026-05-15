@@ -18,6 +18,8 @@ import postgres from 'postgres';
 import { getDb, getGamesDb } from '../db.js';
 import { buildAndPersist, lookupHandleId, existingRepertoireCombos } from '../repertoires/build.js';
 import { runScopedBackfillForHandle } from '../stockfish/backfill.js';
+import { seedHandles as seedChesscomHandles } from '../chesscom-crawl/queue.js';
+import { seedHandles as seedLichessHandles } from '../lichess-crawl/queue.js';
 import { inngest } from './client.js';
 
 const REPERTOIRE_DEPTH = 12;
@@ -25,11 +27,22 @@ const COVERAGE_THRESHOLD = 0.7; // 70% of recent moves must have cp_loss
 const RECENT_GAMES_FOR_COVERAGE = 100;
 const BATCH_LIMIT = 5; // reports per tick; each one can be slow (Stockfish)
 
+// Priority floor for opponents enqueued on cache miss — user-driven, so they
+// jump ahead of bulk backfill (priority 0). Stays below any future
+// "premium-tier" tier (>=200) if we add one.
+const ON_DEMAND_CRAWL_PRIORITY = 100;
+// Cap how long a report stays in data_pending waiting for a crawler. After
+// this many minutes since created_at, give up and surface the failure.
+const UNKNOWN_HANDLE_TIMEOUT_MIN = 60;
+
 interface PendingReport {
   id: string;
   requested_by: string;
   target_platform: 'lichess' | 'chess.com';
   target_handle_normalized: string;
+  /** Seconds since the report was first created — used to gate the
+   *  unknown-handle wait so we don't loop forever. */
+  age_seconds: number;
 }
 
 interface LinkedAccount {
@@ -57,7 +70,8 @@ async function claimPending(supa: postgres.Sql): Promise<PendingReport[]> {
       LIMIT ${BATCH_LIMIT}
       FOR UPDATE SKIP LOCKED
     )
-    RETURNING id::text, requested_by::text, target_platform, target_handle_normalized
+    RETURNING id::text, requested_by::text, target_platform, target_handle_normalized,
+              EXTRACT(EPOCH FROM (NOW() - created_at))::int AS age_seconds
   `;
 }
 
@@ -159,9 +173,31 @@ async function processReport(
       handle: report.target_handle_normalized,
     });
     if (opp.status === 'unknown_handle') {
-      // Handle isn't in the corpus yet (never crawled). For V1 we surface
-      // this as a soft failure; a follow-up could enqueue a crawl.
-      return { status: 'failed', error: 'opponent_not_in_corpus' };
+      // Handle isn't in the corpus yet. Auto-enqueue a crawl and keep the
+      // report in data_pending so the next poll tick can re-check once the
+      // platform crawler has filled in their games. Gate by an age cap so
+      // we surface a real failure if the crawler never catches up.
+      const ageMin = report.age_seconds / 60;
+      if (ageMin > UNKNOWN_HANDLE_TIMEOUT_MIN) {
+        logger.warn(
+          `[prepare-reports ${report.id.slice(0, 8)}] opponent ${report.target_platform}/` +
+            `${report.target_handle_normalized} not crawled after ${ageMin.toFixed(0)}m — giving up`,
+        );
+        return { status: 'failed', error: 'opponent_not_in_corpus' };
+      }
+      const seed =
+        report.target_platform === 'chess.com' ? seedChesscomHandles : seedLichessHandles;
+      const inserted = await seed(
+        games,
+        [report.target_handle_normalized],
+        ON_DEMAND_CRAWL_PRIORITY,
+      );
+      logger.info(
+        `[prepare-reports ${report.id.slice(0, 8)}] enqueued ${report.target_platform}/` +
+          `${report.target_handle_normalized} for crawl (${inserted === 1 ? 'new' : 'already queued'}); ` +
+          `report will retry next tick (age=${ageMin.toFixed(1)}m)`,
+      );
+      return { status: 'data_pending' };
     }
 
     // 2. Ensure user repertoires for each linked account.
@@ -209,13 +245,14 @@ async function processReport(
 async function pollOnce(logger: {
   info: (msg: string) => void;
   warn: (msg: string) => void;
-}): Promise<{ processed: number; ready: number; failed: number }> {
+}): Promise<{ processed: number; ready: number; failed: number; pending: number }> {
   const { client: supa } = getDb();
   const { client: games } = getGamesDb();
   try {
     const claimed = await claimPending(supa);
     let ready = 0;
     let failed = 0;
+    let pending = 0;
     for (const report of claimed) {
       const result = await processReport(supa, games, report, logger);
       if (result.status === 'ready') {
@@ -225,6 +262,15 @@ async function pollOnce(logger: {
           WHERE id = ${report.id}::uuid
         `;
         ready += 1;
+      } else if (result.status === 'data_pending') {
+        // Crawl-in-flight or other transient wait — release the claim so
+        // the next tick picks it up. completed_at stays NULL.
+        await supa`
+          UPDATE prep_reports
+          SET status = 'data_pending', error_text = NULL
+          WHERE id = ${report.id}::uuid
+        `;
+        pending += 1;
       } else {
         await supa`
           UPDATE prep_reports
@@ -234,7 +280,7 @@ async function pollOnce(logger: {
         failed += 1;
       }
     }
-    return { processed: claimed.length, ready, failed };
+    return { processed: claimed.length, ready, failed, pending };
   } finally {
     await games.end({ timeout: 5 }).catch(() => undefined);
     await supa.end({ timeout: 5 }).catch(() => undefined);
@@ -254,7 +300,8 @@ export const prepareReportsPoll = inngest.createFunction(
   async ({ logger }) => {
     const out = await pollOnce(logger);
     logger.info(
-      `[prepare-reports] tick: processed=${out.processed} ready=${out.ready} failed=${out.failed}`,
+      `[prepare-reports] tick: processed=${out.processed} ready=${out.ready} ` +
+        `pending=${out.pending} failed=${out.failed}`,
     );
     return out;
   },

@@ -194,10 +194,16 @@ export async function seedHandles(
       handle: h.toLowerCase(),
       priority,
     }));
+    // ON CONFLICT promotes priority if the incoming value is higher.
+    // Lets the on-demand prepare-reports path bump a handle ahead of the
+    // bulk-seed queue (default priority 0). RETURNING id only fires for
+    // new inserts; updates are silent (xmax=0 check filters them out).
     const result = await sql<{ id: string }[]>`
       INSERT INTO lichess_crawl_queue
         ${insert(rows, 'handle', 'priority')}
-      ON CONFLICT (handle) DO NOTHING
+      ON CONFLICT (handle) DO UPDATE SET
+        priority = GREATEST(lichess_crawl_queue.priority, EXCLUDED.priority)
+      WHERE lichess_crawl_queue.priority < EXCLUDED.priority
       RETURNING id
     `;
     inserted += result.length;
