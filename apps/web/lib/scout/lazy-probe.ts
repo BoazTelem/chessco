@@ -159,6 +159,28 @@ function normalizeClaimedName(s: string | null): string | null {
 }
 
 /**
+ * Read a cached probe hit by (platform, handle). Match is case-insensitive
+ * via `handle_normalized` so a URL like /prepare/lichess/MyPeopleOD still
+ * finds the canonical row written as `mypeopleod`.
+ */
+export async function readCachedProbeHit(
+  supabase: ReturnType<typeof createAdminClient>,
+  platform: 'lichess' | 'chess.com',
+  handle: string,
+): Promise<ProbeHit | null> {
+  const { data } = await supabase
+    .from('platform_players')
+    .select(
+      'platform, handle, handle_normalized, country, title, claimed_name, rating_bullet, rating_blitz, rating_rapid, rating_classical',
+    )
+    .eq('platform', platform)
+    .eq('handle_normalized', handle.toLowerCase())
+    .maybeSingle();
+  if (!data) return null;
+  return data as ProbeHit;
+}
+
+/**
  * Upsert probe hits so the next request for this name skips the probe.
  * `pulled_via='lazy'` is the marker for "discovered via name probe at
  * identify time" — distinct from country/titled bulk pulls.
