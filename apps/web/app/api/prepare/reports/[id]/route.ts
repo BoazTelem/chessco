@@ -116,7 +116,10 @@ export async function GET(
   const unlockedFingerprints = new Set(unlocks.map((u) => u.leak_fingerprint));
 
   const dto = (leak: Leak) => {
-    const isUnlocked = leak.kind === 'surprise' || unlockedFingerprints.has(leak.fingerprint);
+    // 'surprise' and 'own' leaks are free to view; only 'personalized'
+    // (opponent's blunder you can punish) gates behind credits.
+    const isUnlocked =
+      leak.kind === 'surprise' || leak.kind === 'own' || unlockedFingerprints.has(leak.fingerprint);
     if (isUnlocked) {
       return { ...leak, locked: false as const };
     }

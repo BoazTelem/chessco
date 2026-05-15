@@ -4,7 +4,7 @@ export interface LeakFingerprintInput {
   platform: 'lichess' | 'chess.com';
   handleNormalized: string;
   userColor: 'white' | 'black';
-  kind: 'personalized' | 'surprise';
+  kind: 'personalized' | 'surprise' | 'own';
   fenKey: string;
   userMoveUci: string;
   opponentBadMoveUci: string;

@@ -63,33 +63,62 @@ export function LeakCard({ leak, onUnlock, isUnlocking }: Props) {
     );
   }
 
-  const kindLabel = leak.kind === 'surprise' ? 'Surprise line · free' : 'Personalized leak';
+  const kindLabel =
+    leak.kind === 'surprise'
+      ? 'Surprise line · free'
+      : leak.kind === 'own'
+        ? 'Where you slip up'
+        : 'Personalized leak';
+  const borderColor = leak.kind === 'own' ? 'border-destructive/40' : 'border-accent/40';
+  const labelColor = leak.kind === 'own' ? 'text-destructive' : 'text-accent';
   const lineText =
     leak.sanPath.length > 0 ? formatLineFromSan(leak.sanPath) : '(starting position)';
 
   return (
-    <div className="rounded-lg border border-accent/40 bg-card p-4">
-      <p className="text-xs uppercase tracking-wider text-accent">{kindLabel}</p>
+    <div className={`rounded-lg border ${borderColor} bg-card p-4`}>
+      <p className={`text-xs uppercase tracking-wider ${labelColor}`}>{kindLabel}</p>
       <p className="mt-2 font-mono text-sm text-foreground">{lineText}</p>
       <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
-        {leak.userMoveSan ? (
-          <p>
-            Your move: <span className="font-semibold text-foreground">{leak.userMoveSan}</span>
-            {' → opponent often replies '}
-            <span className="font-semibold text-destructive">{leak.opponentBadMoveSan}</span>
-          </p>
+        {leak.kind === 'own' ? (
+          <>
+            <p>
+              You played <span className="font-semibold text-destructive">{leak.userMoveSan}</span>{' '}
+              here — avg cp-loss {Math.round(leak.stats.avgCpLoss)}, blunder rate{' '}
+              {formatPct(leak.stats.blunderRate)}
+            </p>
+            <p>
+              {leak.stats.gamesCount} of your game
+              {leak.stats.gamesCount === 1 ? '' : 's'} · opponent reaches this position{' '}
+              {formatPct(leak.stats.opponentReach)} of the time as their color
+            </p>
+          </>
+        ) : leak.userMoveSan ? (
+          <>
+            <p>
+              Your move: <span className="font-semibold text-foreground">{leak.userMoveSan}</span>
+              {' → opponent often replies '}
+              <span className="font-semibold text-destructive">{leak.opponentBadMoveSan}</span>
+            </p>
+            <p>
+              {leak.stats.gamesCount} game{leak.stats.gamesCount === 1 ? '' : 's'} · avg cp-loss{' '}
+              {Math.round(leak.stats.avgCpLoss)} · blunder rate {formatPct(leak.stats.blunderRate)}{' '}
+              · they pick this {formatPct(leak.stats.badMoveShare)} of the time
+            </p>
+          </>
         ) : (
-          <p>
-            Opponent plays{' '}
-            <span className="font-semibold text-destructive">{leak.opponentBadMoveSan}</span> here
-            when given the chance
-          </p>
+          <>
+            <p>
+              Opponent plays{' '}
+              <span className="font-semibold text-destructive">{leak.opponentBadMoveSan}</span> here
+              when given the chance
+            </p>
+            <p>
+              {leak.stats.gamesCount} game{leak.stats.gamesCount === 1 ? '' : 's'} · avg cp-loss{' '}
+              {Math.round(leak.stats.avgCpLoss)} · blunder rate {formatPct(leak.stats.blunderRate)}{' '}
+              · they pick this {formatPct(leak.stats.badMoveShare)} of the time
+            </p>
+          </>
         )}
-        <p>
-          {leak.stats.gamesCount} game{leak.stats.gamesCount === 1 ? '' : 's'} · avg cp-loss{' '}
-          {Math.round(leak.stats.avgCpLoss)} · blunder rate {formatPct(leak.stats.blunderRate)} ·
-          they pick this {formatPct(leak.stats.badMoveShare)} of the time
-        </p>
       </div>
     </div>
   );

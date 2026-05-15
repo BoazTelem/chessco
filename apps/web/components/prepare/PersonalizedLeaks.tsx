@@ -144,7 +144,8 @@ export function PersonalizedLeaks({ signedIn, platform, handle, loginHref }: Pro
         <h2 className="font-display text-xl font-semibold">Personalized leaks</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           Positions where {handle} has played poorly that you can reach from your own repertoire —
-          plus 2–3 surprise lines to catch them off-guard.
+          plus surprise lines to catch them off-guard, and where you tend to slip up against their
+          repertoire.
         </p>
         <div className="mt-4 flex flex-col items-start gap-3 rounded-md border border-accent/30 bg-accent/5 px-4 py-4">
           <p className="text-sm text-foreground">
@@ -195,16 +196,40 @@ export function PersonalizedLeaks({ signedIn, platform, handle, loginHref }: Pro
           </p>
         );
       }
+      const opp = list.filter((l) => l.kind === 'personalized' || l.kind === 'surprise');
+      const own = list.filter((l) => l.kind === 'own');
       return (
-        <div className="space-y-3">
-          {list.map((leak) => (
-            <LeakCard
-              key={leak.fingerprint}
-              leak={leak}
-              onUnlock={onUnlock}
-              isUnlocking={unlocking === leak.fingerprint}
-            />
-          ))}
+        <div className="space-y-5">
+          {opp.length > 0 && (
+            <div className="space-y-3">
+              <p className="text-[11px] uppercase tracking-[0.15em] text-accent">
+                Their weaknesses you can exploit
+              </p>
+              {opp.map((leak) => (
+                <LeakCard
+                  key={leak.fingerprint}
+                  leak={leak}
+                  onUnlock={onUnlock}
+                  isUnlocking={unlocking === leak.fingerprint}
+                />
+              ))}
+            </div>
+          )}
+          {own.length > 0 && (
+            <div className="space-y-3">
+              <p className="text-[11px] uppercase tracking-[0.15em] text-destructive">
+                Where you slip up vs their repertoire
+              </p>
+              {own.map((leak) => (
+                <LeakCard
+                  key={leak.fingerprint}
+                  leak={leak}
+                  onUnlock={onUnlock}
+                  isUnlocking={unlocking === leak.fingerprint}
+                />
+              ))}
+            </div>
+          )}
         </div>
       );
     }
@@ -216,7 +241,8 @@ export function PersonalizedLeaks({ signedIn, platform, handle, loginHref }: Pro
       <h2 className="font-display text-xl font-semibold">Personalized leaks</h2>
       <p className="mt-2 text-sm text-muted-foreground">
         Positions where {handle} has played poorly that you can reach from your own repertoire —
-        plus 2–3 surprise lines to catch them off-guard.
+        plus surprise lines to catch them off-guard, and where you tend to slip up against their
+        repertoire.
       </p>
 
       {payload?.status === 'ready' && (

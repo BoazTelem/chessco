@@ -290,6 +290,179 @@ function dedupeByFingerprint(
   return out;
 }
 
+/**
+ * Symmetric companion to `scoreLeaks` — finds positions where the USER has
+ * played a bad move that the OPPONENT reaches in their own games. Walks the
+ * opponent's tree to constrain reachability, looks up the user's actual moves
+ * (from the user's tree) at user-to-move plies, and checks the user's per-move
+ * cp_loss to flag mistakes.
+ *
+ * Returns leaks with kind='own'. `userMoveSan/Uci` carries the user's bad move
+ * (the leak itself); `opponentBadMoveSan/Uci` is left empty (no opponent
+ * blunder involved). Stats fields are reinterpreted in this context:
+ *   - gamesCount      → user games where they played the bad move
+ *   - badMoveShare    → fraction of times user picks this bad move here
+ *   - userReach       → user's relative reach of this position
+ *   - opponentReach   → opponent's relative reach of this position
+ */
+export function scoreOwnLeaks(args: {
+  userTree: SerializedTree;
+  opponentTree: SerializedTree;
+  userMoveQualityByFenAndUci: MoveQualityIndex;
+  opts: ScoreOptions;
+}): Leak[] {
+  const { userTree, opponentTree, userMoveQualityByFenAndUci, opts } = args;
+  const maxPlies = opts.maxPlies ?? DEFAULTS.maxPlies;
+  const minGamesCount = opts.minGamesCount ?? DEFAULTS.minGamesCount;
+  const maxPersonalized = opts.maxPersonalized ?? DEFAULTS.maxPersonalized;
+
+  const userRoot = userTree[STARTING_FEN_KEY];
+  const opponentRoot = opponentTree[STARTING_FEN_KEY];
+  const userTreeTotalWeighted = userRoot?.totalWeighted ?? sumWeighted(userTree);
+  const opponentTreeTotalWeighted = opponentRoot?.totalWeighted ?? sumWeighted(opponentTree);
+
+  if (userTreeTotalWeighted <= 0 || opponentTreeTotalWeighted <= 0) {
+    return [];
+  }
+
+  const candidates: Candidate[] = [];
+  visitOwn(
+    {
+      userTree,
+      opponentTree,
+      userMoveQualityByFenAndUci,
+      userTreeTotalWeighted,
+      opponentTreeTotalWeighted,
+      userColor: opts.userColor,
+      maxPlies,
+      minGamesCount,
+      out: candidates,
+    },
+    STARTING_FEN_KEY,
+    [],
+    0,
+    new Set<string>(),
+  );
+
+  return dedupeOwnByFingerprint(
+    candidates.sort((a, b) => b.score - a.score),
+    opts,
+  ).slice(0, maxPersonalized);
+}
+
+interface OwnDfsContext {
+  userTree: SerializedTree;
+  opponentTree: SerializedTree;
+  userMoveQualityByFenAndUci: MoveQualityIndex;
+  userTreeTotalWeighted: number;
+  opponentTreeTotalWeighted: number;
+  userColor: 'white' | 'black';
+  maxPlies: number;
+  minGamesCount: number;
+  out: Candidate[];
+}
+
+function visitOwn(
+  ctx: OwnDfsContext,
+  fenKey: string,
+  sanPath: string[],
+  plyDepth: number,
+  visited: Set<string>,
+): void {
+  if (plyDepth >= ctx.maxPlies) return;
+  if (visited.has(fenKey)) return;
+  visited.add(fenKey);
+
+  const opponentReachesHere = ctx.opponentTree[fenKey];
+  // At the root we always proceed; below the root, gate by opponent reach so
+  // we only flag positions the opponent actually visits.
+  if (plyDepth > 0 && (!opponentReachesHere || opponentReachesHere.totalGames === 0)) {
+    return;
+  }
+
+  if (isUserToMove(plyDepth, ctx.userColor)) {
+    const userNode = ctx.userTree[fenKey];
+    if (!userNode) return;
+    const opponentReach =
+      (opponentReachesHere?.totalWeighted ?? ctx.opponentTreeTotalWeighted) /
+      ctx.opponentTreeTotalWeighted;
+
+    for (const mU of Object.values(userNode.children)) {
+      const quality = ctx.userMoveQualityByFenAndUci.get(`${fenKey}|${mU.uci}`);
+      if (quality && passesQualityFloor(quality, ctx.minGamesCount)) {
+        const userReach = userNode.totalWeighted / ctx.userTreeTotalWeighted;
+        const badMoveShare = mU.gamesCount / Math.max(userNode.totalGames, 1);
+        const sev = severity(quality);
+        const score = userReach * opponentReach * badMoveShare * sev;
+        if (score > 0) {
+          ctx.out.push({
+            fenKey,
+            sanPath,
+            userMoveSan: mU.san,
+            userMoveUci: mU.uci,
+            opponentBadMoveSan: '',
+            opponentBadMoveUci: '',
+            stats: {
+              gamesCount: quality.gamesCount,
+              blunderRate: quality.blunderRate,
+              mistakeRate: quality.mistakeRate,
+              avgCpLoss: quality.avgCpLoss,
+              userReach,
+              opponentReach,
+              badMoveShare,
+            },
+            score,
+          });
+        }
+      }
+      const postFen = postFenAfter(fenKey, mU.uci);
+      if (!postFen) continue;
+      visitOwn(ctx, postFen, [...sanPath, mU.san], plyDepth + 1, visited);
+    }
+  } else {
+    const oppNode = ctx.opponentTree[fenKey];
+    if (!oppNode) return;
+    for (const mO of Object.values(oppNode.children)) {
+      const postFen = postFenAfter(fenKey, mO.uci);
+      if (!postFen) continue;
+      if (!ctx.userTree[postFen]) continue;
+      visitOwn(ctx, postFen, [...sanPath, mO.san], plyDepth + 1, visited);
+    }
+  }
+}
+
+function dedupeOwnByFingerprint(candidates: Candidate[], opts: ScoreOptions): Leak[] {
+  const seen = new Set<string>();
+  const out: Leak[] = [];
+  for (const c of candidates) {
+    const fp = leakFingerprint({
+      platform: opts.platform,
+      handleNormalized: opts.handleNormalized,
+      userColor: opts.userColor,
+      kind: 'own',
+      fenKey: c.fenKey,
+      userMoveUci: c.userMoveUci,
+      opponentBadMoveUci: '',
+    });
+    if (seen.has(fp)) continue;
+    seen.add(fp);
+    out.push({
+      fingerprint: fp,
+      fenKey: c.fenKey,
+      sanPath: c.sanPath,
+      userMoveSan: c.userMoveSan,
+      userMoveUci: c.userMoveUci,
+      opponentBadMoveSan: c.opponentBadMoveSan,
+      opponentBadMoveUci: c.opponentBadMoveUci,
+      opponentBetterMoveSan: null,
+      stats: c.stats,
+      kind: 'own',
+      score: c.score,
+    });
+  }
+  return out;
+}
+
 function scoreSurprise(args: {
   opponentTree: SerializedTree;
   moveQualityByFenAndUci: MoveQualityIndex;

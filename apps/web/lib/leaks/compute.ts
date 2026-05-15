@@ -3,8 +3,8 @@ import { getPracticeDb } from '@/lib/practice/db';
 import { loadMoveQuality } from './load-move-quality';
 import { loadRepertoireTree } from './load-trees';
 import { mergeTrees } from './merge';
-import { scoreLeaks } from './score';
-import type { Leak, Platform } from './types';
+import { scoreLeaks, scoreOwnLeaks } from './score';
+import type { Leak, MoveQualityIndex, Platform } from './types';
 
 interface LinkedAccount {
   platform: Platform;
@@ -46,6 +46,11 @@ export async function computeReportLeaks(args: {
     handleNormalized: targetHandleNormalized,
   });
 
+  // For "your own leaks": aggregate the signed-in user's move-quality across
+  // every linked account they have. Same FEN can appear from both platforms
+  // (normalized to first-4-field key) — combine by game-count-weighted blend.
+  const userMoveQuality = await loadAggregatedMoveQuality(games, linked);
+
   const colors: Array<'white' | 'black'> = ['white', 'black'];
   const out: ComputedLeaks = {
     white: [],
@@ -84,25 +89,81 @@ export async function computeReportLeaks(args: {
 
     // Isolate per-color scoring so one color's edge-case throw can't
     // empty out the other color's leaks.
+    const opts = {
+      platform: targetPlatform,
+      handleNormalized: targetHandleNormalized,
+      userColor,
+    };
+    let their: Leak[] = [];
+    let own: Leak[] = [];
     try {
-      out[userColor] = scoreLeaks({
+      their = scoreLeaks({
         userTree,
         opponentTree,
         moveQualityByFenAndUci: moveQuality,
-        opts: {
-          platform: targetPlatform,
-          handleNormalized: targetHandleNormalized,
-          userColor,
-        },
+        opts,
       });
     } catch (err) {
       console.error(
         `[computeReportLeaks] scoreLeaks threw for color=${userColor} target=${targetPlatform}/${targetHandleNormalized}:`,
         err,
       );
-      out[userColor] = [];
     }
+    try {
+      own = scoreOwnLeaks({
+        userTree,
+        opponentTree,
+        userMoveQualityByFenAndUci: userMoveQuality,
+        opts,
+      });
+    } catch (err) {
+      console.error(
+        `[computeReportLeaks] scoreOwnLeaks threw for color=${userColor} target=${targetPlatform}/${targetHandleNormalized}:`,
+        err,
+      );
+    }
+    out[userColor] = [...their, ...own];
   }
 
+  return out;
+}
+
+async function loadAggregatedMoveQuality(
+  games: ReturnType<typeof getGamesDb>,
+  linked: LinkedAccount[],
+): Promise<MoveQualityIndex> {
+  if (linked.length === 0) return new Map();
+  const perAcc = await Promise.all(
+    linked.map((acc) =>
+      loadMoveQuality({
+        games,
+        platform: acc.platform,
+        handleNormalized: acc.external_id.trim().toLowerCase(),
+      }),
+    ),
+  );
+  if (perAcc.length === 1) return perAcc[0]!;
+
+  const out: MoveQualityIndex = new Map();
+  for (const mq of perAcc) {
+    for (const [key, val] of mq) {
+      const existing = out.get(key);
+      if (!existing) {
+        out.set(key, val);
+        continue;
+      }
+      const total = existing.gamesCount + val.gamesCount;
+      if (total === 0) continue;
+      out.set(key, {
+        gamesCount: total,
+        blunderRate:
+          (existing.blunderRate * existing.gamesCount + val.blunderRate * val.gamesCount) / total,
+        mistakeRate:
+          (existing.mistakeRate * existing.gamesCount + val.mistakeRate * val.gamesCount) / total,
+        avgCpLoss:
+          (existing.avgCpLoss * existing.gamesCount + val.avgCpLoss * val.gamesCount) / total,
+      });
+    }
+  }
   return out;
 }

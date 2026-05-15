@@ -1,6 +1,11 @@
 export type Platform = 'lichess' | 'chess.com';
 export type Color = 'white' | 'black';
-export type LeakKind = 'personalized' | 'surprise';
+// 'personalized' / 'surprise': leaks in the OPPONENT's play that the user
+//   can punish — the original feature.
+// 'own': positions where the USER has played a bad move that the opponent
+//   actually reaches in their own games — "where you slip up against this
+//   opponent's repertoire." userMoveSan = the user's bad move on the row.
+export type LeakKind = 'personalized' | 'surprise' | 'own';
 
 export interface SerializedNextMove {
   san: string;
