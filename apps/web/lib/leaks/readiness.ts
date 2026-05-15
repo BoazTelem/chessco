@@ -1,6 +1,8 @@
 import postgres from 'postgres';
 import type { Platform } from './types';
 
+const DEFAULT_REPERTOIRE_DEPTH = 12;
+
 let cachedGamesDb: ReturnType<typeof postgres> | null = null;
 
 /**
@@ -111,8 +113,10 @@ export interface RepertoireReadiness {
 export async function repertoireReadiness(args: {
   platform: Platform;
   handleNormalized: string;
+  depth?: number;
 }): Promise<RepertoireReadiness> {
   const sql = getGamesDb();
+  const depth = args.depth ?? DEFAULT_REPERTOIRE_DEPTH;
   const rows = (await sql`
     SELECT pr.color
     FROM player_repertoires pr
@@ -121,6 +125,7 @@ export async function repertoireReadiness(args: {
       WHERE platform = ${args.platform}
         AND LOWER(handle) = ${args.handleNormalized}
     )
+      AND pr.depth = ${depth}
   `) as Array<{ color: 'white' | 'black' }>;
 
   let white = false;
