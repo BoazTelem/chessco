@@ -148,7 +148,7 @@ export default async function DashboardPage() {
             href="/scout"
             label="Live"
             title="Scout players"
-            body="755k+ FIDE + 6.8k Israeli (ICF) players. Search by name, country, title, rating range."
+            body="Search rated players worldwide by name, country, title, or rating range."
           />
           <LiveCard
             href="/prepare"
