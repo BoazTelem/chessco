@@ -6,7 +6,7 @@ export const metadata = {
   description: `Terms of Use for ${brand.name}. Draft v0.1 — pre-launch, not yet in force.`,
 };
 
-const EFFECTIVE_DATE = '2026-05-13';
+const EFFECTIVE_DATE = '2026-05-15';
 const SUPPORT_EMAIL = 'support@chessco.org';
 
 function Section({
@@ -63,8 +63,8 @@ export default function TermsPage() {
           </p>
           <p>
             The Service is currently in beta. All features are offered free of charge today. Paid
-            features described in our public roadmap (the practice marketplace, payouts,
-            subscriptions) are not yet operative.
+            features described in our public roadmap (subscription tiers and the in-product credits
+            economy) are not yet operative.
           </p>
         </Section>
 
@@ -102,13 +102,43 @@ export default function TermsPage() {
             between the source platform and our index.
           </p>
           <p>
-            <strong className="text-foreground">Practice</strong> and related marketplace features
-            are described in our roadmap but are not currently available. Any future paid feature
-            will require an additional click-through agreement before you can use it.
+            <strong className="text-foreground">Practice</strong> lets you publish a position from
+            your prep work and play it against another user. Free practice exchanges no credits;
+            paid practice spends 1 credit per game from the publisher and rewards the opponent 1
+            credit per completed game. Any future paid feature will require an additional
+            click-through agreement before you can use it.
           </p>
         </Section>
 
-        <Section id="acceptable-use" title="6. Acceptable use">
+        <Section id="credits" title="6. Credits">
+          <p>
+            <strong className="text-foreground">Credits</strong> are an internal, non-monetary
+            balance used to spend on and earn from features of the Service. Credits have no cash
+            value and are not money, currency, securities, or stored-value instruments. They are
+            <strong className="text-foreground">
+              {' '}
+              not redeemable, transferable, or withdrawable for cash or any other form of value
+            </strong>{' '}
+            outside the Service, and they are not subject to the rules that apply to deposit
+            accounts, prepaid access, or e-money.
+          </p>
+          <p>
+            Credits are granted to you (for example as a signup bonus, a subscription benefit, a
+            referral reward, or as a reward for completing paid practice games) and consumed when
+            you publish a paid practice challenge or unlock certain features. Subscription credits
+            expire at the end of each billing cycle; other credit grants do not expire unless we
+            disclose a different expiry at the time of the grant.
+          </p>
+          <p>
+            We may modify, suspend, expire, or revoke credit balances at any time, including to
+            address suspected abuse such as collusion, multi-account farming, fraud, or violations
+            of these Terms. We may impose caps on how many credits can be earned in a given window
+            or from a given counterpart. We are not obligated to refund credits in cash under any
+            circumstance.
+          </p>
+        </Section>
+
+        <Section id="acceptable-use" title="7. Acceptable use">
           <p>You agree not to:</p>
           <ul className="ml-5 list-disc space-y-1">
             <li>Use the Service to harass, dox, impersonate, or target any person.</li>
@@ -135,7 +165,7 @@ export default function TermsPage() {
           </ul>
         </Section>
 
-        <Section id="linked-accounts" title="7. Linked external accounts">
+        <Section id="linked-accounts" title="8. Linked external accounts">
           <p>
             When you link a chess.com or Lichess account to your {brand.name} profile, you authorize
             us to read public data about that account on an ongoing basis, plus any additional data
@@ -150,7 +180,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="user-content" title="8. User content">
+        <Section id="user-content" title="9. User content">
           <p>
             You retain ownership of any content you submit (uploaded PGNs, prep notes, profile
             details). You grant {brand.name} a worldwide, non-exclusive, royalty-free licence to
@@ -158,7 +188,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="ip" title="9. Intellectual property">
+        <Section id="ip" title="10. Intellectual property">
           <p>
             The {brand.name} name, mark, original written content, UI, and code are owned by us or
             our licensors and are protected by intellectual-property law.
@@ -172,7 +202,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="disclaimers" title="10. Disclaimers">
+        <Section id="disclaimers" title="11. Disclaimers">
           <p>
             THE SERVICE IS PROVIDED &ldquo;AS IS&rdquo; AND &ldquo;AS AVAILABLE&rdquo; WITHOUT
             WARRANTY OF ANY KIND, WHETHER EXPRESS, IMPLIED, OR STATUTORY, INCLUDING WARRANTIES OF
@@ -185,7 +215,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="liability" title="11. Limitation of liability">
+        <Section id="liability" title="12. Limitation of liability">
           <p>
             To the maximum extent permitted by law, {brand.name} and its operators will not be
             liable for any indirect, incidental, special, consequential, or punitive damages, or any
@@ -198,7 +228,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="indemnification" title="12. Indemnification">
+        <Section id="indemnification" title="13. Indemnification">
           <p>
             You agree to indemnify and hold {brand.name} and its operators harmless from any claim
             or demand, including reasonable attorneys&apos; fees, made by any third party arising
@@ -207,7 +237,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="termination" title="13. Termination">
+        <Section id="termination" title="14. Termination">
           <p>
             We may suspend or terminate your account for material breach of these Terms or for
             conduct that risks harm to the Service or to other users.
@@ -222,7 +252,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="law" title="14. Governing law & venue">
+        <Section id="law" title="15. Governing law & venue">
           <p>
             These Terms are governed by the laws of the State of Israel, without regard to
             conflict-of-laws principles. The competent courts of Tel Aviv-Yafo, Israel, have
@@ -237,7 +267,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="contact" title="15. Contact">
+        <Section id="contact" title="16. Contact">
           <p>
             Questions about these Terms? Email{' '}
             <a className="text-foreground underline" href={`mailto:${SUPPORT_EMAIL}`}>

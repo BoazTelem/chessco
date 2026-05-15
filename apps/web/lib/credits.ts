@@ -1,3 +1,4 @@
+import type { TransactionSql } from 'postgres';
 import { getPracticeDb } from '@/lib/practice/db';
 
 const LINK_BONUS_AMOUNT = 5;
@@ -6,6 +7,107 @@ const LINK_BONUS_PLATFORMS = new Set(['lichess', 'chess.com']);
 
 export const REFERRAL_BONUS_AMOUNT = 20;
 export const REFERRAL_BONUS_CAP = 100;
+
+export const PRACTICE_REWARD_AMOUNT = 1;
+// Caps prevent the slow-burn collusion vector where two accounts trade
+// practice wins to launder expiring subscription credits into non-expiring
+// practice_reward credits.
+export const PRACTICE_REWARD_DAILY_CAP = 30;
+export const PRACTICE_REWARD_PAIR_CAP_PER_WEEK = 30;
+
+export type PracticeRewardReason = 'ok' | 'daily_cap' | 'pair_cap' | 'already_granted';
+
+/**
+ * Grant 1 practice_reward credit to the opponent of a completed paid practice
+ * game. Must be called inside the settle route's existing transaction so the
+ * reward is atomic with the match settlement.
+ *
+ * Concurrency: takes an advisory transaction lock keyed on the recipient's
+ * profile id BEFORE reading the cap totals, so two settlements completing
+ * simultaneously for the same helper serialise here instead of both passing
+ * a stale cap check.
+ *
+ * Idempotency: credit_grants has UNIQUE(profile_id, source_type, source_id).
+ * source_id = matchId means each match can produce at most one reward grant
+ * per profile. We gate the wallet/ledger writes on the INSERT actually
+ * inserting (RETURNING) so a re-settle of the same match cannot double-credit.
+ */
+export async function grantPracticeReward(
+  tx: TransactionSql<Record<string, never>>,
+  args: { profileId: string; counterpartProfileId: string; matchId: string },
+): Promise<{ granted: number; reason: PracticeRewardReason }> {
+  const { profileId, counterpartProfileId, matchId } = args;
+
+  // Serialise cap checks for this helper. Matches the pattern used by
+  // grantLinkCredits / grantReferralCredits above.
+  await tx`SELECT pg_advisory_xact_lock(hashtext(${profileId})::bigint)`;
+
+  const dailyRows = (await tx`
+    SELECT COALESCE(SUM(amount), 0)::int AS total
+    FROM credit_ledger_entries
+    WHERE profile_id = ${profileId}
+      AND category = 'practice_reward'
+      AND created_at >= NOW() - INTERVAL '24 hours'
+  `) as Array<{ total: number }>;
+  const dailyTotal = Number(dailyRows[0]?.total ?? 0);
+  if (dailyTotal + PRACTICE_REWARD_AMOUNT > PRACTICE_REWARD_DAILY_CAP) {
+    return { granted: 0, reason: 'daily_cap' };
+  }
+
+  const pairRows = (await tx`
+    SELECT COALESCE(SUM(amount), 0)::int AS total
+    FROM credit_ledger_entries
+    WHERE profile_id = ${profileId}
+      AND counterpart_profile_id = ${counterpartProfileId}
+      AND category = 'practice_reward'
+      AND created_at >= NOW() - INTERVAL '7 days'
+  `) as Array<{ total: number }>;
+  const pairTotal = Number(pairRows[0]?.total ?? 0);
+  if (pairTotal + PRACTICE_REWARD_AMOUNT > PRACTICE_REWARD_PAIR_CAP_PER_WEEK) {
+    return { granted: 0, reason: 'pair_cap' };
+  }
+
+  // Insert the grant and only proceed with the wallet/ledger writes if the
+  // insert actually happened. If a prior settlement of the same match
+  // already created the grant, RETURNING is empty and we exit early instead
+  // of double-crediting.
+  const inserted = (await tx`
+    INSERT INTO credit_grants (
+      profile_id, source_type, source_id, amount, metadata
+    ) VALUES (
+      ${profileId}, 'practice_reward', ${matchId}, ${PRACTICE_REWARD_AMOUNT},
+      ${JSON.stringify({ counterpart_profile_id: counterpartProfileId })}::jsonb
+    )
+    ON CONFLICT (profile_id, source_type, source_id) DO NOTHING
+    RETURNING id
+  `) as Array<{ id: string }>;
+  if (inserted.length === 0) {
+    return { granted: 0, reason: 'already_granted' };
+  }
+
+  await tx`
+    INSERT INTO wallets (profile_id) VALUES (${profileId})
+    ON CONFLICT (profile_id) DO NOTHING
+  `;
+
+  await tx`
+    UPDATE wallets
+    SET credit_available = credit_available + ${PRACTICE_REWARD_AMOUNT}
+    WHERE profile_id = ${profileId}
+  `;
+
+  await tx`
+    INSERT INTO credit_ledger_entries (
+      profile_id, direction, amount, category,
+      reference_type, reference_id, counterpart_profile_id, metadata
+    ) VALUES (
+      ${profileId}, 'C', ${PRACTICE_REWARD_AMOUNT}, 'practice_reward',
+      'match', ${matchId}, ${counterpartProfileId}, NULL
+    )
+  `;
+
+  return { granted: PRACTICE_REWARD_AMOUNT, reason: 'ok' };
+}
 
 export async function grantLinkCredits(
   profileId: string,

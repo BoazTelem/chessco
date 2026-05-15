@@ -23,11 +23,7 @@ export default async function PracticeCreatePage() {
   const sql = getPracticeDb();
   const [{ data: wallet }, { data: linked }, { data: ratingRow }, referralRows] = await Promise.all(
     [
-      supabase
-        .from('wallets')
-        .select('available_cents, credit_available')
-        .eq('profile_id', user.id)
-        .maybeSingle(),
+      supabase.from('wallets').select('credit_available').eq('profile_id', user.id).maybeSingle(),
       supabase
         .from('external_accounts')
         .select('rating_rapid, rating_blitz, rating_classical')
@@ -67,13 +63,12 @@ export default async function PracticeCreatePage() {
             Create a position
           </h1>
           <p className="text-sm text-muted-foreground">
-            Set up any FEN, choose a time control and fee. Strong opponents will pick it up from the
-            lobby and play it against you.
+            Set up any FEN, choose a time control, and publish free or paid practice. Strong
+            opponents will pick it up from the lobby and play it against you.
           </p>
         </div>
 
         <CreatePositionForm
-          walletAvailableCents={wallet?.available_cents ?? 0}
           creditAvailable={wallet?.credit_available ?? 0}
           userRating={userRating}
           referralCode={referralCode}

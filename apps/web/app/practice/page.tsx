@@ -6,9 +6,9 @@ import { LobbyLiveUpdates } from '@/components/practice/LobbyLiveUpdates';
 import { SegmentedLinks } from '@/components/ui/SegmentedControl';
 
 export const metadata = {
-  title: 'Practice — paid play from any position',
+  title: 'Practice — play any position',
   description:
-    'Browse positions chess players are paying to practice. Accept a challenge and earn for playing the game.',
+    'Browse positions chess players want to drill. Accept a challenge for free practice or to earn a credit per game.',
 };
 
 // No page-level `revalidate`: getUser() reads cookies, mixing with revalidate
@@ -16,7 +16,6 @@ export const metadata = {
 
 type SearchParams = {
   time_class?: string;
-  min_fee?: string;
   opening?: string;
 };
 
@@ -29,7 +28,6 @@ export default async function PracticeLobbyPage({
 }) {
   const params = await searchParams;
   const timeClassFilter = ALLOWED_CLASSES.has(params.time_class ?? '') ? params.time_class! : null;
-  const minFeeCents = params.min_fee ? Math.max(0, Math.floor(Number(params.min_fee) * 100)) : null;
   const openingFilter = params.opening?.trim() || null;
 
   const user = await getUser();
@@ -52,7 +50,6 @@ export default async function PracticeLobbyPage({
     .limit(60);
 
   if (timeClassFilter) query = query.eq('time_class', timeClassFilter);
-  if (minFeeCents !== null) query = query.gte('fee_cents', minFeeCents);
   if (openingFilter) query = query.eq('opening_name', openingFilter);
 
   // Second query: distinct opening names across all open challenges for the
@@ -119,11 +116,11 @@ export default async function PracticeLobbyPage({
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-accent">Practice</p>
           <h1 className="font-display text-3xl font-bold tracking-tight md:text-4xl">
-            Get paid to play a position
+            Play any position
           </h1>
           <p className="text-sm text-muted-foreground md:text-base">
-            A player wants to drill a specific position. You accept, you play — and you keep the fee
-            whatever the result.
+            A player wants to drill a specific position. Free practice is just for fun and rating.
+            Paid practice pays you 1 credit per game you finish.
           </p>
         </div>
 

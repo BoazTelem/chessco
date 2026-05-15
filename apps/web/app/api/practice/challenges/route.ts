@@ -1,7 +1,12 @@
 /**
  * POST /api/practice/challenges — create a Practice challenge (position +
- * time control + fee). Authenticated. Reserves the creator's deposit by
- * moving available_cents → pending_cents on their wallet.
+ * time control + free-or-paid). Authenticated.
+ *
+ * Under the credits-only pivot (migration 0039), challenges are either:
+ *   - free practice (mode='free', credit_cost=0, no reservation)
+ *   - paid practice (mode='paid', credit_cost=games_requested, reserves
+ *     games_requested credits from the creator's wallet — exactly 1
+ *     credit per requested game).
  *
  * Body: see PracticeChallengeInput below.
  * Returns: { id } on success.
@@ -22,13 +27,12 @@ const Input = z.object({
   creatorColor: z.enum(['w', 'b']).nullable(),
   timeControl: z.string().regex(TIME_CONTROL_RE, 'time_control must look like "5+0"'),
   timeClass: z.enum(TIME_CLASS),
-  feeCents: z.number().int().min(0).max(50_000), // $0 credits-only .. $500 cash
+  mode: z.enum(['free', 'paid']),
   gamesRequested: z.number().int().min(1).max(5),
   ratingMin: z.number().int().min(0).max(3500).nullable(),
   ratingMax: z.number().int().min(0).max(3500).nullable(),
   notes: z.string().max(500).optional().nullable(),
   anonymous: z.boolean().optional(),
-  fundingType: z.enum(['cash', 'credits']).optional(),
 });
 
 export type PracticeChallengeInput = z.infer<typeof Input>;
@@ -65,29 +69,13 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: `position invalid: ${fenCheck.reason}` }, { status: 400 });
   }
 
-  if (parsed.feeCents > 0 && parsed.fundingType === 'credits') {
-    return NextResponse.json(
-      { error: 'credit-funded challenges cannot include a cash fee' },
-      { status: 400 },
-    );
-  }
-
-  const fundingType: 'cash' | 'credits' | null =
-    parsed.feeCents > 0 ? 'cash' : parsed.fundingType === 'credits' ? 'credits' : null;
-  if (!fundingType) {
-    return NextResponse.json(
-      { error: 'Publishing requires either a cash fee or credits.' },
-      { status: 402 },
-    );
-  }
-
   // The board is the source of truth for the opening — derive name + ECO from
   // the FEN against the bundled book. Most user-published positions aren't
   // book lines and return null, which the lobby renders as no opening label.
   const detected = detectOpening(fenCheck.fen);
 
-  const totalCents = fundingType === 'cash' ? parsed.feeCents * parsed.gamesRequested : 0;
-  const creditCost = fundingType === 'credits' ? parsed.gamesRequested : 0;
+  const isPaid = parsed.mode === 'paid';
+  const creditCost = isPaid ? parsed.gamesRequested : 0;
   const sql = getPracticeDb();
 
   // Snapshot the creator's best-known rating at publish time, so the lobby
@@ -117,28 +105,19 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   try {
     const result = (await sql.begin(async (tx) => {
-      // Lock the wallet row; ensure sufficient available_cents.
+      // Lock the wallet row; ensure sufficient credit_available for paid mode.
       const wallets = (await tx`
-        SELECT available_cents, credit_available FROM wallets WHERE profile_id = ${user.id} FOR UPDATE
-      `) as Array<{ available_cents: number; credit_available: number }>;
+        SELECT credit_available FROM wallets WHERE profile_id = ${user.id} FOR UPDATE
+      `) as Array<{ credit_available: number }>;
       const wallet = wallets[0];
       if (!wallet) throw new HttpError(400, 'no wallet on file');
-      if (fundingType === 'cash' && wallet.available_cents < totalCents) {
-        throw new HttpError(402, `insufficient balance — need $${(totalCents / 100).toFixed(2)}`);
-      }
-      if (fundingType === 'credits' && wallet.credit_available < creditCost) {
+      if (isPaid && wallet.credit_available < creditCost) {
         throw new HttpError(402, `insufficient credits - need ${creditCost}`);
       }
 
-      // Reserve the creator's funding source while the challenge is open.
-      if (fundingType === 'cash') {
-        await tx`
-          UPDATE wallets
-          SET available_cents = available_cents - ${totalCents},
-              pending_cents = pending_cents + ${totalCents}
-          WHERE profile_id = ${user.id}
-        `;
-      } else {
+      // Reserve the creator's credits while the challenge is open. Free
+      // practice has no reservation and no ledger entry.
+      if (isPaid) {
         await tx`
           UPDATE wallets
           SET credit_available = credit_available - ${creditCost},
@@ -155,16 +134,16 @@ export async function POST(req: Request): Promise<NextResponse> {
         ) VALUES (
           ${user.id}, ${fenCheck.fen}, ${parsed.pgnPrefix ?? null}, ${parsed.creatorColor},
           ${parsed.timeControl}, ${parsed.timeClass},
-          ${fundingType === 'cash' ? parsed.feeCents : 0}, 'USD', ${parsed.ratingMin}, ${parsed.ratingMax},
+          0, 'USD', ${parsed.ratingMin}, ${parsed.ratingMax},
           ${parsed.gamesRequested}, ${parsed.notes ?? null},
           ${detected?.name ?? null}, ${detected?.ecoCode ?? null},
-          ${parsed.anonymous ?? false}, ${creatorRating}, ${fundingType}, ${creditCost}
+          ${parsed.anonymous ?? false}, ${creatorRating}, 'credits', ${creditCost}
         )
         RETURNING id
       `) as Array<{ id: string }>;
       const row = inserted[0];
       if (!row) throw new HttpError(500, 'insert failed');
-      if (fundingType === 'credits' && creditCost > 0) {
+      if (isPaid) {
         await tx`
           INSERT INTO credit_ledger_entries (
             profile_id, direction, amount, category, reference_type, reference_id, metadata

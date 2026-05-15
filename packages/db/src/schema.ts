@@ -623,12 +623,18 @@ export const creditLedgerEntries = pgTable(
         | 'manual_adjustment'
         | 'referral_bonus'
         | 'prep_leak_reveal'
+        | 'practice_reward'
+        | 'subscription_grant'
+        | 'cycle_expiry'
       >()
       .notNull(),
     referenceType: text('reference_type').$type<
       'external_account' | 'challenge' | 'match' | 'manual' | 'profile' | 'prep_leak_unlock'
     >(),
     referenceId: text('reference_id'),
+    counterpartProfileId: uuid('counterpart_profile_id').references(() => profiles.id, {
+      onDelete: 'set null',
+    }),
     metadata: jsonb('metadata'),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
   },
@@ -643,7 +649,14 @@ export const creditGrants = pgTable(
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
     sourceType: text('source_type')
-      .$type<'external_account_link' | 'manual' | 'referral'>()
+      .$type<
+        | 'external_account_link'
+        | 'manual'
+        | 'referral'
+        | 'practice_reward'
+        | 'subscription'
+        | 'signup_bonus'
+      >()
       .notNull(),
     sourceId: text('source_id').notNull(),
     amount: integer('amount').notNull(),

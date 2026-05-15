@@ -114,7 +114,12 @@ export function LobbyCard({
       : null;
 
   const remaining = challenge.games_requested - challenge.games_completed;
-  const isCreditPractice = challenge.funding_type === 'credits';
+  // Legacy cash challenges still flow through here while in-flight matches
+  // settle. Treat anything with fee_cents > 0 as legacy cash; everything else
+  // is the new world (free if credit_cost === 0, paid otherwise).
+  const isLegacyCash = challenge.fee_cents > 0;
+  const isFreePractice = !isLegacyCash && challenge.credit_cost === 0;
+  const isPaidPractice = !isLegacyCash && challenge.credit_cost > 0;
 
   return (
     <article className="rounded-lg border border-border bg-card p-4">
@@ -160,16 +165,32 @@ export function LobbyCard({
               )}
             </div>
             <div className="shrink-0 text-right">
-              <p
-                className={`font-display text-2xl font-bold tabular-nums ${
-                  isCreditPractice ? 'text-muted-foreground' : ''
-                }`}
-              >
-                {isCreditPractice ? 'Credit' : `$${(challenge.fee_cents / 100).toFixed(2)}`}
-              </p>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                {isCreditPractice ? 'practice' : 'per game'}
-              </p>
+              {isFreePractice ? (
+                <>
+                  <p className="font-display text-2xl font-bold tabular-nums text-muted-foreground">
+                    Free
+                  </p>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    practice
+                  </p>
+                </>
+              ) : isPaidPractice ? (
+                <>
+                  <p className="font-display text-2xl font-bold tabular-nums">1</p>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    credit per game
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-display text-2xl font-bold tabular-nums">
+                    ${(challenge.fee_cents / 100).toFixed(2)}
+                  </p>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    per game
+                  </p>
+                </>
+              )}
             </div>
           </header>
 
@@ -198,9 +219,11 @@ export function LobbyCard({
               >
                 {accepting
                   ? 'Accepting...'
-                  : isCreditPractice
-                    ? 'Accept - practice'
-                    : `Accept - earn $${(challenge.fee_cents / 100).toFixed(2)}`}
+                  : isFreePractice
+                    ? 'Accept - free practice'
+                    : isPaidPractice
+                      ? 'Accept - earn 1 credit per game'
+                      : `Accept - earn $${(challenge.fee_cents / 100).toFixed(2)}`}
               </button>
             )}
           </footer>

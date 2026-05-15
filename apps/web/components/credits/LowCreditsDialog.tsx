@@ -3,10 +3,11 @@
 /**
  * LowCreditsDialog — shown when a Practice action is blocked by HTTP 402
  * insufficient-credits. Offers two recovery paths: invite friends (20 credits
- * per verified signup, capped at 100) and buy credits (stub for now; Stripe
- * checkout is a follow-up).
+ * per verified signup, capped at 100) and earn by playing other players'
+ * paid practice in the lobby. Subscription upgrade is a Phase 1 follow-up.
  */
 
+import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 
 const REFERRAL_BONUS_PER_FRIEND = 20;
@@ -148,23 +149,23 @@ export function LowCreditsDialog({
 
           {capReached && (
             <p className="mt-2 text-xs text-muted-foreground">
-              You&apos;ve hit the referral cap. Buy credits below to keep going.
+              You&apos;ve hit the referral cap. Earn more by playing paid practice below.
             </p>
           )}
         </section>
 
         <section className="mt-3 rounded-md border border-border p-3">
-          <h3 className="font-semibold">Buy credits</h3>
+          <h3 className="font-semibold">Earn by practice</h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            One-off credit packs are coming soon. Invite friends for now.
+            Accept paid practice challenges in the lobby. You earn 1 credit for each completed game.
           </p>
-          <button
-            type="button"
-            disabled
-            className="mt-2 w-full rounded-md bg-accent/40 px-3 py-2 text-xs font-semibold text-accent-foreground opacity-60"
+          <Link
+            href="/practice"
+            onClick={onClose}
+            className="mt-2 inline-block w-full rounded-md bg-accent px-3 py-2 text-center text-xs font-semibold text-accent-foreground"
           >
-            Buy credits — coming soon
-          </button>
+            Browse the practice lobby
+          </Link>
         </section>
       </div>
     </div>

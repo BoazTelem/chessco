@@ -1,22 +1,25 @@
 /**
  * POST /api/practice/settle — called by the realtime server when a game
- * ends. Runs the ledger settlement inside one transaction:
+ * ends. Under the credits-only pivot (migration 0039) new challenges are
+ * always credit-funded, either free (credit_cost = 0) or paid at exactly
+ * 1 credit per game (credit_cost = games_requested). Legacy cash and
+ * legacy arbitrary-stake credit rows (created before the cutoff) still
+ * settle through the old code paths so in-flight matches don't break.
  *
  *   Clean ending (checkmate, draw, resign, timeout, creator_abandoned):
- *     D escrow / C opponent_user_wallet  category=match_payout
- *     opponent's wallet.available_cents += fee_cents
- *     matches.status = 'completed', settled_at = NOW()
+ *     Legacy cash: D escrow / C opponent wallet (match_payout, USD)
+ *     Paid credit: D creator credit_pending (challenge_consume)
+ *                  + C opponent credit_available (practice_reward,
+ *                    subject to daily / per-pair caps)
+ *     Free credit: no ledger movement
  *     ratings.paid_games_completed++ for both participants
  *
  *   opponent_abandoned:
- *     D escrow / C creator_user_wallet  category=refund
- *     creator's wallet.available_cents += fee_cents
- *     matches.status = 'abandoned'
- *     ratings.paid_games_abandoned++ for opponent
- *     Also insert an auto-approved refund_requests row for the audit trail.
+ *     Refund creator (cash or credit). No opponent reward.
+ *     ratings.paid_games_abandoned++ for opponent.
  *
  *   aborted (game never started):
- *     D escrow / C creator_user_wallet (no rating change)
+ *     Return escrow / reserved credit to creator. No rating change.
  *
  * Idempotent: matches.settled_at IS NOT NULL → return 200 ok without doing
  * anything.
@@ -26,6 +29,7 @@
  */
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { grantPracticeReward } from '@/lib/credits';
 import { getPracticeDb } from '@/lib/practice/db';
 
 const Input = z.object({
@@ -89,10 +93,12 @@ export async function POST(req: Request): Promise<NextResponse> {
       if (m.settled_at) return; // idempotent
 
       const txnId = crypto.randomUUID();
-      const creditPerGame =
-        m.funding_type === 'credits' && m.credit_cost > 0 && m.games_requested > 0
-          ? Math.max(1, Math.floor(m.credit_cost / m.games_requested))
-          : 0;
+      // Under the credits-only pivot, paid credit games consume exactly 1
+      // credit per settle call. Legacy rows (created before the pivot
+      // cutoff) may have arbitrary credit_cost values but settle at 1/game
+      // — close enough for in-flight stragglers in dev.
+      const isPaidCreditGame = m.funding_type === 'credits' && m.credit_cost > 0;
+      const creditPerGame = isPaidCreditGame ? 1 : 0;
 
       if (body.termination === 'opponent_abandoned') {
         // Refund the creator. Credit-funded games return the reserved credit.
@@ -202,6 +208,14 @@ export async function POST(req: Request): Promise<NextResponse> {
               ${JSON.stringify({ termination: body.termination })}::jsonb
             )
           `;
+          // Opponent earns 1 practice_reward credit (subject to abuse caps).
+          // Rejection here doesn't fail the settlement — the match still
+          // closes; the opponent just doesn't get the reward for this one.
+          await grantPracticeReward(tx, {
+            profileId: m.opponent_id,
+            counterpartProfileId: m.creator_id,
+            matchId: m.id,
+          });
         }
         await tx`
           UPDATE ratings SET paid_games_completed = paid_games_completed + 1

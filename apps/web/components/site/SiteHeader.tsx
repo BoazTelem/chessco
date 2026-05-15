@@ -30,6 +30,12 @@ export async function SiteHeader() {
           <Link href="/practice" className="text-muted-foreground hover:text-foreground">
             Practice
           </Link>
+          <Link href="/hall-of-fame" className="text-muted-foreground hover:text-foreground">
+            Hall of Fame
+          </Link>
+          <Link href="/pricing" className="text-muted-foreground hover:text-foreground">
+            Pricing
+          </Link>
         </nav>
 
         <nav className="flex items-center gap-3 text-sm">
