@@ -16,7 +16,12 @@
  */
 import postgres from 'postgres';
 import { getDb, getGamesDb } from '../db.js';
-import { buildAndPersist, lookupHandleId, existingRepertoireCombos } from '../repertoires/build.js';
+import {
+  buildAndPersist,
+  lookupHandleId,
+  existingRepertoireCombos,
+  latestGamePlayedAt,
+} from '../repertoires/build.js';
 import { runScopedBackfillForHandle } from '../stockfish/backfill.js';
 import { seedHandles as seedChesscomHandles } from '../chesscom-crawl/queue.js';
 import { seedHandles as seedLichessHandles } from '../lichess-crawl/queue.js';
@@ -26,6 +31,16 @@ const REPERTOIRE_DEPTH = 12;
 const COVERAGE_THRESHOLD = 0.7; // 70% of recent moves must have cp_loss
 const RECENT_GAMES_FOR_COVERAGE = 100;
 const BATCH_LIMIT = 5; // reports per tick; each one can be slow (Stockfish)
+
+// Staleness rules for cached repertoires:
+//  · If any game in the corpus is newer than the all-time bucket_until by
+//    more than STALENESS_GRACE_MS, rebuild. Grace prevents thrashing when
+//    a target plays a game and the user refreshes immediately.
+//  · If the all-time bucket's built_at is older than ROLLING_BUCKET_MAX_AGE_MS
+//    with no new games, rebuild anyway — the rolling buckets (recent_3mo etc.)
+//    silently drift past their window otherwise.
+const STALENESS_GRACE_MS = 60 * 60 * 1000; // 1 hour
+const ROLLING_BUCKET_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 // Priority floor for opponents enqueued on cache miss — user-driven, so they
 // jump ahead of bulk backfill (priority 0). Stays below any future
@@ -92,16 +107,81 @@ async function ensureRepertoires(args: {
   games: postgres.Sql;
   platform: 'lichess' | 'chess.com';
   handle: string;
-}): Promise<{ status: 'built' | 'unknown_handle'; whiteGames: number; blackGames: number }> {
+  logger?: { info: (msg: string) => void };
+}): Promise<{
+  status: 'built' | 'unknown_handle';
+  whiteGames: number;
+  blackGames: number;
+  rebuilt: boolean;
+  reason?: 'missing' | 'new_games' | 'rolling_bucket_age';
+}> {
   const lookup = await lookupHandleId(args.games, args.platform, args.handle);
-  if (!lookup) return { status: 'unknown_handle', whiteGames: 0, blackGames: 0 };
+  if (!lookup) {
+    return { status: 'unknown_handle', whiteGames: 0, blackGames: 0, rebuilt: false };
+  }
 
   const existing = await existingRepertoireCombos(args.games, lookup.id, REPERTOIRE_DEPTH);
   const haveWhite = existing.some((r) => r.color === 'white');
   const haveBlack = existing.some((r) => r.color === 'black');
-  if (haveWhite && haveBlack) {
-    return { status: 'built', whiteGames: 0, blackGames: 0 };
+
+  // Decide whether to (re)build. Three reasons:
+  //  1. missing — at least one color has no row at this depth
+  //  2. new_games — corpus has games newer than the all-time bucket_until
+  //  3. rolling_bucket_age — the all-time row is older than the rolling
+  //     window cap, so recent_3mo/recent_12mo are silently drifting
+  let reason: 'missing' | 'new_games' | 'rolling_bucket_age' | null = null;
+  if (!haveWhite || !haveBlack) {
+    reason = 'missing';
+  } else {
+    // Pick the all_time row per color — it has the widest bucket_until
+    // (= NOW() at build time). If only rolling buckets exist (shouldn't
+    // happen given buildAndPersist writes them all), fall back to the
+    // newest bucket_until across all rows of that color.
+    const newestBucketUntil = (color: 'white' | 'black'): Date | null => {
+      const rows = existing.filter((r) => r.color === color && r.bucket_until !== null);
+      if (rows.length === 0) return null;
+      let max = rows[0]!.bucket_until!;
+      for (const r of rows) if (r.bucket_until! > max) max = r.bucket_until!;
+      return max;
+    };
+    const oldestBuiltAt = (color: 'white' | 'black'): Date | null => {
+      const rows = existing.filter((r) => r.color === color);
+      if (rows.length === 0) return null;
+      let min = rows[0]!.built_at;
+      for (const r of rows) if (r.built_at < min) min = r.built_at;
+      return min;
+    };
+
+    const whiteUntil = newestBucketUntil('white');
+    const blackUntil = newestBucketUntil('black');
+    const minUntil =
+      whiteUntil && blackUntil
+        ? whiteUntil < blackUntil
+          ? whiteUntil
+          : blackUntil
+        : (whiteUntil ?? blackUntil);
+
+    const latest = await latestGamePlayedAt(args.games, args.platform, args.handle);
+    if (latest && minUntil && latest.getTime() > minUntil.getTime() + STALENESS_GRACE_MS) {
+      reason = 'new_games';
+    } else {
+      const whiteAge = oldestBuiltAt('white');
+      const blackAge = oldestBuiltAt('black');
+      const oldestAge =
+        whiteAge && blackAge ? (whiteAge < blackAge ? whiteAge : blackAge) : (whiteAge ?? blackAge);
+      if (oldestAge && Date.now() - oldestAge.getTime() > ROLLING_BUCKET_MAX_AGE_MS) {
+        reason = 'rolling_bucket_age';
+      }
+    }
   }
+
+  if (!reason) {
+    return { status: 'built', whiteGames: 0, blackGames: 0, rebuilt: false };
+  }
+
+  args.logger?.info(
+    `[ensureRepertoires] ${args.platform}/${args.handle} rebuilding (reason=${reason})`,
+  );
   const stats = await buildAndPersist(
     args.games,
     lookup.id,
@@ -113,6 +193,8 @@ async function ensureRepertoires(args: {
     status: 'built',
     whiteGames: stats.games_white,
     blackGames: stats.games_black,
+    rebuilt: true,
+    reason,
   };
 }
 
@@ -171,6 +253,7 @@ async function processReport(
       games,
       platform: report.target_platform,
       handle: report.target_handle_normalized,
+      logger,
     });
     if (opp.status === 'unknown_handle') {
       // Handle isn't in the corpus yet. Auto-enqueue a crawl and keep the
@@ -212,6 +295,7 @@ async function processReport(
         games,
         platform: acc.platform,
         handle: acc.external_id,
+        logger,
       });
       if (res.status === 'unknown_handle') {
         if (acc.platform === 'lichess') unknownLichess.push(acc.external_id);

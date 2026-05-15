@@ -297,17 +297,61 @@ export async function lookupHandleId(
 /**
  * Returns the time-bucket × color combos already present in
  * player_repertoires for this handle. Used by the leaks worker to decide
- * whether to (re)build before scoring.
+ * whether to (re)build before scoring. `bucket_until` and `built_at` let
+ * the caller detect staleness — if new games exist in the corpus after
+ * the all_time `bucket_until`, the tree needs a rebuild.
  */
 export async function existingRepertoireCombos(
   sql: postgres.Sql,
   playerId: string,
   depth: number,
-): Promise<Array<{ color: 'white' | 'black'; time_bucket: string }>> {
-  return sql<Array<{ color: 'white' | 'black'; time_bucket: string }>>`
-    SELECT color, time_bucket FROM player_repertoires
+): Promise<
+  Array<{
+    color: 'white' | 'black';
+    time_bucket: string;
+    bucket_until: Date | null;
+    built_at: Date;
+  }>
+> {
+  return sql<
+    Array<{
+      color: 'white' | 'black';
+      time_bucket: string;
+      bucket_until: Date | null;
+      built_at: Date;
+    }>
+  >`
+    SELECT color, time_bucket, bucket_until, built_at
+    FROM player_repertoires
     WHERE player_id = ${playerId}::uuid AND depth = ${depth}
   `;
+}
+
+/**
+ * Most recent `games.played_at` for a (platform, handle) pair across both
+ * colors. Used by the leaks worker to compare against `bucket_until` of an
+ * existing repertoire — if the corpus has games newer than the tree, the
+ * tree is stale and needs a rebuild.
+ *
+ * Returns null if the handle has zero games. UNION ALL keeps the planner
+ * on the games_white_handle_snap_idx / games_black_handle_snap_idx indexes.
+ */
+export async function latestGamePlayedAt(
+  sql: postgres.Sql,
+  platform: string,
+  handle: string,
+): Promise<Date | null> {
+  const handleLower = handle.toLowerCase();
+  const rows = await sql<{ latest: Date | null }[]>`
+    SELECT MAX(played_at) AS latest FROM (
+      SELECT MAX(played_at) AS played_at FROM games
+        WHERE source = ${platform} AND LOWER(white_handle_snapshot) = ${handleLower}
+      UNION ALL
+      SELECT MAX(played_at) FROM games
+        WHERE source = ${platform} AND LOWER(black_handle_snapshot) = ${handleLower}
+    ) x
+  `;
+  return rows[0]?.latest ?? null;
 }
 
 export async function buildAndPersist(
