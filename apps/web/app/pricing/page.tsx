@@ -320,12 +320,15 @@ export default function PricingPage() {
           </div>
           <div>
             <p className="font-display text-sm font-semibold uppercase tracking-[0.3em] text-accent">
-              Honest pitch
+              Community
             </p>
-            <h3 className="mt-2 font-display text-lg font-semibold">Never a cash-out</h3>
+            <h3 className="mt-2 font-display text-lg font-semibold">Make the Hall of Fame</h3>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              Credits never become money. They keep you on the platform: more prep, more practice,
-              fewer paywalls. The earn-credits loop is a retention reward — not a side income.
+              The players who help others practice the most show up on the{' '}
+              <Link href="/hall-of-fame" className="text-foreground underline hover:text-accent">
+                Hall of Fame
+              </Link>
+              . Accept paid challenges, finish games, climb the board.
             </p>
           </div>
         </section>
