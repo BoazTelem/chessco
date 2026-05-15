@@ -35,6 +35,7 @@
     "features:card": "tsx src/features/cardinality.ts",
     "features:inspect": "tsx src/features/inspect.ts",
     "eval:repertoire": "tsx src/eval/repertoire-benchmark.ts",
+    "eval:cascade": "tsx src/eval/sparse-cascade-benchmark.ts",
     "stage3": "tsx src/stage3/run.ts",
     "llm:smoke": "tsx src/scout/llm-smoke.ts",
     "games-db:migrate": "tsx src/games-db-migrate.ts",
