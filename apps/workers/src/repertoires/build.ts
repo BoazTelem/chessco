@@ -352,7 +352,7 @@ export async function latestGamePlayedAt(
 ): Promise<Date | null> {
   const handleLower = handle.toLowerCase();
   const rows = await sql<{ latest: string | Date | null }[]>`
-    SELECT MAX(played_at) AS latest FROM (
+    SELECT MAX(played_at)::timestamptz AS latest FROM (
       SELECT MAX(played_at) AS played_at FROM games
         WHERE source = ${platform} AND LOWER(white_handle_snapshot) = ${handleLower}
       UNION ALL
