@@ -451,7 +451,7 @@ function CandidateCard({
 
       <div className="mt-4 flex flex-col gap-3 border-t border-border/60 pt-3 md:flex-row md:items-start md:justify-between">
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-          Is this result right?
+          We need your feedback to improve:
         </span>
         <ConfirmButtons
           candidateId={c.id}

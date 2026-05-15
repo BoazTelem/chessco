@@ -12,16 +12,10 @@ const FEEDBACK_OPTIONS: Array<{
   idleClass: string;
 }> = [
   {
-    value: 'correct',
-    label: '100% right',
-    activeClass: 'border-emerald-500/50 bg-emerald-500/15 text-emerald-500',
-    idleClass: 'border-emerald-500/30 bg-emerald-500/5 text-emerald-500',
-  },
-  {
-    value: 'probably_correct',
-    label: 'Feels right',
-    activeClass: 'border-lime-500/50 bg-lime-500/15 text-lime-500',
-    idleClass: 'border-border bg-background text-muted-foreground hover:text-lime-500',
+    value: 'wrong',
+    label: '100% wrong',
+    activeClass: 'border-rose-500/50 bg-rose-500/15 text-rose-500',
+    idleClass: 'border-rose-500/30 bg-rose-500/5 text-rose-500',
   },
   {
     value: 'probably_wrong',
@@ -30,10 +24,16 @@ const FEEDBACK_OPTIONS: Array<{
     idleClass: 'border-border bg-background text-muted-foreground hover:text-amber-500',
   },
   {
-    value: 'wrong',
-    label: '100% wrong',
-    activeClass: 'border-rose-500/50 bg-rose-500/15 text-rose-500',
-    idleClass: 'border-rose-500/30 bg-rose-500/5 text-rose-500',
+    value: 'probably_correct',
+    label: 'Feels right',
+    activeClass: 'border-lime-500/50 bg-lime-500/15 text-lime-500',
+    idleClass: 'border-border bg-background text-muted-foreground hover:text-lime-500',
+  },
+  {
+    value: 'correct',
+    label: '100% right',
+    activeClass: 'border-emerald-500/50 bg-emerald-500/15 text-emerald-500',
+    idleClass: 'border-emerald-500/30 bg-emerald-500/5 text-emerald-500',
   },
 ];
 
