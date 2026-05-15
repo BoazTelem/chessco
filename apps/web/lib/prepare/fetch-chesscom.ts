@@ -24,6 +24,7 @@ interface ChesscomArchivesResponse {
 
 interface ChesscomGame {
   url: string;
+  uuid?: string;
   pgn?: string;
   time_class?: string;
   end_time?: number;
@@ -108,7 +109,7 @@ export async function* fetchChesscomGames(
         g.time_class === 'classical'
           ? g.time_class
           : 'unknown';
-      yield { id: g.url, pgn: g.pgn, playedAt: endTime, timeClass: tc };
+      yield { id: g.uuid ?? g.url, pgn: g.pgn, playedAt: endTime, timeClass: tc };
     }
   }
 }
