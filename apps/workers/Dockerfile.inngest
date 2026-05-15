@@ -1,0 +1,28 @@
+# Inngest serve process for apps/workers — Cloud Run service in europe-west3.
+# Hosts every Inngest function registered in src/inngest/serve.ts:
+#   - Federation cron functions (FIDE/ICF/ICF-enrichment/USCF)
+#   - Crawl-refresh cron functions
+#   - Account fingerprint on-link functions (chesscom + lichess)
+#   - Corpus counts hourly, crawler watchdog, prepare-reports poll
+#
+# Lean node:20 image — no Playwright/Chromium (those run in dedicated jobs).
+FROM node:20-bookworm-slim AS builder
+WORKDIR /app
+
+# Workspace manifest layer — install deps for just @chessco/workers + its
+# workspace dependencies so node_modules is cached across code changes.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/workers/package.json ./apps/workers/
+COPY packages/db/package.json ./packages/db/
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+RUN pnpm install --filter @chessco/workers... --frozen-lockfile
+
+# Source layer — code-only changes hit just this layer + the CMD.
+COPY apps/workers ./apps/workers
+COPY packages/db ./packages/db
+
+WORKDIR /app/apps/workers
+ENV NODE_ENV=production
+ENV PORT=8080
+EXPOSE 8080
+CMD ["pnpm", "inngest:serve"]

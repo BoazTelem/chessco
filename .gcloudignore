@@ -1,0 +1,56 @@
+# Files to exclude from `gcloud builds submit` uploads.
+# Cloud Build streams the tree to its build context, so we exclude anything
+# that's not needed by any Dockerfile in the repo.
+
+# Defer to .gitignore for the standard ignored set (node_modules, .next, etc.)
+.gcloudignore
+.git
+.gitignore
+
+# pnpm + node
+node_modules
+**/node_modules
+.pnpm-store
+
+# Build outputs
+.next
+**/.next
+.turbo
+**/.turbo
+dist
+**/dist
+
+# Editor / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Env + secrets (never ship to Cloud Build)
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+
+# Local scratch artifacts that aren't part of the build context
+*.zip
+*.tar
+*.tar.gz
+lv0.zip
+lv0_extracted/
+dsb_*.html
+ecf_*.html
+ffe*.html
+uscf_*.html
+
+# Test fixtures / large downloads kept locally
+*.pgn
+*.pgn.zst
+*.xml
+players_list_xml.xml
+
+# Worktrees we don't want shipped
+.claude
+memory
+.codex

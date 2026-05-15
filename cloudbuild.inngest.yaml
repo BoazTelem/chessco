@@ -1,0 +1,16 @@
+# Cloud Build config for the Inngest serve image.
+# Run from the monorepo root:
+#   gcloud builds submit --config cloudbuild.inngest.yaml .
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - europe-west3-docker.pkg.dev/chessco/chessco/inngest-worker:latest
+      - -f
+      - apps/workers/Dockerfile.inngest
+      - .
+images:
+  - europe-west3-docker.pkg.dev/chessco/chessco/inngest-worker:latest
+options:
+  logging: CLOUD_LOGGING_ONLY

@@ -248,7 +248,9 @@ export const prepareReportsPoll = inngest.createFunction(
     concurrency: { limit: 1 },
     retries: 1,
   },
-  [{ cron: '*/30 * * * * *' }, { event: 'chessco/prepare-reports.poll.requested' }],
+  // Inngest's minimum cron resolution is 1 minute (the original 6-field
+  // `*/30 * * * * *` "every 30 seconds" was rejected at sync time).
+  [{ cron: '* * * * *' }, { event: 'chessco/prepare-reports.poll.requested' }],
   async ({ logger }) => {
     const out = await pollOnce(logger);
     logger.info(
