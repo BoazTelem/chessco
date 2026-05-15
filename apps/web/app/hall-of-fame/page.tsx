@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { unstable_cache } from 'next/cache';
 import { brand } from '@chessco/ui';
 import { getPracticeDb } from '@/lib/practice/db';
 import { CountryBadge, TitleBadge } from '../scout/result-card';
@@ -8,9 +9,10 @@ export const metadata = {
   description: `Top players who help others practice on ${brand.name}, ranked by credits earned.`,
 };
 
-// Public, cacheable. The leaderboard is computed live but page-level caching
-// keeps it cheap — credits earned shifts slowly relative to a 5-minute window.
-export const revalidate = 300;
+// Rendered on demand so the build doesn't need DB access. The leaderboard
+// query itself is cached at the data layer (5-minute TTL) — credits earned
+// shifts slowly relative to that window, which keeps this cheap.
+export const dynamic = 'force-dynamic';
 
 type LeaderRow = {
   profile_id: string;
@@ -25,33 +27,41 @@ type LeaderRow = {
 
 const LIMIT = 50;
 
-export default async function HallOfFamePage() {
-  const sql = getPracticeDb();
+// Top earners by practice_reward credits. The query joins through profiles
+// and excludes private/deleted accounts so the leaderboard is fully public.
+// SUM/COUNT aggregates well within ~50 rows; if practice_reward volume
+// grows enough that this is slow, the next step is a materialized view.
+const getLeaders = unstable_cache(
+  async (): Promise<LeaderRow[]> => {
+    const sql = getPracticeDb();
+    const rows = (await sql`
+      SELECT
+        p.id          AS profile_id,
+        p.username,
+        p.display_name,
+        p.country,
+        p.chess_title,
+        p.avatar_url,
+        COALESCE(SUM(cle.amount), 0)::int AS credits_earned,
+        COUNT(*)::int                      AS games_helped
+      FROM credit_ledger_entries cle
+      JOIN profiles p ON p.id = cle.profile_id
+      WHERE cle.category = 'practice_reward'
+        AND cle.direction = 'C'
+        AND p.profile_visibility = 'public'
+        AND p.deleted_at IS NULL
+      GROUP BY p.id, p.username, p.display_name, p.country, p.chess_title, p.avatar_url
+      ORDER BY credits_earned DESC, games_helped DESC
+      LIMIT ${LIMIT}
+    `) as LeaderRow[];
+    return rows;
+  },
+  ['hall-of-fame-leaders'],
+  { revalidate: 300, tags: ['hall-of-fame'] },
+);
 
-  // Top earners by practice_reward credits. The query joins through profiles
-  // and excludes private/deleted accounts so the leaderboard is fully public.
-  // SUM/COUNT aggregates well within ~50 rows; if practice_reward volume
-  // grows enough that this is slow, the next step is a materialized view.
-  const rows = (await sql`
-    SELECT
-      p.id          AS profile_id,
-      p.username,
-      p.display_name,
-      p.country,
-      p.chess_title,
-      p.avatar_url,
-      COALESCE(SUM(cle.amount), 0)::int AS credits_earned,
-      COUNT(*)::int                      AS games_helped
-    FROM credit_ledger_entries cle
-    JOIN profiles p ON p.id = cle.profile_id
-    WHERE cle.category = 'practice_reward'
-      AND cle.direction = 'C'
-      AND p.profile_visibility = 'public'
-      AND p.deleted_at IS NULL
-    GROUP BY p.id, p.username, p.display_name, p.country, p.chess_title, p.avatar_url
-    ORDER BY credits_earned DESC, games_helped DESC
-    LIMIT ${LIMIT}
-  `) as LeaderRow[];
+export default async function HallOfFamePage() {
+  const rows = await getLeaders();
 
   return (
     <div className="min-h-screen">
