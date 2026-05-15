@@ -1,6 +1,7 @@
 'use client';
 
-import { useId } from 'react';
+import { useId, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { COUNTRIES } from '@/lib/scout/countries';
 import { type FederationOption, groupFederationsByContinent } from '@/lib/scout/federations-shared';
 
@@ -33,6 +34,8 @@ export function SearchForm({
   initial: Initial;
 }) {
   const id = useId();
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
   const hasAdvanced =
     initial.title.length > 0 ||
     initial.min.length > 0 ||
@@ -41,8 +44,21 @@ export function SearchForm({
 
   const groups = groupFederationsByContinent(federations);
 
+  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const params = new URLSearchParams();
+    for (const [k, v] of fd.entries()) {
+      if (typeof v === 'string' && v.trim().length > 0) params.set(k, v.trim());
+    }
+    const qs = params.toString();
+    startTransition(() => {
+      router.push(qs ? `/scout?${qs}` : '/scout');
+    });
+  }
+
   return (
-    <form method="GET" action="/scout" className="space-y-4">
+    <form method="GET" action="/scout" onSubmit={onSubmit} className="space-y-4">
       {/* Primary: country flag + name */}
       <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
         <select
@@ -70,9 +86,21 @@ export function SearchForm({
 
         <button
           type="submit"
-          className="rounded-md bg-accent px-5 py-2 text-sm font-semibold text-accent-foreground hover:opacity-90"
+          disabled={isPending}
+          aria-busy={isPending}
+          className="inline-flex min-w-[5.5rem] items-center justify-center gap-2 rounded-md bg-accent px-5 py-2 text-sm font-semibold text-accent-foreground hover:opacity-90 disabled:opacity-75"
         >
-          Search
+          {isPending ? (
+            <>
+              <span
+                aria-hidden
+                className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-r-transparent"
+              />
+              <span>Searching…</span>
+            </>
+          ) : (
+            'Search'
+          )}
         </button>
       </div>
 
