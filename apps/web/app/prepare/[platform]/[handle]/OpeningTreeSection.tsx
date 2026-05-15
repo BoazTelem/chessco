@@ -12,7 +12,8 @@ import { fetchLichessGames, lichessProfileGameCount } from '@/lib/prepare/fetch-
 import { normalizeFenKey } from '@/lib/prepare/parse-pgn';
 import { parseGameOffThread, terminateParseWorker } from '@/lib/prepare/parse-worker-client';
 import { buildTree, gamePassesFilters, windowBounds } from '@/lib/prepare/tree-builder';
-import { getStore, ingestGame, listGames } from '@/lib/prepare/storage';
+import { flushStore, getStore, hydrateStore, ingestGame, listGames } from '@/lib/prepare/storage';
+import { loadCachedMeta, type CachedMeta } from '@/lib/prepare/persist';
 import type {
   FetchProgress,
   Filters,
@@ -24,6 +25,28 @@ import type {
 
 const REBUILD_BATCH = 25;
 const REBUILD_THROTTLE_MS = 250;
+
+const SHORT_DATE = new Intl.DateTimeFormat(undefined, {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+});
+
+function formatShortDate(d: Date): string {
+  return SHORT_DATE.format(d);
+}
+
+function formatTimeAgo(from: Date, now: Date): string {
+  const seconds = Math.max(0, Math.floor((now.getTime() - from.getTime()) / 1000));
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return formatShortDate(from);
+}
 
 const DEFAULT_FILTERS: Filters = {
   color: 'white',
@@ -49,8 +72,9 @@ export function OpeningTreeSection({ platform, handle }: Props) {
   });
   const [rebuildTick, setRebuildTick] = useState(0);
   const [sanPath, setSanPath] = useState<string[]>([]);
+  const [cursor, setCursor] = useState(0);
   const [hoveredMove, setHoveredMove] = useState<NextMoveStats | null>(null);
-  const walkerRef = useRef<Chess>(new Chess());
+  const [cachedMeta, setCachedMeta] = useState<CachedMeta | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastRebuildRef = useRef(0);
   const newSinceLastRebuildRef = useRef(0);
@@ -66,7 +90,22 @@ export function OpeningTreeSection({ platform, handle }: Props) {
 
   const tree = useMemo(() => buildTree(games, { filters }), [games, filters]);
 
-  const currentFenKey = useMemo(() => normalizeFenKey(walkerRef.current.fen()), [sanPath]); // eslint-disable-line react-hooks/exhaustive-deps
+  const walker = useMemo(() => {
+    const w = new Chess();
+    for (let i = 0; i < cursor; i += 1) {
+      const san = sanPath[i];
+      if (san === undefined) break;
+      try {
+        w.move(san);
+      } catch {
+        break;
+      }
+    }
+    return w;
+  }, [sanPath, cursor]);
+
+  const walkerFen = walker.fen();
+  const currentFenKey = useMemo(() => normalizeFenKey(walkerFen), [walkerFen]);
 
   const currentNode: TreeNode | null = tree.get(currentFenKey) ?? null;
   const topMoves = useMemo<NextMoveStats[]>(() => {
@@ -117,78 +156,137 @@ export function OpeningTreeSection({ platform, handle }: Props) {
       abortRef.current = ac;
       const now = new Date();
       const bounds = windowBounds(filters, now);
-      const since = extendFrom ?? bounds.since;
-      const until = bounds.until;
+      const store = getStore(platform, handle);
+
+      type Range = { since: Date; until: Date; label: string | null };
+      const ranges: Range[] = [];
+
+      if (mode === 'extend') {
+        // Explicit back-extension triggered by the filter-widening path.
+        const since = extendFrom ?? bounds.since;
+        ranges.push({ since, until: bounds.until, label: 'Extending window…' });
+      } else {
+        const cachedLatest = store.latest;
+        const cachedEarliest = store.earliest;
+        const haveCache = cachedLatest !== null && store.games.size > 0;
+
+        if (!haveCache) {
+          ranges.push({ since: bounds.since, until: bounds.until, label: null });
+        } else {
+          // Forward gap — pull only games newer than the cache.
+          if (cachedLatest < bounds.until) {
+            ranges.push({
+              since: new Date(cachedLatest.getTime() + 1),
+              until: bounds.until,
+              label: `Fetching new games since ${formatShortDate(cachedLatest)}…`,
+            });
+          }
+          // Back gap — filter window now reaches earlier than what we have.
+          if (cachedEarliest && bounds.since < cachedEarliest) {
+            ranges.push({
+              since: bounds.since,
+              until: new Date(cachedEarliest.getTime() - 1),
+              label: `Fetching older games before ${formatShortDate(cachedEarliest)}…`,
+            });
+          }
+        }
+      }
+
+      if (ranges.length === 0) {
+        setProgress({
+          phase: 'done',
+          fetchedGames: store.games.size,
+          estimatedTotal: null,
+          currentLabel: 'Already up to date',
+          errorMessage: null,
+        });
+        return;
+      }
 
       setProgress({
         phase: 'fetching',
         fetchedGames: 0,
         estimatedTotal: null,
-        currentLabel: mode === 'extend' ? 'Extending window…' : null,
+        currentLabel: ranges[0]?.label ?? null,
         errorMessage: null,
       });
 
-      let estimated: number | null = null;
-      if (platform === 'lichess') {
-        estimated = await lichessProfileGameCount(handle, filters.timeClasses, ac.signal);
+      // Only the profile-total estimate is useful for a full cold fetch.
+      // Incremental ranges don't have a cheap "since X" count from Lichess,
+      // so we leave the bar pulsing without a percentage in that case.
+      const isFullFresh = mode === 'fresh' && store.games.size === 0 && ranges.length === 1;
+      if (platform === 'lichess' && isFullFresh) {
+        const estimated = await lichessProfileGameCount(handle, filters.timeClasses, ac.signal);
         if (estimated !== null) setProgress((p) => ({ ...p, estimatedTotal: estimated }));
       }
 
       let fetched = 0;
       try {
-        if (platform === 'lichess') {
-          for await (const raw of fetchLichessGames({
-            handle,
-            since,
-            until,
-            signal: ac.signal,
-          })) {
-            const game = await parseGameOffThread({
-              pgn: raw.pgn,
-              targetHandle: handle,
-              fallbackId: raw.id,
-              playedAt: raw.playedAt,
-              timeClass: raw.timeClass,
-            });
-            if (game) {
-              if (ingestGame(platform, handle, game)) {
-                fetched += 1;
-                setProgress((p) => ({ ...p, fetchedGames: fetched }));
-                triggerRebuild(false);
+        for (const range of ranges) {
+          if (ac.signal.aborted) return;
+          setProgress((p) => ({ ...p, currentLabel: range.label }));
+
+          if (platform === 'lichess') {
+            for await (const raw of fetchLichessGames({
+              handle,
+              since: range.since,
+              until: range.until,
+              signal: ac.signal,
+            })) {
+              const game = await parseGameOffThread({
+                pgn: raw.pgn,
+                targetHandle: handle,
+                fallbackId: raw.id,
+                playedAt: raw.playedAt,
+                timeClass: raw.timeClass,
+              });
+              if (game) {
+                if (ingestGame(platform, handle, game)) {
+                  fetched += 1;
+                  setProgress((p) => ({ ...p, fetchedGames: fetched }));
+                  triggerRebuild(false);
+                }
               }
             }
-          }
-        } else {
-          for await (const raw of fetchChesscomGames({
-            handle,
-            since,
-            until,
-            timeClasses: filters.timeClasses,
-            signal: ac.signal,
-            onArchiveStart: ({ index, total, label }) =>
-              setProgress((p) => ({
-                ...p,
-                currentLabel: `Archive ${label} (${index + 1}/${total})`,
-              })),
-          })) {
-            const game = await parseGameOffThread({
-              pgn: raw.pgn,
-              targetHandle: handle,
-              fallbackId: raw.id,
-              playedAt: raw.playedAt,
-              timeClass: raw.timeClass,
-            });
-            if (game) {
-              if (ingestGame(platform, handle, game)) {
-                fetched += 1;
-                setProgress((p) => ({ ...p, fetchedGames: fetched }));
-                triggerRebuild(false);
+          } else {
+            for await (const raw of fetchChesscomGames({
+              handle,
+              since: range.since,
+              until: range.until,
+              timeClasses: filters.timeClasses,
+              signal: ac.signal,
+              onArchiveStart: ({ index, total, label }) =>
+                setProgress((p) => ({
+                  ...p,
+                  currentLabel: `Archive ${label} (${index + 1}/${total})`,
+                })),
+            })) {
+              const game = await parseGameOffThread({
+                pgn: raw.pgn,
+                targetHandle: handle,
+                fallbackId: raw.id,
+                playedAt: raw.playedAt,
+                timeClass: raw.timeClass,
+              });
+              if (game) {
+                if (ingestGame(platform, handle, game)) {
+                  fetched += 1;
+                  setProgress((p) => ({ ...p, fetchedGames: fetched }));
+                  triggerRebuild(false);
+                }
               }
             }
           }
         }
         triggerRebuild(true);
         setProgress((p) => ({ ...p, phase: 'done', fetchedGames: fetched, currentLabel: null }));
+
+        // Flush the IDB write queue then refresh the cached-meta display.
+        void flushStore(platform, handle).then(async () => {
+          if (ac.signal.aborted) return;
+          const meta = await loadCachedMeta(platform, handle);
+          setCachedMeta(meta);
+        });
       } catch (e) {
         if (ac.signal.aborted) return;
         setProgress((p) => ({
@@ -201,11 +299,60 @@ export function OpeningTreeSection({ platform, handle }: Props) {
     [filters, platform, handle, triggerRebuild],
   );
 
+  const startFetchRef = useRef(startFetch);
+  useEffect(() => {
+    startFetchRef.current = startFetch;
+  }, [startFetch]);
+
+  // Hydrate cached games from IndexedDB on (re-)mount per (platform, handle).
+  // If there are cached games, render the tree immediately and kick off an
+  // incremental fetch in the background; otherwise stay idle until the user
+  // clicks "Build opening tree".
+  useEffect(() => {
+    let cancelled = false;
+    setSanPath([]);
+    setCursor(0);
+    setCachedMeta(null);
+    setProgress({
+      phase: 'hydrating',
+      fetchedGames: 0,
+      estimatedTotal: null,
+      currentLabel: 'Loading cached games…',
+      errorMessage: null,
+    });
+    void (async () => {
+      const result = await hydrateStore(platform, handle);
+      if (cancelled) return;
+      if (result.meta) setCachedMeta(result.meta);
+      triggerRebuild(true);
+      if (result.loaded > 0) {
+        // Cached games exist — auto-refresh to pull any new games.
+        void startFetchRef.current('fresh');
+      } else {
+        setProgress({
+          phase: 'idle',
+          fetchedGames: 0,
+          estimatedTotal: null,
+          currentLabel: null,
+          errorMessage: null,
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+      abortRef.current?.abort();
+    };
+    // triggerRebuild is stable (no deps); startFetchRef is a ref so we
+    // intentionally don't list either as a dep — we only want this to
+    // run on (platform, handle) changes, not on every filter tweak.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [platform, handle]);
+
   const onFiltersChange = useCallback(
     (next: Filters) => {
       const prev = filters;
       setFilters(next);
-      const isFetching = progress.phase === 'fetching';
+      const isFetching = progress.phase === 'fetching' || progress.phase === 'hydrating';
       if (isFetching) return;
       const store = getStore(platform, handle);
       const now = new Date();
@@ -215,13 +362,13 @@ export function OpeningTreeSection({ platform, handle }: Props) {
         nextSince < prevSince &&
         store.earliest !== null &&
         nextSince < store.earliest &&
-        progress.fetchedGames > 0;
+        store.games.size > 0;
       if (needsExtend) {
         const cutoffEdge = store.earliest ?? now;
         void startFetch('extend', nextSince < cutoffEdge ? nextSince : cutoffEdge);
       }
     },
-    [filters, platform, handle, progress.fetchedGames, progress.phase, startFetch],
+    [filters, platform, handle, progress.phase, startFetch],
   );
 
   useEffect(() => {
@@ -231,71 +378,110 @@ export function OpeningTreeSection({ platform, handle }: Props) {
     };
   }, []);
 
-  const handlePickMove = useCallback((move: NextMoveStats) => {
-    const w = walkerRef.current;
-    let moveObj;
-    try {
-      moveObj = w.move({ from: move.fromSquare, to: move.toSquare, promotion: 'q' });
-    } catch {
-      return;
-    }
-    if (!moveObj) return;
-    setSanPath((p) => [...p, moveObj.san]);
-  }, []);
+  const applyMove = useCallback(
+    (fromSquare: string, toSquare: string): boolean => {
+      const probe = new Chess(walkerFen);
+      let moveObj;
+      try {
+        moveObj = probe.move({ from: fromSquare, to: toSquare, promotion: 'q' });
+      } catch {
+        return false;
+      }
+      if (!moveObj) return false;
+      const san = moveObj.san;
+      // If we're partway through the line and the picked move matches what
+      // comes next, just step forward — preserves the rest of the history so
+      // the user can keep walking past the cursor.
+      if (cursor < sanPath.length && sanPath[cursor] === san) {
+        setCursor(cursor + 1);
+        return true;
+      }
+      // Otherwise the move diverges: drop the now-orphaned tail and append.
+      setSanPath((p) => [...p.slice(0, cursor), san]);
+      setCursor(cursor + 1);
+      return true;
+    },
+    [walkerFen, cursor, sanPath],
+  );
 
-  const handlePieceDrop = useCallback((sourceSquare: string, targetSquare: string): boolean => {
-    const w = walkerRef.current;
-    let moveObj;
-    try {
-      moveObj = w.move({ from: sourceSquare, to: targetSquare, promotion: 'q' });
-    } catch {
-      return false;
-    }
-    if (!moveObj) return false;
-    setSanPath((p) => [...p, moveObj.san]);
-    return true;
-  }, []);
+  const handlePickMove = useCallback(
+    (move: NextMoveStats) => {
+      applyMove(move.fromSquare, move.toSquare);
+    },
+    [applyMove],
+  );
+
+  const handlePieceDrop = useCallback(
+    (sourceSquare: string, targetSquare: string): boolean => {
+      return applyMove(sourceSquare, targetSquare);
+    },
+    [applyMove],
+  );
 
   const handleJump = useCallback(
     (ply: number) => {
-      if (ply > sanPath.length) return;
-      const w = new Chess();
-      const newPath = sanPath.slice(0, ply);
-      for (const san of newPath) {
-        try {
-          w.move(san);
-        } catch {
-          return;
-        }
-      }
-      walkerRef.current = w;
-      setSanPath(newPath);
+      if (ply < 0 || ply > sanPath.length) return;
+      setCursor(ply);
     },
-    [sanPath],
+    [sanPath.length],
   );
 
+  // Arrow keys step the cursor through the move list; Home/End jump to the
+  // ends. Skip while focus is in a text input so users can still type freely.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) {
+        return;
+      }
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setCursor((c) => Math.max(0, c - 1));
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        setCursor((c) => Math.min(sanPath.length, c + 1));
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        setCursor(0);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        setCursor(sanPath.length);
+      }
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [sanPath.length]);
+
   const lastMove = useMemo(() => {
-    if (sanPath.length === 0) return null;
+    if (cursor === 0) return null;
     const w = new Chess();
     try {
-      for (let i = 0; i < sanPath.length - 1; i += 1) {
+      for (let i = 0; i < cursor - 1; i += 1) {
         const san = sanPath[i];
         if (san === undefined) return null;
         w.move(san);
       }
-      const lastSan = sanPath[sanPath.length - 1];
+      const lastSan = sanPath[cursor - 1];
       if (lastSan === undefined) return null;
       const result = w.move(lastSan);
       return result ? { from: result.from, to: result.to } : null;
     } catch {
       return null;
     }
-  }, [sanPath]);
+  }, [sanPath, cursor]);
 
   const canBuild =
     progress.phase === 'idle' || progress.phase === 'done' || progress.phase === 'error';
 
-  const hasData = progress.fetchedGames > 0;
+  const cachedGameCount = useMemo(
+    () => getStore(platform, handle).games.size,
+    // rebuildTick forces re-read of the module-level store; see `games` memo above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [platform, handle, rebuildTick],
+  );
+  const hasData = progress.fetchedGames > 0 || cachedGameCount > 0;
+  const hasCache = cachedGameCount > 0;
+  const buttonLabel = hasCache ? 'Refresh' : 'Build opening tree';
 
   return (
     <section className="rounded-xl border border-border bg-card p-6">
@@ -320,14 +506,14 @@ export function OpeningTreeSection({ platform, handle }: Props) {
           <button
             type="button"
             onClick={() => {
-              walkerRef.current = new Chess();
               setSanPath([]);
+              setCursor(0);
               void startFetch('fresh');
             }}
             disabled={!canBuild}
             className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {progress.phase === 'done' ? 'Re-fetch' : 'Build opening tree'}
+            {buttonLabel}
           </button>
           {progress.phase === 'fetching' ? (
             <button
@@ -338,15 +524,21 @@ export function OpeningTreeSection({ platform, handle }: Props) {
               Cancel
             </button>
           ) : null}
+          {hasCache && cachedMeta ? (
+            <span className="text-xs text-muted-foreground">
+              Cached: {cachedGameCount.toLocaleString()} games · last refreshed{' '}
+              {formatTimeAgo(cachedMeta.updatedAt, new Date())}
+            </span>
+          ) : null}
         </div>
 
         <FetchProgressBar progress={progress} filteredGameCount={filteredGameCount} />
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
           <div className="space-y-3">
-            <BreadcrumbPath sanPath={sanPath} onJump={handleJump} />
+            <BreadcrumbPath sanPath={sanPath} cursor={cursor} onJump={handleJump} />
             <OpeningTreeBoard
-              fen={walkerRef.current.fen()}
+              fen={walkerFen}
               orientation={filters.color}
               topMoves={topMoves}
               hoveredMove={hoveredMove}
