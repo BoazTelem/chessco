@@ -80,6 +80,27 @@ interface CorrelateError {
   hint?: string;
 }
 
+interface ExplainLine {
+  title: string;
+  yourMove: string;
+  why: string;
+}
+
+interface ExplainResponseAvailable {
+  available: true;
+  headline: string;
+  lines: ExplainLine[];
+  driftCallouts: string[];
+  provider: string;
+}
+
+interface ExplainResponseUnavailable {
+  available: false;
+  reason?: string;
+}
+
+type ExplainResponse = ExplainResponseAvailable | ExplainResponseUnavailable;
+
 interface Props {
   oppPlatform: Platform;
   oppHandle: string;
@@ -94,10 +115,16 @@ type State =
 
 export function CorrelationSection({ oppPlatform, oppHandle, mePlatform, meHandle }: Props) {
   const [state, setState] = useState<State>({ phase: 'loading' });
+  // Phase 5: the explainer runs after correlate succeeds. Kept as separate
+  // state so a slow LLM call doesn't block the raw correlation panel.
+  const [explain, setExplain] = useState<
+    { phase: 'loading' } | { phase: 'ready'; data: ExplainResponse } | null
+  >(null);
 
   useEffect(() => {
     const ac = new AbortController();
     setState({ phase: 'loading' });
+    setExplain(null);
     (async () => {
       const url = new URL('/api/prepare/correlate', window.location.origin);
       url.searchParams.set('me_platform', mePlatform);
@@ -121,6 +148,20 @@ export function CorrelationSection({ oppPlatform, oppHandle, mePlatform, meHandl
         }
         const data = (await res.json()) as CorrelateResponse;
         setState({ phase: 'ready', data });
+
+        // Kick off the explainer in parallel — fire-and-forget, doesn't
+        // gate the raw correlation panel. Errors surface as `available: false`
+        // so the UI just skips the prose section.
+        setExplain({ phase: 'loading' });
+        const explainRes = await fetch('/api/prepare/explain', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+          signal: ac.signal,
+        });
+        if (ac.signal.aborted) return;
+        const explainData = (await explainRes.json()) as ExplainResponse;
+        setExplain({ phase: 'ready', data: explainData });
       } catch (err) {
         if ((err as { name?: string })?.name === 'AbortError') return;
         setState({
@@ -145,12 +186,15 @@ export function CorrelationSection({ oppPlatform, oppHandle, mePlatform, meHandl
         positions where their recent play differs from their lifetime baseline.
       </p>
 
-      <div className="mt-5">{renderState(state)}</div>
+      <div className="mt-5">{renderState(state, explain)}</div>
     </section>
   );
 }
 
-function renderState(state: State) {
+function renderState(
+  state: State,
+  explain: { phase: 'loading' } | { phase: 'ready'; data: ExplainResponse } | null,
+) {
   if (state.phase === 'loading') {
     return <p className="text-sm text-muted-foreground">Loading correlation engine output…</p>;
   }
@@ -174,6 +218,7 @@ function renderState(state: State) {
   return (
     <div className="space-y-6">
       <BucketBanner data={data} />
+      <ExplainPanel explain={explain} />
       <OverlapList title="You as White → them as Black" entries={data.asWhite} />
       <OverlapList title="You as Black → them as White" entries={data.asBlack} />
       <DriftList
@@ -184,6 +229,50 @@ function renderState(state: State) {
         title="Their recent play vs lifetime — as White (what you face as Black)"
         entries={data.driftAsBlack}
       />
+    </div>
+  );
+}
+
+function ExplainPanel({
+  explain,
+}: {
+  explain: { phase: 'loading' } | { phase: 'ready'; data: ExplainResponse } | null;
+}) {
+  if (!explain) return null;
+  if (explain.phase === 'loading') {
+    return (
+      <div className="rounded-md border border-dashed border-accent/40 bg-accent/5 px-4 py-3 text-sm text-muted-foreground">
+        Generating prep brief…
+      </div>
+    );
+  }
+  const data = explain.data;
+  if (!data.available) return null;
+  return (
+    <div className="rounded-md border border-accent/40 bg-accent/5 px-4 py-3">
+      <p className="text-[11px] uppercase tracking-[0.15em] text-accent">AI prep brief</p>
+      <p className="mt-2 text-sm">{data.headline}</p>
+      {data.lines.length > 0 ? (
+        <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm">
+          {data.lines.map((l, i) => (
+            <li key={i}>
+              <span className="font-semibold">{l.title}</span> —{' '}
+              <span className="text-accent">{l.yourMove}</span>
+              <div className="text-xs text-muted-foreground">{l.why}</div>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      {data.driftCallouts.length > 0 ? (
+        <div className="mt-3 border-t border-border pt-2 text-xs text-muted-foreground">
+          <p className="font-semibold">Style drift to watch:</p>
+          <ul className="mt-1 list-disc pl-5">
+            {data.driftCallouts.map((d, i) => (
+              <li key={i}>{d}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }

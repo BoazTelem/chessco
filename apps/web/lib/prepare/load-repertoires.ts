@@ -50,13 +50,18 @@ interface DbRow {
   color: Color;
   depth: number;
   time_bucket: TimeBucket;
-  bucket_since: Date | null;
-  bucket_until: Date | null;
+  bucket_since: Date | string | null;
+  bucket_until: Date | string | null;
   tree: unknown;
 }
 
 function rowKey(color: Color, bucket: TimeBucket): string {
   return `${color}:${bucket}`;
+}
+
+function coerceDate(value: Date | string | null): Date | null {
+  if (value === null) return null;
+  return value instanceof Date ? value : new Date(value);
 }
 
 export async function loadRepertoires(
@@ -80,8 +85,8 @@ export async function loadRepertoires(
       color: r.color,
       depth: r.depth,
       timeBucket: r.time_bucket,
-      bucketSince: r.bucket_since,
-      bucketUntil: r.bucket_until,
+      bucketSince: coerceDate(r.bucket_since),
+      bucketUntil: coerceDate(r.bucket_until),
       tree: r.tree as Record<string, SerializedTreeNode>,
     });
   }

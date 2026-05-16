@@ -37,6 +37,7 @@ import {
 } from '@/lib/prepare/load-repertoires';
 
 const DEFAULT_DEPTH = 12;
+const MAX_PUBLIC_DEPTH = 12;
 const OVERLAP_BUCKET: TimeBucket = 'recent_12mo';
 const DRIFT_RECENT_BUCKET: TimeBucket = 'recent_3mo';
 
@@ -45,7 +46,7 @@ const Query = z.object({
   me_handle: z.string().trim().min(1).max(128),
   opp_platform: z.enum(['lichess', 'chess.com']),
   opp_handle: z.string().trim().min(1).max(128),
-  depth: z.coerce.number().int().min(4).max(30).optional(),
+  depth: z.coerce.number().int().min(4).max(MAX_PUBLIC_DEPTH).optional(),
   overlap_bucket: z.enum(['recent_3mo', 'recent_12mo', 'recent_36mo', 'all_time']).optional(),
 });
 
