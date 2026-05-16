@@ -8,11 +8,19 @@ import { FetchProgressBar } from '@/components/prepare/FetchProgressBar';
 import { MoveListPanel } from '@/components/prepare/MoveListPanel';
 import { TreeFilters } from '@/components/prepare/TreeFilters';
 import { fetchChesscomGames } from '@/lib/prepare/fetch-chesscom';
+import { bumpCorpusPriority } from '@/lib/prepare/fetch-corpus';
 import { fetchLichessGames, lichessProfileGameCount } from '@/lib/prepare/fetch-lichess';
 import { normalizeFenKey } from '@/lib/prepare/parse-pgn';
 import { parseGameOffThread, terminateParseWorker } from '@/lib/prepare/parse-worker-client';
 import { buildTree, gamePassesFilters, windowBounds } from '@/lib/prepare/tree-builder';
-import { flushStore, getStore, hydrateStore, ingestGame, listGames } from '@/lib/prepare/storage';
+import {
+  flushStore,
+  getStore,
+  hydrateFromCorpus,
+  hydrateStore,
+  ingestGame,
+  listGames,
+} from '@/lib/prepare/storage';
 import { loadCachedGames, loadCachedMeta, type CachedMeta } from '@/lib/prepare/persist';
 import type {
   FetchProgress,
@@ -321,12 +329,16 @@ export function OpeningTreeSection({ platform, handle, signedIn }: Props) {
     startFetchRef.current = startFetch;
   }, [startFetch]);
 
-  // Hydrate cached games from IndexedDB on (re-)mount per (platform, handle).
-  // If there are cached games, render the tree immediately and kick off an
-  // incremental fetch in the background; otherwise stay idle until the user
-  // clicks "Build opening tree".
+  // Hydrate from BOTH sources in parallel on (re-)mount:
+  //   1. IndexedDB — fast, per-browser, has whatever this user fetched before
+  //   2. Games corpus via /api/prepare/games — covers cold visitors and fills
+  //      in everything the worker pipeline has already crawled
+  // After both settle, the live-fetch loop pulls only the delta (forward gap
+  // from the latest cached game). We also fire /api/prepare/enqueue to bump
+  // crawl priority so the worker pipeline catches up on the back-end.
   useEffect(() => {
     let cancelled = false;
+    const ac = new AbortController();
     setSanPath([]);
     setCursor(0);
     setCachedMeta(null);
@@ -337,13 +349,21 @@ export function OpeningTreeSection({ platform, handle, signedIn }: Props) {
       currentLabel: 'Loading cached games…',
       errorMessage: null,
     });
+    // Fire-and-forget priority bump for signed-in users. It doesn't gate
+    // render, and errors are swallowed by the helper.
+    if (signedIn) void bumpCorpusPriority(platform, handle, ac.signal);
     void (async () => {
-      const result = await hydrateStore(platform, handle);
+      const [idbResult, corpusResult] = await Promise.all([
+        hydrateStore(platform, handle),
+        hydrateFromCorpus(platform, handle, ac.signal),
+      ]);
       if (cancelled) return;
-      if (result.meta) setCachedMeta(result.meta);
+      if (idbResult.meta) setCachedMeta(idbResult.meta);
       triggerRebuild(true);
-      if (result.loaded > 0) {
-        // Cached games exist — auto-refresh to pull any new games.
+      const total = idbResult.loaded + corpusResult.loaded;
+      if (total > 0) {
+        // Cached games exist (from IDB or corpus) — auto-refresh to pull the
+        // delta of anything posted to the platform since our latest cached game.
         void startFetchRef.current('fresh');
       } else {
         setProgress({
@@ -357,6 +377,7 @@ export function OpeningTreeSection({ platform, handle, signedIn }: Props) {
     })();
     return () => {
       cancelled = true;
+      ac.abort();
       abortRef.current?.abort();
     };
     // triggerRebuild is stable (no deps); startFetchRef is a ref so we

@@ -6,6 +6,7 @@ import {
   persistGame,
   type CachedMeta,
 } from './persist';
+import { fetchCorpusGames } from './fetch-corpus';
 import type { GameRecord, Platform } from './types';
 
 interface StoredFetch {
@@ -21,6 +22,18 @@ function keyFor(platform: Platform, handle: string): string {
   return `${platform}:${handle.toLowerCase()}`;
 }
 
+function canonicalGameId(platform: Platform, id: string): string {
+  if (platform !== 'chess.com') return id;
+  const trimmed = id.trim();
+  const urlId = /\/(\d+)(?:\?.*)?$/.exec(trimmed);
+  return urlId?.[1] ?? trimmed;
+}
+
+function canonicalizeGame(platform: Platform, game: GameRecord): GameRecord {
+  const id = canonicalGameId(platform, game.id);
+  return id === game.id ? game : { ...game, id };
+}
+
 export function getStore(platform: Platform, handle: string): StoredFetch {
   const key = keyFor(platform, handle);
   let entry = store.get(key);
@@ -31,18 +44,24 @@ export function getStore(platform: Platform, handle: string): StoredFetch {
   return entry;
 }
 
-function ingestInMemory(entry: StoredFetch, game: GameRecord): boolean {
-  if (entry.games.has(game.id)) return false;
-  entry.games.set(game.id, game);
-  if (!entry.earliest || game.playedAt < entry.earliest) entry.earliest = game.playedAt;
-  if (!entry.latest || game.playedAt > entry.latest) entry.latest = game.playedAt;
+function ingestInMemory(platform: Platform, entry: StoredFetch, game: GameRecord): boolean {
+  const normalizedGame = canonicalizeGame(platform, game);
+  if (entry.games.has(normalizedGame.id)) return false;
+  entry.games.set(normalizedGame.id, normalizedGame);
+  if (!entry.earliest || normalizedGame.playedAt < entry.earliest) {
+    entry.earliest = normalizedGame.playedAt;
+  }
+  if (!entry.latest || normalizedGame.playedAt > entry.latest) {
+    entry.latest = normalizedGame.playedAt;
+  }
   return true;
 }
 
 export function ingestGame(platform: Platform, handle: string, game: GameRecord): boolean {
   const entry = getStore(platform, handle);
-  if (!ingestInMemory(entry, game)) return false;
-  persistGame(platform, handle, game);
+  const normalizedGame = canonicalizeGame(platform, game);
+  if (!ingestInMemory(platform, entry, normalizedGame)) return false;
+  persistGame(platform, handle, normalizedGame);
   return true;
 }
 
@@ -80,7 +99,7 @@ export function hydrateStore(platform: Platform, handle: string): Promise<Hydrat
     ]);
     let loaded = 0;
     for (const g of games) {
-      if (ingestInMemory(entry, g)) loaded += 1;
+      if (ingestInMemory(platform, entry, g)) loaded += 1;
     }
     return { loaded, earliest: entry.earliest, latest: entry.latest, meta };
   })();
@@ -90,6 +109,52 @@ export function hydrateStore(platform: Platform, handle: string): Promise<Hydrat
 
 export function isHydrated(platform: Platform, handle: string): boolean {
   return hydrated.has(keyFor(platform, handle));
+}
+
+export interface CorpusHydrateResult {
+  loaded: number;
+  earliest: Date | null;
+  latest: Date | null;
+}
+
+const corpusHydrated = new Map<string, Promise<CorpusHydrateResult>>();
+
+/**
+ * Pull DB-stored games via /api/prepare/games and merge them into the
+ * in-memory store (also persisting to IDB via ingestGame). Idempotent
+ * per (platform, handle): a second call within the same tab returns the
+ * cached promise so we don't double-fetch the corpus.
+ */
+export function hydrateFromCorpus(
+  platform: Platform,
+  handle: string,
+  signal?: AbortSignal,
+): Promise<CorpusHydrateResult> {
+  const key = keyFor(platform, handle);
+  const existing = corpusHydrated.get(key);
+  if (existing) return existing;
+  const promise = (async (): Promise<CorpusHydrateResult> => {
+    let result;
+    try {
+      result = await fetchCorpusGames(platform, handle, signal);
+    } catch (err) {
+      // Don't poison the cache on failure — let a later call retry.
+      corpusHydrated.delete(key);
+      if ((err as { name?: string })?.name === 'AbortError') {
+        return { loaded: 0, earliest: null, latest: null };
+      }
+      console.warn('[prepare/storage] corpus hydrate failed', err);
+      return { loaded: 0, earliest: null, latest: null };
+    }
+    const entry = getStore(platform, handle);
+    let loaded = 0;
+    for (const g of result.games) {
+      if (ingestGame(platform, handle, g)) loaded += 1;
+    }
+    return { loaded, earliest: entry.earliest, latest: entry.latest };
+  })();
+  corpusHydrated.set(key, promise);
+  return promise;
 }
 
 /**
