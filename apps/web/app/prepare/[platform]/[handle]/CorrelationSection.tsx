@@ -106,6 +106,7 @@ interface Props {
   oppHandle: string;
   mePlatform: Platform;
   meHandle: string;
+  explainEnabled?: boolean;
 }
 
 type State =
@@ -113,7 +114,13 @@ type State =
   | { phase: 'error'; message: string; missing?: { me: boolean; opp: boolean } }
   | { phase: 'ready'; data: CorrelateResponse };
 
-export function CorrelationSection({ oppPlatform, oppHandle, mePlatform, meHandle }: Props) {
+export function CorrelationSection({
+  oppPlatform,
+  oppHandle,
+  mePlatform,
+  meHandle,
+  explainEnabled = true,
+}: Props) {
   const [state, setState] = useState<State>({ phase: 'loading' });
   // Phase 5: the explainer runs after correlate succeeds. Kept as separate
   // state so a slow LLM call doesn't block the raw correlation panel.
@@ -148,6 +155,7 @@ export function CorrelationSection({ oppPlatform, oppHandle, mePlatform, meHandl
         }
         const data = (await res.json()) as CorrelateResponse;
         setState({ phase: 'ready', data });
+        if (!explainEnabled) return;
 
         // Kick off the explainer in parallel — fire-and-forget, doesn't
         // gate the raw correlation panel. Errors surface as `available: false`
@@ -171,7 +179,7 @@ export function CorrelationSection({ oppPlatform, oppHandle, mePlatform, meHandl
       }
     })();
     return () => ac.abort();
-  }, [oppPlatform, oppHandle, mePlatform, meHandle]);
+  }, [oppPlatform, oppHandle, mePlatform, meHandle, explainEnabled]);
 
   return (
     <section className="rounded-xl border border-border bg-card p-6">
