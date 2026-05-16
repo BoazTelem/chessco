@@ -432,6 +432,10 @@ interface CliArgs {
   rebuild: boolean;
   depth: number;
   concurrency: number;
+  /** 1-indexed shard number (e.g. 1 of 2). null = no sharding. */
+  shardN: number | null;
+  /** Total shard count (e.g. 2). null = no sharding. */
+  shardK: number | null;
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -442,6 +446,8 @@ function parseArgs(argv: string[]): CliArgs {
     rebuild: false,
     depth: DEFAULT_DEPTH,
     concurrency: 1,
+    shardN: null,
+    shardK: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -454,12 +460,23 @@ function parseArgs(argv: string[]): CliArgs {
     else if (a === '--depth' && argv[i + 1]) args.depth = Number.parseInt(argv[++i]!, 10);
     else if (a === '--concurrency' && argv[i + 1])
       args.concurrency = Number.parseInt(argv[++i]!, 10);
-    else if (a === '--rebuild') args.rebuild = true;
+    else if (a === '--shard' && argv[i + 1]) {
+      const raw = argv[++i]!;
+      const m = /^(\d+)\/(\d+)$/.exec(raw);
+      if (!m) throw new Error(`--shard must be N/K (e.g. 1/2), got: ${raw}`);
+      args.shardN = Number.parseInt(m[1]!, 10);
+      args.shardK = Number.parseInt(m[2]!, 10);
+    } else if (a === '--rebuild') args.rebuild = true;
     else throw new Error(`unrecognized arg: ${a}`);
   }
   if (args.depth < 1 || args.depth > 60) throw new Error(`--depth must be 1..60`);
   if (args.concurrency < 1 || args.concurrency > 6)
     throw new Error(`--concurrency must be 1..6 (DB pool max=4 limits this)`);
+  if (args.shardN !== null && args.shardK !== null) {
+    if (args.shardK < 2) throw new Error(`--shard K must be >= 2`);
+    if (args.shardN < 1 || args.shardN > args.shardK)
+      throw new Error(`--shard N must be in 1..K (got ${args.shardN}/${args.shardK})`);
+  }
   return args;
 }
 
@@ -468,12 +485,28 @@ async function listPendingHandles(
   limit: number | null,
   rebuild: boolean,
   depth: number,
+  shardN: number | null,
+  shardK: number | null,
 ): Promise<{ id: string; platform: string; handle: string; games_seen: number }[]> {
+  // Deterministic hash partition: ('x' || left(md5(id::text), 8))::bit(32)::int
+  // gives a stable signed 32-bit hash from a uuid. Cast to bigint before ABS()
+  // so the int4 minimum value cannot overflow. Modulo by K and check against
+  // (shardN - 1) since shardN is 1-indexed for human readability.
+  const shardClause =
+    shardN !== null && shardK !== null
+      ? sql`AND ABS((('x' || left(md5(h.id::text), 8))::bit(32)::int)::bigint) % ${shardK} = ${shardN - 1}`
+      : sql``;
+  // Same clause but for the rebuild path which doesn't alias the handles table.
+  const shardClauseRebuild =
+    shardN !== null && shardK !== null
+      ? sql`AND ABS((('x' || left(md5(id::text), 8))::bit(32)::int)::bigint) % ${shardK} = ${shardN - 1}`
+      : sql``;
   // Scout-ready handles missing a repertoire AT THIS DEPTH.
   if (rebuild) {
     return sql<{ id: string; platform: string; handle: string; games_seen: number }[]>`
       SELECT id::text, platform, handle, games_seen FROM handles
       WHERE scout_ready_at IS NOT NULL
+      ${shardClauseRebuild}
       ORDER BY games_seen DESC
       ${limit ? sql`LIMIT ${limit}` : sql``}
     `;
@@ -484,6 +517,7 @@ async function listPendingHandles(
     LEFT JOIN player_repertoires pr
       ON pr.player_id = h.id AND pr.depth = ${depth}
     WHERE h.scout_ready_at IS NOT NULL AND pr.player_id IS NULL
+    ${shardClause}
     ORDER BY h.games_seen DESC
     ${limit ? sql`LIMIT ${limit}` : sql``}
   `;
@@ -517,9 +551,18 @@ async function main() {
       return;
     }
 
-    const pending = await listPendingHandles(client, args.limit, args.rebuild, args.depth);
+    const pending = await listPendingHandles(
+      client,
+      args.limit,
+      args.rebuild,
+      args.depth,
+      args.shardN,
+      args.shardK,
+    );
+    const shardLabel =
+      args.shardN !== null && args.shardK !== null ? ` shard=${args.shardN}/${args.shardK}` : '';
     console.log(
-      `[repertoires] backfill depth=${args.depth} concurrency=${args.concurrency}: ${pending.length} handle(s) to build`,
+      `[repertoires] backfill depth=${args.depth} concurrency=${args.concurrency}${shardLabel}: ${pending.length} handle(s) to build`,
     );
     let done = 0;
     let totalGames = 0;

@@ -21,15 +21,20 @@
  *     src/stockfish/backfill.ts --platform lichess --handle drnykterstein --limit 100 --start-ply 1 --end-ply 60
  *
  * Flags:
- *   --workers N    parallel Stockfish engines (default 4)
- *   --depth D      Stockfish search depth per position (default 10)
- *   --batch B      games per chunk pulled from DB (default 200)
- *   --limit L      stop after L games analyzed (default ∞)
- *   --source S     only analyze 'lichess' | 'chess.com' games (default: both)
- *   --platform P   per-handle mode: 'lichess' | 'chess.com'
- *   --handle H     per-handle mode: handle string (case-insensitive)
- *   --start-ply N  first ply to analyze (default 10; for openings pass 1)
- *   --end-ply N    last ply to analyze, exclusive (default 60)
+ *   --workers N           parallel Stockfish engines (default 4)
+ *   --depth D             Stockfish search depth per position (default 10)
+ *   --batch B             games per chunk pulled from DB (default 200)
+ *   --limit L             stop after L games analyzed (default ∞)
+ *   --source S            only analyze 'lichess' | 'chess.com' games (default: both)
+ *   --platform P          per-handle mode: 'lichess' | 'chess.com'
+ *   --handle H            per-handle mode: handle string (case-insensitive)
+ *   --start-ply N         first ply to analyze (default 10; for openings pass 1)
+ *   --end-ply N           last ply to analyze, exclusive (default 60)
+ *   --shard N/K           process only games where hash(id) % K == (N-1). Lets two
+ *                         machines split the corpus without coordination. (Phase 2c)
+ *   --scout-ready-only    only analyze games where at least one player is a
+ *                         scout-ready handle (the corpus the matcher actually uses).
+ *   --coverage            print analyzed-vs-unanalyzed counts by source and exit.
  */
 import 'dotenv/config';
 import type postgres from 'postgres';
@@ -47,6 +52,14 @@ export interface CliArgs {
   handle: string | null;
   startPly: number;
   endPly: number;
+  /** 1-indexed shard number (e.g. 1 of 2). null = no sharding. */
+  shardN: number | null;
+  /** Total shard count (e.g. 2). null = no sharding. */
+  shardK: number | null;
+  /** Only analyze games where at least one player is scout-ready. */
+  scoutReadyOnly: boolean;
+  /** Print coverage stats and exit. */
+  coverage: boolean;
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -59,6 +72,10 @@ function parseArgs(argv: string[]): CliArgs {
   let handle: string | null = null;
   let startPly = 10;
   let endPly = 60;
+  let shardN: number | null = null;
+  let shardK: number | null = null;
+  let scoutReadyOnly = false;
+  let coverage = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--workers' && argv[i + 1]) workers = parseInt(argv[++i]!, 10);
@@ -70,12 +87,60 @@ function parseArgs(argv: string[]): CliArgs {
     else if (a === '--handle' && argv[i + 1]) handle = argv[++i]!.trim().toLowerCase();
     else if (a === '--start-ply' && argv[i + 1]) startPly = parseInt(argv[++i]!, 10);
     else if (a === '--end-ply' && argv[i + 1]) endPly = parseInt(argv[++i]!, 10);
+    else if (a === '--shard' && argv[i + 1]) {
+      const raw = argv[++i]!;
+      const m = /^(\d+)\/(\d+)$/.exec(raw);
+      if (!m) throw new Error(`--shard must be N/K (e.g. 1/2), got: ${raw}`);
+      shardN = parseInt(m[1]!, 10);
+      shardK = parseInt(m[2]!, 10);
+    } else if (a === '--scout-ready-only') scoutReadyOnly = true;
+    else if (a === '--coverage') coverage = true;
     else throw new Error(`unknown arg: ${a}`);
   }
   if ((platform === null) !== (handle === null)) {
     throw new Error('--platform and --handle must be given together');
   }
-  return { workers, depth, batch, limit, source, platform, handle, startPly, endPly };
+  if (shardN !== null && shardK !== null) {
+    if (shardK < 2) throw new Error(`--shard K must be >= 2`);
+    if (shardN < 1 || shardN > shardK)
+      throw new Error(`--shard N must be in 1..K (got ${shardN}/${shardK})`);
+  }
+  return {
+    workers,
+    depth,
+    batch,
+    limit,
+    source,
+    platform,
+    handle,
+    startPly,
+    endPly,
+    shardN,
+    shardK,
+    scoutReadyOnly,
+    coverage,
+  };
+}
+
+/** Pretty-print analyzed/unanalyzed game counts by source, then exit. */
+async function printCoverage(client: postgres.Sql): Promise<void> {
+  const rows = await client<
+    { source: string; analyzed: string; unanalyzed: string; total: string }[]
+  >`
+    SELECT source,
+           COUNT(*) FILTER (WHERE analyzed_at IS NOT NULL)::text AS analyzed,
+           COUNT(*) FILTER (WHERE analyzed_at IS NULL)::text     AS unanalyzed,
+           COUNT(*)::text                                        AS total
+    FROM games
+    GROUP BY source ORDER BY source
+  `;
+  console.log('--- Stockfish coverage ---');
+  for (const r of rows) {
+    const pct = ((Number(r.analyzed) / Number(r.total)) * 100).toFixed(1);
+    console.log(
+      `  ${r.source.padEnd(12)} analyzed=${r.analyzed.padStart(10)} unanalyzed=${r.unanalyzed.padStart(10)} total=${r.total.padStart(10)}  (${pct}%)`,
+    );
+  }
 }
 
 interface UnanalyzedRow {
@@ -103,6 +168,24 @@ async function pullChunk(
   alreadyPulledGameIds: Set<string>,
 ): Promise<UnanalyzedRow[]> {
   const size = Math.min(args.batch, remaining);
+  const shardClause =
+    args.shardN !== null && args.shardK !== null
+      ? client`AND ABS((('x' || left(md5(g.id::text), 8))::bit(32)::int)::bigint) % ${args.shardK} = ${args.shardN - 1}`
+      : client``;
+  const scoutReadyClause = args.scoutReadyOnly
+    ? client`AND EXISTS (
+        SELECT 1
+        FROM handles h
+        WHERE h.scout_ready_at IS NOT NULL
+          AND h.platform = g.source
+          AND (
+            h.id = g.white_player_id
+            OR h.id = g.black_player_id
+            OR LOWER(h.handle) = LOWER(g.white_handle_snapshot)
+            OR LOWER(h.handle) = LOWER(g.black_handle_snapshot)
+          )
+      )`
+    : client``;
 
   // Per-handle mode: re-analyze recent games for one opponent regardless of
   // analyzed_at, to populate per-ply moves rows for the leaks feature.
@@ -119,6 +202,8 @@ async function pullChunk(
             AND length(g.pgn) > 0
             AND LOWER(g.white_handle_snapshot) = ${handleLower}
             AND (${skipIds.length === 0} OR g.id <> ALL (${skipIds}::uuid[]))
+            ${shardClause}
+            ${scoutReadyClause}
           ORDER BY g.played_at DESC LIMIT ${size})
         UNION ALL
         (SELECT g.id, g.played_at, g.pgn, g.ply_count FROM games g
@@ -126,6 +211,8 @@ async function pullChunk(
             AND length(g.pgn) > 0
             AND LOWER(g.black_handle_snapshot) = ${handleLower}
             AND (${skipIds.length === 0} OR g.id <> ALL (${skipIds}::uuid[]))
+            ${shardClause}
+            ${scoutReadyClause}
           ORDER BY g.played_at DESC LIMIT ${size})
       ) x
       ORDER BY played_at DESC LIMIT ${size}
@@ -134,21 +221,25 @@ async function pullChunk(
 
   if (args.source) {
     return client<UnanalyzedRow[]>`
-      SELECT id, played_at::text, pgn, ply_count
-      FROM games
-      WHERE analyzed_at IS NULL
-        AND length(pgn) > 0
-        AND source = ${args.source}
-      ORDER BY played_at
+      SELECT g.id, g.played_at::text, g.pgn, g.ply_count
+      FROM games g
+      WHERE g.analyzed_at IS NULL
+        AND length(g.pgn) > 0
+        AND g.source = ${args.source}
+        ${shardClause}
+        ${scoutReadyClause}
+      ORDER BY g.played_at
       LIMIT ${size}
     `;
   }
   return client<UnanalyzedRow[]>`
-    SELECT id, played_at::text, pgn, ply_count
-    FROM games
-    WHERE analyzed_at IS NULL
-      AND length(pgn) > 0
-    ORDER BY played_at
+    SELECT g.id, g.played_at::text, g.pgn, g.ply_count
+    FROM games g
+    WHERE g.analyzed_at IS NULL
+      AND length(g.pgn) > 0
+      ${shardClause}
+      ${scoutReadyClause}
+    ORDER BY g.played_at
     LIMIT ${size}
   `;
 }
@@ -302,11 +393,30 @@ export interface BackfillStats {
 
 export async function runBackfill(args: CliArgs): Promise<BackfillStats> {
   const perHandle = args.platform !== null && args.handle !== null;
+  const shardLabel =
+    args.shardN !== null && args.shardK !== null ? ` shard=${args.shardN}/${args.shardK}` : '';
+  const scoutLabel = args.scoutReadyOnly ? ' scout-ready-only=on' : '';
   console.log(
-    `[backfill-cp] workers=${args.workers} depth=${args.depth} batch=${args.batch} limit=${args.limit === Infinity ? '∞' : args.limit} source=${args.source ?? '(all)'}${perHandle ? ` per-handle=${args.platform}/${args.handle} plies=${args.startPly}..${args.endPly} per-ply-writes=on` : ''}`,
+    `[backfill-cp] workers=${args.workers} depth=${args.depth} batch=${args.batch} limit=${args.limit === Infinity ? '∞' : args.limit} source=${args.source ?? '(all)'}${shardLabel}${scoutLabel}${perHandle ? ` per-handle=${args.platform}/${args.handle} plies=${args.startPly}..${args.endPly} per-ply-writes=on` : ''}`,
   );
 
   const { client } = getGamesDb();
+  if (args.coverage) {
+    const startedAt = Date.now();
+    try {
+      await printCoverage(client);
+      return {
+        totalAnalyzed: 0,
+        totalSkipped: 0,
+        gameUpdates: 0,
+        moveUpdates: 0,
+        elapsedSec: (Date.now() - startedAt) / 1000,
+      };
+    } finally {
+      await client.end({ timeout: 5 });
+    }
+  }
+
   let totalAnalyzed = 0;
   let totalSkipped = 0;
   let totalUpdated = 0;
@@ -423,6 +533,10 @@ export function runScopedBackfillForHandle(args: {
     handle: args.handle.trim().toLowerCase(),
     startPly: args.startPly ?? 1,
     endPly: args.endPly ?? 60,
+    shardN: null,
+    shardK: null,
+    scoutReadyOnly: false,
+    coverage: false,
   });
 }
 
