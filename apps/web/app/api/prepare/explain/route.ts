@@ -18,6 +18,11 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { generateExplanation, type CorrelateDigest } from '@/lib/prepare/explain';
 import { getProseProvider } from '@/lib/scout/llm-providers';
+import { createClient } from '@/lib/supabase/server';
+
+const MAX_BYTES = 256 * 1024;
+const MAX_OVERLAP_POSITIONS = 25;
+const MAX_DRIFT_POSITIONS = 20;
 
 const TopMoveSchema = z.object({
   san: z.string(),
@@ -28,7 +33,7 @@ const TopMoveSchema = z.object({
 
 const OverlapSchema = z.object({
   yourMove: z.object({ san: z.string(), gamesCount: z.number() }),
-  theirResponses: z.array(TopMoveSchema),
+  theirResponses: z.array(TopMoveSchema).max(5),
   theirAggregate: z.object({ totalGames: z.number(), scoreShare: z.number() }),
   opportunityScore: z.number(),
 });
@@ -59,16 +64,36 @@ const Input = z.object({
     baseline: z.object({ timeBucket: z.string() }).nullable(),
     recent: z.object({ timeBucket: z.string() }).nullable(),
   }),
-  asWhite: z.array(OverlapSchema),
-  asBlack: z.array(OverlapSchema),
-  driftAsWhite: z.array(DriftSchema),
-  driftAsBlack: z.array(DriftSchema),
+  asWhite: z.array(OverlapSchema).max(MAX_OVERLAP_POSITIONS),
+  asBlack: z.array(OverlapSchema).max(MAX_OVERLAP_POSITIONS),
+  driftAsWhite: z.array(DriftSchema).max(MAX_DRIFT_POSITIONS),
+  driftAsBlack: z.array(DriftSchema).max(MAX_DRIFT_POSITIONS),
 });
 
 export async function POST(req: Request): Promise<NextResponse> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+  }
+
+  const contentLengthHeader = req.headers.get('content-length');
+  if (contentLengthHeader) {
+    const length = Number.parseInt(contentLengthHeader, 10);
+    if (Number.isFinite(length) && length > MAX_BYTES) {
+      return NextResponse.json({ error: 'payload_too_large' }, { status: 413 });
+    }
+  }
+
   let body: z.infer<typeof Input>;
   try {
-    body = Input.parse(await req.json());
+    const rawBody = await req.text();
+    if (new TextEncoder().encode(rawBody).byteLength > MAX_BYTES) {
+      return NextResponse.json({ error: 'payload_too_large' }, { status: 413 });
+    }
+    body = Input.parse(JSON.parse(rawBody));
   } catch (err) {
     const msg =
       err instanceof z.ZodError ? (err.issues[0]?.message ?? 'invalid input') : 'invalid JSON';

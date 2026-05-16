@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { CorrelationSection } from './CorrelationSection';
 import { OpeningTreeSection } from './OpeningTreeSection';
+import { PrepPlanShell } from './PrepPlanShell';
 import { PersonalizedLeaks } from '@/components/prepare/PersonalizedLeaks';
 import { getUser } from '@/lib/auth';
 import {
@@ -95,13 +95,12 @@ export default async function PrepareStubPage({
   const platform = PLATFORM_SLUGS[platformSlug];
   if (!platform) notFound();
 
-  // Phase 4 wiring: when `?me=...&mePlatform=...` are present we render
-  // the correlation engine output. URL-param entry is the v1 surface;
-  // a picker + user→handle linking lands separately.
-  const mePlatform: 'chess.com' | 'lichess' | null =
+  // PrepPlanShell handles the "your handle" capture (URL params take
+  // precedence, then localStorage, then prompt). We just thread the
+  // raw URL params through; the shell decides what to render.
+  const urlMePlatform: 'chess.com' | 'lichess' | null =
     sp.mePlatform === 'chess.com' || sp.mePlatform === 'lichess' ? sp.mePlatform : null;
-  const meHandle = sp.me && sp.me.trim().length > 0 ? sp.me.trim() : null;
-  const correlationProps = meHandle && mePlatform ? ({ meHandle, mePlatform } as const) : null;
+  const urlMeHandle = sp.me && sp.me.trim().length > 0 ? sp.me.trim() : null;
 
   const handle = decodeURIComponent(rawHandle);
   const supabase = createAdminClient();
@@ -163,14 +162,13 @@ export default async function PrepareStubPage({
 
         <OpeningTreeSection platform={platform} handle={hit.handle} signedIn={Boolean(user)} />
 
-        {correlationProps ? (
-          <CorrelationSection
-            oppPlatform={platform}
-            oppHandle={hit.handle}
-            mePlatform={correlationProps.mePlatform}
-            meHandle={correlationProps.meHandle}
-          />
-        ) : null}
+        <PrepPlanShell
+          oppPlatform={platform}
+          oppHandle={hit.handle}
+          urlMeHandle={urlMeHandle}
+          urlMePlatform={urlMePlatform}
+          signedIn={Boolean(user)}
+        />
 
         <PersonalizedLeaks
           signedIn={Boolean(user)}
