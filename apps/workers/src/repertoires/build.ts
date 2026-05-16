@@ -204,25 +204,33 @@ async function loadGameRecords(
   if (games.length === 0) return [];
 
   const gameIds = games.map((g) => g.id);
-  // Load moves + their fen-before strings, capped at the requested depth (ply).
-  const moves = await sql<MoveRow[]>`
-    SELECT m.game_id::text, m.ply, m.san, m.uci, p.fen AS fen_before
-    FROM moves m
-    INNER JOIN positions p ON p.id = m.fen_before_id
-    WHERE m.game_id = ANY(${gameIds}::uuid[])
-      AND m.ply <= ${depth * 2}
-    ORDER BY m.game_id, m.ply
-  `;
 
-  // Group moves by game_id.
+  // Chunk the moves+positions JOIN to bound per-query temp-file usage. A
+  // prolific handle (5k+ games) joined in one shot easily exceeds Cloud
+  // SQL's 10GB temp_file_limit because the hash builds the full positions
+  // result before grouping. Loading 500 games at a time keeps the working
+  // set to a few hundred MB and lets concurrent handle-workers coexist
+  // without thrashing the DB.
+  const MOVES_CHUNK = 500;
   const movesByGame = new Map<string, MoveRow[]>();
-  for (const m of moves) {
-    let arr = movesByGame.get(m.game_id);
-    if (!arr) {
-      arr = [];
-      movesByGame.set(m.game_id, arr);
+  for (let i = 0; i < gameIds.length; i += MOVES_CHUNK) {
+    const idChunk = gameIds.slice(i, i + MOVES_CHUNK);
+    const moves = await sql<MoveRow[]>`
+      SELECT m.game_id::text, m.ply, m.san, m.uci, p.fen AS fen_before
+      FROM moves m
+      INNER JOIN positions p ON p.id = m.fen_before_id
+      WHERE m.game_id = ANY(${idChunk}::uuid[])
+        AND m.ply <= ${depth * 2}
+      ORDER BY m.game_id, m.ply
+    `;
+    for (const m of moves) {
+      let arr = movesByGame.get(m.game_id);
+      if (!arr) {
+        arr = [];
+        movesByGame.set(m.game_id, arr);
+      }
+      arr.push(m);
     }
-    arr.push(m);
   }
 
   // Reconstruct GameRecord.
