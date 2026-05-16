@@ -296,6 +296,7 @@ function buildProcessedGame(
   }
 
   const timeClass: GameRow['time_class'] = game.timeClass === 'unknown' ? null : game.timeClass;
+  const pgn = buildMinimalPgn(platform, sourceGameId, game, moves);
 
   const gameRow: GameRow = {
     source: platform,
@@ -304,7 +305,7 @@ function buildProcessedGame(
     black_handle_snapshot: game.blackHandle.toLowerCase(),
     white_rating: game.whiteElo,
     black_rating: game.blackElo,
-    pgn: '', // Browser didn't keep the raw PGN; matches chesscom-crawl's null-PGN fallback.
+    pgn,
     initial_fen: null,
     result: game.resultText,
     termination: null,
@@ -317,6 +318,60 @@ function buildProcessedGame(
   };
 
   return { game: gameRow, positions, moves };
+}
+
+function buildMinimalPgn(
+  platform: 'lichess' | 'chess.com',
+  sourceGameId: string,
+  game: GameRecordInput,
+  moves: MoveRow[],
+): string {
+  const headers: Array<[string, string]> = [
+    ['Event', 'Browser PGN Fast Path'],
+    ['Site', sourceSite(platform, sourceGameId)],
+    ['Date', formatPgnDate(game.playedAt)],
+    ['UTCDate', formatPgnDate(game.playedAt)],
+    ['UTCTime', formatPgnTime(game.playedAt)],
+    ['White', game.whiteHandle],
+    ['Black', game.blackHandle],
+    ['Result', game.resultText],
+  ];
+  if (game.whiteElo !== null) headers.push(['WhiteElo', String(game.whiteElo)]);
+  if (game.blackElo !== null) headers.push(['BlackElo', String(game.blackElo)]);
+
+  const moveText: string[] = [];
+  for (let i = 0; i < moves.length; i++) {
+    const san = moves[i]!.san;
+    if (i % 2 === 0) moveText.push(`${Math.floor(i / 2) + 1}. ${san}`);
+    else moveText.push(san);
+  }
+  moveText.push(game.resultText);
+
+  return `${headers.map(([key, value]) => `[${key} "${escapePgnHeader(value)}"]`).join('\n')}\n\n${moveText.join(' ')}`;
+}
+
+function sourceSite(platform: 'lichess' | 'chess.com', sourceGameId: string): string {
+  if (platform === 'lichess') return `https://lichess.org/${sourceGameId}`;
+  if (/^\d+$/.test(sourceGameId)) return `https://www.chess.com/game/live/${sourceGameId}`;
+  return `https://www.chess.com/game/${sourceGameId}`;
+}
+
+function formatPgnDate(date: Date): string {
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(date.getUTCDate()).padStart(2, '0');
+  return `${y}.${m}.${d}`;
+}
+
+function formatPgnTime(date: Date): string {
+  const hh = String(date.getUTCHours()).padStart(2, '0');
+  const mm = String(date.getUTCMinutes()).padStart(2, '0');
+  const ss = String(date.getUTCSeconds()).padStart(2, '0');
+  return `${hh}:${mm}:${ss}`;
+}
+
+function escapePgnHeader(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 function normalizeFenKey(fen: string): string {
