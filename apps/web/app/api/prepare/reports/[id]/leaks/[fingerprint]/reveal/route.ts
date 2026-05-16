@@ -2,7 +2,7 @@
  * POST /api/prepare/reports/[id]/leaks/[fingerprint]/reveal — atomic
  * free/paid reveal of a personalized leak. First reveal per
  * (profile, platform, handle) is free; the rest cost 1 credit.
- * Surprise lines never hit this route (they are free teasers).
+ * Surprise and own-side lines never hit this route (they are always free).
  */
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
@@ -59,8 +59,8 @@ export async function POST(
   if (!leak) {
     return NextResponse.json({ error: 'leak_not_found' }, { status: 404 });
   }
-  if (leak.kind === 'surprise') {
-    return NextResponse.json({ error: 'surprise_lines_are_free' }, { status: 400 });
+  if (leak.kind === 'surprise' || leak.kind === 'own') {
+    return NextResponse.json({ error: 'free_lines_do_not_need_reveal' }, { status: 400 });
   }
 
   const result = await unlockLeak({
