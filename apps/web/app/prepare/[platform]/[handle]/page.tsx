@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { CorrelationSection } from './CorrelationSection';
 import { OpeningTreeSection } from './OpeningTreeSection';
 import { PersonalizedLeaks } from '@/components/prepare/PersonalizedLeaks';
 import { getUser } from '@/lib/auth';
@@ -80,10 +81,27 @@ async function resolveOpponent(
   return live;
 }
 
-export default async function PrepareStubPage({ params }: { params: Promise<RouteParams> }) {
-  const { platform: platformSlug, handle: rawHandle } = await params;
+export default async function PrepareStubPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<RouteParams>;
+  searchParams: Promise<{ me?: string; mePlatform?: string }>;
+}) {
+  const [{ platform: platformSlug, handle: rawHandle }, sp] = await Promise.all([
+    params,
+    searchParams,
+  ]);
   const platform = PLATFORM_SLUGS[platformSlug];
   if (!platform) notFound();
+
+  // Phase 4 wiring: when `?me=...&mePlatform=...` are present we render
+  // the correlation engine output. URL-param entry is the v1 surface;
+  // a picker + user→handle linking lands separately.
+  const mePlatform: 'chess.com' | 'lichess' | null =
+    sp.mePlatform === 'chess.com' || sp.mePlatform === 'lichess' ? sp.mePlatform : null;
+  const meHandle = sp.me && sp.me.trim().length > 0 ? sp.me.trim() : null;
+  const correlationProps = meHandle && mePlatform ? ({ meHandle, mePlatform } as const) : null;
 
   const handle = decodeURIComponent(rawHandle);
   const supabase = createAdminClient();
@@ -144,6 +162,15 @@ export default async function PrepareStubPage({ params }: { params: Promise<Rout
         </header>
 
         <OpeningTreeSection platform={platform} handle={hit.handle} signedIn={Boolean(user)} />
+
+        {correlationProps ? (
+          <CorrelationSection
+            oppPlatform={platform}
+            oppHandle={hit.handle}
+            mePlatform={correlationProps.mePlatform}
+            meHandle={correlationProps.meHandle}
+          />
+        ) : null}
 
         <PersonalizedLeaks
           signedIn={Boolean(user)}
