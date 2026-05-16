@@ -75,12 +75,12 @@ interface OpponentPresence {
 }
 
 const SIDEBAR_WIDTH = 300;
-const VERTICAL_CHROME = 180; // approx px reserved for clocks + brand chip + breathing room
+const FALLBACK_VERTICAL_CHROME = 180; // used until the first chrome measurement lands
 const MIN_BOARD = 280;
-const MAX_BOARD = 1100; // sane upper bound on giant displays so pieces stay legible
+const MAX_BOARD = 1280; // sane upper bound on giant displays so pieces stay legible
 const RECONNECT_DELAYS_MS = [500, 1500, 3000, 6000, 12000];
 
-function computeBoardSize(): number {
+function computeBoardSize(verticalChrome: number): number {
   if (typeof window === 'undefined') return 560;
   const vh = window.innerHeight;
   const vw = window.innerWidth;
@@ -88,7 +88,7 @@ function computeBoardSize(): number {
   // breakpoint (~1024px) it stacks below, so the board can use the full width.
   const sidebar = vw >= 1024 ? SIDEBAR_WIDTH + 32 : 0;
   const widthCap = vw - sidebar - 32;
-  const heightCap = vh - VERTICAL_CHROME;
+  const heightCap = vh - verticalChrome;
   return Math.max(MIN_BOARD, Math.min(MAX_BOARD, Math.floor(Math.min(widthCap, heightCap))));
 }
 
@@ -110,7 +110,11 @@ export function GamePlayer({
   const reconnectAttempt = useRef(0);
   const closedIntentionally = useRef(false);
   const startSoundFired = useRef(false);
+  const columnRef = useRef<HTMLDivElement | null>(null);
+  const topChromeRef = useRef<HTMLDivElement | null>(null);
+  const bottomChromeRef = useRef<HTMLDivElement | null>(null);
   const [boardWidth, setBoardWidth] = useState(560);
+  const [isDesktop, setIsDesktop] = useState(false);
   const [connected, setConnected] = useState(false);
   const [state, setState] = useState<GameState | null>(null);
   const [role] = useState<Color>(initialRole);
@@ -154,14 +158,53 @@ export function GamePlayer({
     };
   }, [matchId]);
 
+  // Track the `lg` breakpoint so the player cards can live above/below the
+  // board on mobile but move into the sidebar on desktop — that frees the
+  // board column to use the full vertical space.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const apply = () => setIsDesktop(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
+
+  // Sizing the board: instead of guessing how much vertical space the clocks
+  // and page padding consume, measure the actual chrome above and below the
+  // board so the board grows to the largest square that fits. Re-runs once
+  // `state` arrives so the refs are attached to the real layout (not the
+  // "Loading position…" placeholder), and when the breakpoint flips so the
+  // chrome budget is recomputed for the new layout.
+  const stateReady = state !== null;
   useEffect(() => {
     function update() {
-      setBoardWidth(computeBoardSize());
+      const col = columnRef.current;
+      let verticalChrome = FALLBACK_VERTICAL_CHROME;
+      if (col) {
+        const colTop = col.getBoundingClientRect().top;
+        // On desktop the player cards are rendered inside the sidebar, so they
+        // contribute zero to the board column's vertical chrome.
+        const topH = isDesktop ? 0 : (topChromeRef.current?.offsetHeight ?? 0);
+        const bottomH = isDesktop ? 0 : (bottomChromeRef.current?.offsetHeight ?? 0);
+        // 36px = my-2 around the board (16) + 2px border ×2 (4) + main pb-4 (16).
+        verticalChrome = colTop + topH + bottomH + 36;
+      }
+      setBoardWidth(computeBoardSize(verticalChrome));
     }
     update();
     window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
-  }, []);
+    let ro: ResizeObserver | null = null;
+    if (!isDesktop && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(update);
+      if (topChromeRef.current) ro.observe(topChromeRef.current);
+      if (bottomChromeRef.current) ro.observe(bottomChromeRef.current);
+    }
+    return () => {
+      window.removeEventListener('resize', update);
+      ro?.disconnect();
+    };
+  }, [stateReady, isDesktop]);
 
   // Connect (and reconnect) lifecycle.
   useEffect(() => {
@@ -419,20 +462,24 @@ export function GamePlayer({
 
   return (
     <div className="flex flex-col items-center gap-4 lg:flex-row lg:items-start lg:justify-center">
-      <div className="flex flex-col" style={{ width: boardWidth }}>
-        {!ended && opponentPresence && (
-          <PresenceBanner
-            reason={opponentPresence.reason}
-            deadlineMs={opponentPresence.deadlineMs}
-          />
+      <div ref={columnRef} className="flex flex-col" style={{ width: boardWidth }}>
+        {!isDesktop && (
+          <div ref={topChromeRef}>
+            {!ended && opponentPresence && (
+              <PresenceBanner
+                reason={opponentPresence.reason}
+                deadlineMs={opponentPresence.deadlineMs}
+              />
+            )}
+            <PlayerCard
+              player={topPlayer}
+              color={topColor}
+              isYou={false}
+              ms={topClockMs}
+              active={topActive}
+            />
+          </div>
         )}
-        <PlayerCard
-          player={topPlayer}
-          color={topColor}
-          isYou={false}
-          ms={topClockMs}
-          active={topActive}
-        />
         <div
           className="my-2 overflow-hidden rounded-md"
           style={{ border: `2px solid ${BOARD_BORDER}` }}
@@ -450,16 +497,37 @@ export function GamePlayer({
             animationDuration={prefs.animationsEnabled ? 200 : 0}
           />
         </div>
-        <PlayerCard
-          player={bottomPlayer}
-          color={bottomColor}
-          isYou={true}
-          ms={bottomClockMs}
-          active={bottomActive}
-        />
+        {!isDesktop && (
+          <div ref={bottomChromeRef}>
+            <PlayerCard
+              player={bottomPlayer}
+              color={bottomColor}
+              isYou={true}
+              ms={bottomClockMs}
+              active={bottomActive}
+            />
+          </div>
+        )}
       </div>
 
       <aside className="w-full space-y-3 lg:w-[300px] lg:shrink-0">
+        {isDesktop && (
+          <div ref={topChromeRef}>
+            {!ended && opponentPresence && (
+              <PresenceBanner
+                reason={opponentPresence.reason}
+                deadlineMs={opponentPresence.deadlineMs}
+              />
+            )}
+            <PlayerCard
+              player={topPlayer}
+              color={topColor}
+              isYou={false}
+              ms={topClockMs}
+              active={topActive}
+            />
+          </div>
+        )}
         <div className="rounded-lg border border-border bg-card p-3">
           <div className="flex items-center justify-between">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Moves</p>
@@ -471,6 +539,18 @@ export function GamePlayer({
             <MovesPanel pgn={state.pgn} initialFen={initialFen} />
           </div>
         </div>
+
+        {isDesktop && (
+          <div ref={bottomChromeRef}>
+            <PlayerCard
+              player={bottomPlayer}
+              color={bottomColor}
+              isYou={true}
+              ms={bottomClockMs}
+              active={bottomActive}
+            />
+          </div>
+        )}
 
         {drawOfferedFrom && drawOfferedFrom !== role && !ended && (
           <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
