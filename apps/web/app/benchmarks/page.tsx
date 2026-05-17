@@ -108,17 +108,207 @@ function VerdictsSection() {
   }
 
   return (
-    <section className="mt-10">
+    <section className="mt-16 border-t border-border pt-10">
       <header className="flex items-baseline justify-between">
-        <h2 className="font-display text-xl font-semibold">Critical-quality benchmark verdicts</h2>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            Internal quality gates
+          </p>
+          <h2 className="mt-1 font-display text-xl font-semibold">Build verdicts (CQ-1 · CQ-2)</h2>
+        </div>
         <p className="text-xs text-muted-foreground">
-          Pass/fail vs. plan-locked CQ-1 and CQ-2 targets
+          Engineering pass/fail vs. plan-locked targets
         </p>
       </header>
       <div className="mt-4 grid gap-3 md:grid-cols-3">
         {verdicts.map((v) => (
           <VerdictTile key={v.id} verdict={v} />
         ))}
+      </div>
+    </section>
+  );
+}
+
+// ============================================================================
+// Hero — two-path account-finder explainer (Path A: name, Path B: paste PGN)
+// ============================================================================
+
+function HeroSection({
+  coverage,
+  sparse,
+}: {
+  coverage: CoverageStats | null;
+  sparse: SparseBenchmark | null;
+}) {
+  // Path A headline: titled tier coverage (tiers[0] by convention). Falls back
+  // to "Benchmark pending" if coverage-stats.json is missing.
+  const titledTier = coverage?.tiers.find((t) => t.label.toLowerCase().startsWith('titled'));
+  const totalClaimed = coverage
+    ? Object.values(coverage.totals.platforms).reduce((sum, p) => sum + p.claimed, 0)
+    : 0;
+
+  // Path B headline: top-1 at 10 sampled games (or the highest sample size we
+  // have, since 10 is the recommended row in current artifacts). Falls back
+  // similarly.
+  const tenGameRow =
+    sparse?.metrics_by_sample_size.find((r) => r.sample_size === 10) ??
+    sparse?.metrics_by_sample_size.at(-1) ??
+    null;
+  const recommendedGames = sparse?.guidance.recommended ?? null;
+
+  return (
+    <section className="mt-10">
+      <header className="max-w-3xl">
+        <h1 className="font-display text-4xl font-semibold md:text-5xl">
+          Find any opponent&apos;s online account.
+        </h1>
+        <p className="mt-4 text-base leading-7 text-muted-foreground md:text-lg">
+          Two ways in — whichever path the data allows. Try name search first; if their handle is
+          anonymous, paste a few of their games and the cascade matcher recognises them by opening
+          repertoire and tempo signature.
+        </p>
+      </header>
+
+      <div className="mt-8 grid gap-4 md:grid-cols-2">
+        {/* Path A — Name search */}
+        <article className="flex flex-col rounded-lg border border-accent/40 bg-accent/5 p-6">
+          <div className="flex items-baseline justify-between">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">
+              Path A · Recommended first
+            </p>
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Name search
+            </span>
+          </div>
+          <h2 className="mt-3 font-display text-2xl font-semibold">Type their name.</h2>
+
+          {titledTier ? (
+            <div className="mt-4">
+              <p className="text-4xl font-semibold text-foreground">
+                {titledTier.coverage_pct.toFixed(1)}%
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                of titled FIDE players already mapped to their online account
+                <span className="text-xs"> (v1 target {titledTier.v1_target_pct}%)</span>
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {num(titledTier.claimed_total)} titled players mapped today
+                {totalClaimed > 0 && (
+                  <>
+                    {' · '}
+                    {num(totalClaimed)} total claims across all FIDE tiers
+                  </>
+                )}
+              </p>
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-muted-foreground">
+              Coverage benchmark pending — re-run{' '}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">eval:coverage</code>.
+            </p>
+          )}
+
+          <p className="mt-5 text-sm leading-6 text-muted-foreground">
+            Works when their profile exposes a real name, when the handle is name-shaped (carlsen,
+            magnus_grischuk), or when they&apos;ve verified their FIDE link.
+          </p>
+
+          <div className="mt-auto pt-6">
+            <Link
+              href="/scout"
+              className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground hover:opacity-90"
+            >
+              Search by name →
+            </Link>
+            <a href="#path-a" className="ml-3 text-xs text-muted-foreground hover:text-foreground">
+              See coverage by FIDE tier ↓
+            </a>
+          </div>
+        </article>
+
+        {/* Path B — Paste PGN */}
+        <article className="flex flex-col rounded-lg border border-border bg-card p-6">
+          <div className="flex items-baseline justify-between">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-foreground">
+              Path B · Fallback when the handle is anonymous
+            </p>
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Games matching
+            </span>
+          </div>
+          <h2 className="mt-3 font-display text-2xl font-semibold">Paste their games.</h2>
+
+          {tenGameRow ? (
+            <div className="mt-4">
+              <p className="text-4xl font-semibold text-foreground">
+                {pct(tenGameRow.metrics.top1)}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                top-1 account picked correctly from {tenGameRow.sample_size} sampled games
+                <span className="text-xs">
+                  {' · '}
+                  {pct(tenGameRow.metrics.top10)} in the top-10
+                </span>
+              </p>
+              {recommendedGames ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Most users hit high-confidence at {recommendedGames} games; quick-scan from{' '}
+                  {sparse?.guidance.quick_scan ?? '?'}.
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-muted-foreground">
+              Cascade benchmark pending — re-run{' '}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">eval:cascade</code>.
+            </p>
+          )}
+
+          <p className="mt-5 text-sm leading-6 text-muted-foreground">
+            Works on anonymous handles too — the cascade matches opening repertoire + tempo
+            signature, no name needed. Start by searching the name; the paste-PGN refiner appears on
+            the result page when results aren&apos;t clear.
+          </p>
+
+          <div className="mt-auto pt-6">
+            <Link
+              href="/scout"
+              className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-semibold hover:border-accent hover:text-accent"
+            >
+              Open Scout, then paste →
+            </Link>
+            <a href="#path-b" className="ml-3 text-xs text-muted-foreground hover:text-foreground">
+              See accuracy by sample size ↓
+            </a>
+          </div>
+        </article>
+      </div>
+
+      <p className="mt-4 text-center text-xs text-muted-foreground">
+        Not sure? Try both — they&apos;re complementary.
+      </p>
+
+      {/* When does each path work? — short disambiguator */}
+      <div className="mt-10 rounded-md border border-border bg-card p-5">
+        <h2 className="font-display text-lg font-semibold">When does each path work?</h2>
+        <ul className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground">
+          <li>
+            <strong className="text-foreground">Path A (name)</strong> — the opponent&apos;s profile
+            exposes <em>claimed_name</em>, the handle itself is name-shaped, or they self-verified
+            their FIDE ID. Coverage % below tells you how often that&apos;s true for each FIDE
+            rating tier.
+          </li>
+          <li>
+            <strong className="text-foreground">Path B (games)</strong> — you have at least 3-5 of
+            their games. The cascade recognises repertoire + tempo regardless of handle. Accuracy %
+            below tells you how often it picks the correct account first.
+          </li>
+          <li className="text-xs">
+            The two numbers measure different things on purpose. Path A&apos;s % is{' '}
+            <em>whether name search can possibly land</em>. Path B&apos;s % is{' '}
+            <em>whether the cascade picks the right account once you do paste games</em>.
+          </li>
+        </ul>
       </div>
     </section>
   );
@@ -195,15 +385,16 @@ function CoverageSection({ stats }: { stats: CoverageStats }) {
   const totalClaimed = Object.values(stats.totals.platforms).reduce((sum, p) => sum + p.claimed, 0);
 
   return (
-    <section className="mt-12">
+    <section id="path-a" className="mt-12 scroll-mt-16">
       <header>
-        <h2 className="font-display text-2xl font-semibold md:text-3xl">
-          Name matching coverage (Feature 1)
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Path A</p>
+        <h2 className="mt-1 font-display text-2xl font-semibold md:text-3xl">
+          Where name search works today
         </h2>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          What fraction of each FIDE rating tier has at least one matched online handle (chess.com
-          or Lichess)? Drives whether an opponent search will land on the right person before
-          Feature 2 (games matching) ever runs.
+          What fraction of each FIDE rating tier has at least one matched online account (chess.com
+          or Lichess)? This is the ceiling on how often Path A can succeed — if coverage is 13% in a
+          tier, the other 87% need Path B.
         </p>
       </header>
 
@@ -458,16 +649,17 @@ function SparseSection({ benchmark }: { benchmark: SparseBenchmark }) {
   const corpusTotal = Object.values(benchmark.corpus_size).reduce((a, b) => a + b, 0);
 
   return (
-    <section className="mt-12">
+    <section id="path-b" className="mt-12 scroll-mt-16">
       <header>
-        <h2 className="font-display text-2xl font-semibold md:text-3xl">
-          Sparse cascade matcher (v4)
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Path B</p>
+        <h2 className="mt-1 font-display text-2xl font-semibold md:text-3xl">
+          How well games-matching identifies an account
         </h2>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          Production methodology. Stage A SQL prefilter → Stage B sparse term retrieval over{' '}
+          Sample N games from a known target, run the sparse cascade (Stage A SQL prefilter → Stage
+          B term retrieval over{' '}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">fingerprint_terms</code> → Stage C
-          combined-score re-rank. Sample N games from a known target, run the cascade, record where
-          the target ranked.
+          combined-score re-rank), record where the target&apos;s account ranked.
         </p>
       </header>
 
@@ -611,7 +803,7 @@ function LegacySection({ benchmark }: { benchmark: LegacyBenchmark }) {
   const runDate = new Date(benchmark.run_at);
 
   return (
-    <section className="mt-16 border-t border-border pt-10">
+    <section>
       <header>
         <h2 className="font-display text-xl font-semibold text-muted-foreground">
           Legacy repertoire-vector matcher
@@ -727,21 +919,25 @@ export default function BenchmarksPage() {
         Chessco
       </Link>
 
-      <section className="mt-8">
-        <h1 className="font-display text-4xl font-semibold md:text-5xl">Matcher benchmarks</h1>
-        <p className="mt-4 max-w-3xl text-base leading-7 text-muted-foreground">
-          Two measurements drive product copy here: <strong>Name matching coverage</strong> (can we
-          find your opponent at all?) and <strong>Games matching accuracy</strong> (given a PGN
-          sample, do we identify them correctly?). The benchmarks exist so promises rest on
-          evidence, not guesswork.
-        </p>
-      </section>
-
-      <VerdictsSection />
+      <HeroSection coverage={coverage} sparse={sparse} />
 
       {coverage ? <CoverageSection stats={coverage} /> : null}
       {sparse ? <SparseSection benchmark={sparse} /> : null}
-      {legacy ? <LegacySection benchmark={legacy} /> : null}
+
+      <VerdictsSection />
+
+      {legacy ? (
+        <section className="mt-12 border-t border-border pt-8">
+          <details className="group">
+            <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground">
+              Legacy repertoire-vector matcher (superseded — kept for comparison)
+            </summary>
+            <div className="mt-4">
+              <LegacySection benchmark={legacy} />
+            </div>
+          </details>
+        </section>
+      ) : null}
     </main>
   );
 }

@@ -275,6 +275,14 @@ function EmptyState() {
         <SampleQuery label="GM USA" query="" country="USA" title="GM" />
         <SampleQuery label="2700+" query="" min="2700" />
       </div>
+      <p className="mt-6 text-xs text-muted-foreground">
+        No luck by name? Open any candidate and the page exposes a <em>paste their games</em>{' '}
+        refiner —{' '}
+        <Link href="/benchmarks#path-b" className="underline hover:text-foreground">
+          see how accurate that is
+        </Link>
+        .
+      </p>
     </div>
   );
 }

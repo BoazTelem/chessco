@@ -91,6 +91,9 @@ export async function SiteHeader() {
           <Link href="/hall-of-fame" className="text-muted-foreground hover:text-foreground">
             Hall of Fame
           </Link>
+          <Link href="/benchmarks" className="text-muted-foreground hover:text-foreground">
+            How it works
+          </Link>
           <Link href="/pricing" className="text-muted-foreground hover:text-foreground">
             Pricing
           </Link>

@@ -76,6 +76,9 @@ export default async function HomePage() {
             </span>{' '}
             Try the scout, no sign-up needed.
           </div>
+          <Link href="/benchmarks" className="text-xs text-muted-foreground hover:text-foreground">
+            Two ways to find your opponent — see how often each works →
+          </Link>
           {(stats.chesscomHandles > 0 || stats.lichessHandles > 0) && (
             <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
               <span>
