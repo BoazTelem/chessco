@@ -116,7 +116,7 @@ export async function POST(
       user_confirmed: publicConfirmed(feedback),
     })
     .eq('id', candidateId)
-    .select('id, user_confirmed, user_feedback')
+    .select('id, user_confirmed, user_feedback, ad_hoc_player_id, platform, handle')
     .single();
   if (error || !data) {
     return NextResponse.json(
@@ -125,5 +125,92 @@ export async function POST(
     );
   }
 
-  return NextResponse.json(data);
+  // Back-feed loop for ad-hoc anchors: when a user marks a candidate
+  // 'correct' on a query anchored to an ad_hoc_player, persist the
+  // (ad_hoc_player_id, platform, handle, confirmed_by) tuple so the
+  // nightly promote-ad-hoc worker can promote anchors with ≥2 distinct
+  // confirmations. Best-effort — failures here don't roll back the
+  // candidate update (the user's primary action already succeeded).
+  const candRow = data as {
+    id: number;
+    user_confirmed: boolean | null;
+    user_feedback: CandidateFeedback | null;
+    ad_hoc_player_id: string | null;
+    platform: 'lichess' | 'chess.com';
+    handle: string;
+  };
+  if (feedback === 'correct' && candRow.ad_hoc_player_id) {
+    await recordAdHocConfirmation(
+      admin,
+      candRow.ad_hoc_player_id,
+      candRow.platform,
+      candRow.handle,
+      user.id,
+      candidateId,
+    );
+  }
+
+  return NextResponse.json({
+    id: candRow.id,
+    user_confirmed: candRow.user_confirmed,
+    user_feedback: candRow.user_feedback,
+  });
+}
+
+/**
+ * Insert a confirmation tuple and refresh the denormalized counters on the
+ * ad_hoc_players row. UNIQUE (ad_hoc_player_id, platform, handle,
+ * confirmed_by) means re-confirmations from the same user are no-ops (just
+ * silently swallowed by the ON CONFLICT clause). The DISTINCT-confirmer
+ * count is recomputed from the join table to stay authoritative even if a
+ * prior counter row was modified by hand.
+ */
+async function recordAdHocConfirmation(
+  admin: ReturnType<typeof createAdminClient>,
+  adHocPlayerId: string,
+  platform: 'lichess' | 'chess.com',
+  handle: string,
+  userId: string,
+  candidateId: number,
+): Promise<void> {
+  const now = new Date().toISOString();
+  const { error: insertErr } = await admin.from('ad_hoc_player_handles').upsert(
+    {
+      ad_hoc_player_id: adHocPlayerId,
+      platform,
+      handle,
+      confirmed_by: userId,
+      candidate_id: candidateId,
+      confirmed_at: now,
+    },
+    { onConflict: 'ad_hoc_player_id,platform,handle,confirmed_by', ignoreDuplicates: true },
+  );
+  if (insertErr) {
+    console.warn('[ad-hoc back-feed] handle insert failed:', insertErr.message);
+    return;
+  }
+
+  // Recompute distinct confirmer count across all (platform, handle) pairs
+  // for this ad-hoc anchor. Single user → multiple handles still counts as
+  // one confirmer; multiple users → same handle counts as multiple
+  // confirmers (the value we want for promotion eligibility).
+  const { data: confirmRows, error: countErr } = await admin
+    .from('ad_hoc_player_handles')
+    .select('confirmed_by')
+    .eq('ad_hoc_player_id', adHocPlayerId);
+  if (countErr) {
+    console.warn('[ad-hoc back-feed] count query failed:', countErr.message);
+    return;
+  }
+  const distinctConfirmers = new Set(
+    (confirmRows ?? []).map((r) => (r as { confirmed_by: string }).confirmed_by),
+  ).size;
+
+  await admin
+    .from('ad_hoc_players')
+    .update({
+      confirmed_match_count: distinctConfirmers,
+      last_confirmed_at: now,
+    })
+    .eq('id', adHocPlayerId);
 }

@@ -21,6 +21,7 @@ import { crawlRefreshFunctions } from './crawl-refresh.js';
 import { crawlerWatchdog } from './crawler-watchdog.js';
 import { federationFunctions } from './federations.js';
 import { prepareReportsPoll } from './prepare-reports.js';
+import { promoteAdHocNightly } from './promote-ad-hoc.js';
 
 const PORT = parseInt(process.env.PORT ?? '3030', 10);
 
@@ -34,6 +35,7 @@ const handler = serve({
     corpusCountsHourly,
     crawlerWatchdog,
     prepareReportsPoll,
+    promoteAdHocNightly,
   ],
 });
 
@@ -62,6 +64,7 @@ server.listen(PORT, () => {
     corpusCountsHourly,
     crawlerWatchdog,
     prepareReportsPoll,
+    promoteAdHocNightly,
   ]) {
     console.log(`  - ${fn.id()}`);
   }
