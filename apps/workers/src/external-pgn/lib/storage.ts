@@ -27,7 +27,9 @@ export interface ExternalPgnRow {
   result: '1-0' | '0-1' | '1/2-1/2' | '*' | null;
 }
 
-/** Reconstruct a single-game PGN block from parsed headers + move text. */
+/** Reconstruct a single-game PGN block from parsed headers + move text.
+ *  Always ends with a trailing newline so the line-driven streaming parser
+ *  flushes the move-text line on read-back. */
 export function serialiseParsedGame(game: ParsedGame): string {
   const lines: string[] = [];
   for (const [tag, value] of Object.entries(game.headers)) {
@@ -38,6 +40,7 @@ export function serialiseParsedGame(game: ParsedGame): string {
   }
   lines.push('');
   lines.push(game.moveText.trim());
+  lines.push('');
   return lines.join('\n');
 }
 

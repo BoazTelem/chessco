@@ -12,7 +12,7 @@ import { fenHash } from './fen-hash';
 import type { GameResult, ParsedGame, PgnHeaders, TimeClass } from './types';
 
 export interface GameRow {
-  source: 'lichess' | 'chess.com';
+  source: 'lichess' | 'chess.com' | 'twic';
   source_game_id: string;
   white_handle_snapshot: string | null;
   black_handle_snapshot: string | null;
