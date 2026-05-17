@@ -1,5 +1,6 @@
 import type { TransactionSql } from 'postgres';
 import { getPracticeDb } from '@/lib/practice/db';
+import { appOrigin, createNotification, sendNotificationEmail } from '@/lib/notifications';
 
 const LINK_BONUS_AMOUNT = 5;
 const LINK_BONUS_CAP = 10;
@@ -106,6 +107,24 @@ export async function grantPracticeReward(
     )
   `;
 
+  // Dedupe per (profile, counterpart, day) so a player who wins 12 games
+  // against the same opponent in one day gets one notification row with
+  // data.amount = 12, not 12 separate rows.
+  const dayKey = new Date().toISOString().slice(0, 10);
+  await createNotification(
+    {
+      profileId,
+      type: 'credit.practice_reward_earned',
+      category: 'credits',
+      title: 'You earned a practice credit',
+      body: `+${PRACTICE_REWARD_AMOUNT} credit for a paid practice win.`,
+      data: { amount: PRACTICE_REWARD_AMOUNT, match_id: matchId, day: dayKey },
+      actionUrl: '/account/wallet',
+      dedupeKey: `practice_reward:${counterpartProfileId}:${dayKey}`,
+    },
+    tx,
+  );
+
   return { granted: PRACTICE_REWARD_AMOUNT, reason: 'ok' };
 }
 
@@ -176,6 +195,19 @@ export async function grantLinkCredits(
       )
     `;
 
+    await createNotification(
+      {
+        profileId,
+        type: 'credit.link_bonus_granted',
+        category: 'credits',
+        title: `+${amount} credits for linking ${platform}`,
+        body: `You linked your ${platform} account and earned ${amount} credits.`,
+        data: { amount, platform, external_id: normalizedExternalId },
+        actionUrl: '/account/wallet',
+      },
+      tx,
+    );
+
     return amount;
   })) as number;
 
@@ -198,7 +230,7 @@ export async function grantReferralCredits(
 
   const sql = getPracticeDb();
 
-  return (await sql.begin(async (tx) => {
+  const txResult = (await sql.begin(async (tx) => {
     const referrers = (await tx`
       SELECT id FROM profiles WHERE referral_code = ${normalizedCode} LIMIT 1
     `) as Array<{ id: string }>;
@@ -293,6 +325,55 @@ export async function grantReferralCredits(
       )
     `;
 
-    return { granted: amount, reason: 'ok' as const };
-  })) as { granted: number; reason: ReferralGrantReason };
+    // Look up referee display details for the notification body. We respect
+    // profile visibility: a private referee shows as "a new friend" rather
+    // than leaking their display name to the referrer.
+    const refereeRows = (await tx`
+      SELECT display_name, profile_visibility
+      FROM profiles
+      WHERE id = ${referredProfileId}::uuid
+    `) as Array<{ display_name: string | null; profile_visibility: string }>;
+    const referee = refereeRows[0];
+    const refereeLabel =
+      referee && referee.profile_visibility === 'public' && referee.display_name
+        ? referee.display_name
+        : 'A new friend';
+
+    await createNotification(
+      {
+        profileId: referrer.id,
+        type: 'credit.referral_granted',
+        category: 'credits',
+        title: `+${amount} credits — ${refereeLabel} joined`,
+        body: `${refereeLabel} signed up with your referral link.`,
+        data: { amount, referred_profile_id: referredProfileId, referee_label: refereeLabel },
+        actionUrl: '/account/wallet',
+      },
+      tx,
+    );
+
+    return {
+      granted: amount,
+      reason: 'ok' as const,
+      referrerId: referrer.id,
+      refereeLabel,
+    };
+  })) as
+    | { granted: number; reason: ReferralGrantReason }
+    | { granted: number; reason: 'ok'; referrerId: string; refereeLabel: string };
+
+  // Email AFTER the tx commits — never block the credit grant on Resend.
+  if (txResult.granted > 0 && 'referrerId' in txResult) {
+    await sendNotificationEmail(txResult.referrerId, 'credits', {
+      template: 'referral_credited',
+      input: {
+        displayName: null,
+        refereeLabel: txResult.refereeLabel,
+        amount: txResult.granted,
+        walletUrl: `${appOrigin()}/account/wallet`,
+      },
+    });
+  }
+
+  return { granted: txResult.granted, reason: txResult.reason };
 }

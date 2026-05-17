@@ -15,6 +15,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getPracticeDb } from '@/lib/practice/db';
+import { createNotification } from '@/lib/notifications';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -184,13 +185,34 @@ export async function POST(req: Request, ctx: RouteContext): Promise<NextRespons
         await tx`UPDATE challenges SET games_completed = ${newCompleted} WHERE id = ${ch.id}`;
       }
 
-      await tx`
+      const acceptedInvitations = (await tx`
         UPDATE challenge_invitations
         SET status = 'accepted', responded_at = NOW()
         WHERE challenge_id = ${ch.id}
           AND invitee_id = ${user.id}
           AND status = 'pending'
-      `;
+        RETURNING id::text
+      `) as Array<{ id: string }>;
+
+      if (acceptedInvitations.length > 0) {
+        await createNotification(
+          {
+            profileId: ch.creator_id,
+            type: 'invitation.accepted',
+            category: 'social',
+            title: 'Your sparring invitation was accepted',
+            body: 'Open the live game.',
+            data: {
+              challenge_id: ch.id,
+              invitation_id: acceptedInvitations[0]!.id,
+              invitee_id: user.id,
+              match_id: match.id,
+            },
+            actionUrl: `/practice/g/${match.id}`,
+          },
+          tx,
+        );
+      }
 
       return match.id;
     })) as string;

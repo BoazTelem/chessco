@@ -8,6 +8,7 @@
  * is wired through; this page is the read surface).
  */
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getUser } from '@/lib/auth';
 import { getPracticeDb } from '@/lib/practice/db';
@@ -81,12 +82,19 @@ export default async function InboxInvitationsPage() {
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8 md:py-12">
-      <header>
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">Inbox</p>
-        <h1 className="mt-1 font-display text-2xl font-semibold md:text-3xl">Invitations</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Private challenges sent to you. Accept to open the live game room.
-        </p>
+      <header className="flex flex-wrap items-baseline justify-between gap-4">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Inbox</p>
+          <h1 className="mt-1 font-display text-2xl font-semibold md:text-3xl">Invitations</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Private challenges sent to you. Accept to open the live game room.
+          </p>
+        </div>
+        <nav className="flex items-center gap-3 text-sm">
+          <Link href="/inbox/notifications" className="text-muted-foreground hover:text-foreground">
+            Notifications →
+          </Link>
+        </nav>
       </header>
 
       <section className="mt-8">

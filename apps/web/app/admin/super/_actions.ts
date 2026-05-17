@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { requireSuperAdmin } from '@/lib/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { appOrigin, createNotification, sendNotificationEmail } from '@/lib/notifications';
 
 type ReportResolution = 'resolved_valid' | 'resolved_invalid' | 'duplicate' | 'investigating';
 type ReportAction = 'none' | 'warning' | 'ban' | 'payout_forfeit' | 'refund_issued';
@@ -63,6 +64,46 @@ export async function resolveReport(formData: FormData) {
     reason: note,
   });
 
+  if (actionTaken === 'ban') {
+    const reason = note ?? 'Banned via report resolution';
+    await createNotification({
+      profileId: report.reported_id,
+      type: 'ban.applied',
+      category: 'moderation',
+      title: 'Your account has been suspended',
+      body: reason,
+      data: { report_id: reportId, banned_by: admin.id },
+      actionUrl: '/account/notifications',
+    });
+    await sendNotificationEmail(report.reported_id, 'moderation', {
+      template: 'ban_applied',
+      input: {
+        displayName: null,
+        reason,
+        appealUrl: `${appOrigin()}/account/notifications`,
+      },
+    });
+  } else if (actionTaken === 'warning') {
+    const reason = note ?? 'Warning issued via report resolution';
+    await createNotification({
+      profileId: report.reported_id,
+      type: 'mod.warning',
+      category: 'moderation',
+      title: 'You received a moderator warning',
+      body: reason,
+      data: { report_id: reportId, warned_by: admin.id },
+      actionUrl: '/inbox/notifications',
+    });
+    await sendNotificationEmail(report.reported_id, 'moderation', {
+      template: 'mod_warning',
+      input: {
+        displayName: null,
+        reason,
+        inboxUrl: `${appOrigin()}/inbox/notifications`,
+      },
+    });
+  }
+
   revalidatePath('/admin/super/moderation');
   revalidatePath('/admin/super/users');
 }
@@ -86,6 +127,24 @@ export async function banUser(formData: FormData) {
     target_type: 'profile',
     target_id: profileId,
     reason,
+  });
+
+  await createNotification({
+    profileId,
+    type: 'ban.applied',
+    category: 'moderation',
+    title: 'Your account has been suspended',
+    body: reason,
+    data: { banned_by: admin.id },
+    actionUrl: '/account/notifications',
+  });
+  await sendNotificationEmail(profileId, 'moderation', {
+    template: 'ban_applied',
+    input: {
+      displayName: null,
+      reason,
+      appealUrl: `${appOrigin()}/account/notifications`,
+    },
   });
 
   revalidatePath('/admin/super/moderation');
@@ -117,6 +176,23 @@ export async function liftBan(formData: FormData) {
     target_type: 'profile',
     target_id: profileId,
     reason,
+  });
+
+  await createNotification({
+    profileId,
+    type: 'ban.lifted',
+    category: 'moderation',
+    title: 'Your account has been reinstated',
+    body: 'You can sign back in to Chessco.',
+    data: { lifted_by: admin.id, reason },
+    actionUrl: '/dashboard',
+  });
+  await sendNotificationEmail(profileId, 'moderation', {
+    template: 'ban_lifted',
+    input: {
+      displayName: null,
+      signInUrl: `${appOrigin()}/login`,
+    },
   });
 
   revalidatePath('/admin/super/moderation');

@@ -89,6 +89,12 @@ export default async function AccountPage({
             Privacy
           </Link>
           <Link
+            href="/account/notifications"
+            className="rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-muted"
+          >
+            Notifications
+          </Link>
+          <Link
             href="/dashboard"
             className="rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-muted"
           >

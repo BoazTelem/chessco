@@ -1116,6 +1116,63 @@ export const userPracticePrefs = pgTable('user_practice_prefs', {
 });
 
 // ============================================================================
+// NOTIFICATIONS (in-app inbox + per-category email preferences)
+// ============================================================================
+
+export type NotificationCategory = 'moderation' | 'credits' | 'social';
+
+export type NotificationType =
+  | 'ban.applied'
+  | 'ban.lifted'
+  | 'mod.warning'
+  | 'fairplay.warning'
+  | 'fairplay.paid_play_suspended'
+  | 'fairplay.banned'
+  | 'fairplay.dismissed'
+  | 'credit.referral_granted'
+  | 'credit.link_bonus_granted'
+  | 'credit.practice_reward_earned'
+  | 'invitation.received'
+  | 'invitation.accepted'
+  | 'invitation.declined'
+  | 'coach.invitation_accepted'
+  | 'coach.invitation_ended';
+
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: pkUuid(),
+    profileId: uuid('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    type: text('type').$type<NotificationType>().notNull(),
+    category: text('category').$type<NotificationCategory>().notNull(),
+    title: text('title').notNull(),
+    body: text('body'),
+    data: jsonb('data').notNull().default({}),
+    actionUrl: text('action_url'),
+    dedupeKey: text('dedupe_key'),
+    readAt: timestamptz('read_at'),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('notifications_profile_idx').on(t.profileId, t.createdAt),
+    // The partial-unique + partial-unread indexes from migration 0043 are
+    // not represented here; Drizzle treats them as opaque DB-side indexes.
+  ],
+);
+
+export const notificationEmailPreferences = pgTable('notification_email_preferences', {
+  profileId: uuid('profile_id')
+    .primaryKey()
+    .references(() => profiles.id, { onDelete: 'cascade' }),
+  moderationEmail: boolean('moderation_email').notNull().default(true),
+  creditsEmail: boolean('credits_email').notNull().default(true),
+  socialEmail: boolean('social_email').notNull().default(true),
+  updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+});
+
+// ============================================================================
 // INFERRED TYPES (handy aliases for app code)
 // ============================================================================
 
@@ -1157,3 +1214,7 @@ export type MaiaWeights = typeof maiaWeights.$inferSelect;
 export type NewMaiaWeights = typeof maiaWeights.$inferInsert;
 export type UserPracticePrefs = typeof userPracticePrefs.$inferSelect;
 export type NewUserPracticePrefs = typeof userPracticePrefs.$inferInsert;
+export type Notification = typeof notifications.$inferSelect;
+export type NewNotification = typeof notifications.$inferInsert;
+export type NotificationEmailPreferences = typeof notificationEmailPreferences.$inferSelect;
+export type NewNotificationEmailPreferences = typeof notificationEmailPreferences.$inferInsert;

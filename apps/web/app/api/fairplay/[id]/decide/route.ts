@@ -16,6 +16,12 @@ import { z } from 'zod';
 import { getUser, isSuperAdminEmail } from '@/lib/auth';
 import { getPracticeDb } from '@/lib/practice/db';
 import { planForSeverity, type Severity } from '@/lib/fairplay/action-stack';
+import {
+  appOrigin,
+  createNotification,
+  sendNotificationEmail,
+  type NotificationType,
+} from '@/lib/notifications';
 
 const Input = z.object({
   outcome: z.enum(['confirmed', 'dismissed']),
@@ -129,6 +135,38 @@ export async function POST(
           )
         `;
       }
+
+      const notif = notificationForSeverity(sev, body.notes ?? plan.description);
+      await createNotification(
+        {
+          profileId: flag.profile_id,
+          type: notif.type,
+          category: 'moderation',
+          title: notif.title,
+          body: notif.body,
+          data: {
+            flag_id: id,
+            severity: sev,
+            expires_at: plan.expiresAt,
+          },
+          actionUrl: '/account/notifications',
+        },
+        tx,
+      );
+    } else {
+      // outcome === 'dismissed' — clear the flag against the user.
+      await createNotification(
+        {
+          profileId: flag.profile_id,
+          type: 'fairplay.dismissed',
+          category: 'moderation',
+          title: 'Fairplay flag cleared',
+          body: 'A fairplay review of your account was closed without action.',
+          data: { flag_id: id },
+          actionUrl: '/inbox/notifications',
+        },
+        tx,
+      );
     }
 
     await tx`
@@ -145,7 +183,68 @@ export async function POST(
     `;
   });
 
+  // Email AFTER the tx commits so a Resend hiccup can't roll back the
+  // ban_actions row. Dismissals are in-app only.
+  if (body.outcome === 'confirmed' && body.severity) {
+    const email = fairplayEmailForSeverity(body.severity as Severity);
+    if (email) {
+      await sendNotificationEmail(flag.profile_id, 'moderation', {
+        template: 'fairplay_action',
+        input: {
+          displayName: null,
+          action: email.action,
+          appealUrl: `${appOrigin()}/account/notifications`,
+        },
+      });
+    }
+  }
+
   return NextResponse.json({ ok: true });
+}
+
+function notificationForSeverity(
+  severity: Severity,
+  reason: string,
+): { type: NotificationType; title: string; body: string } {
+  switch (severity) {
+    case 1:
+      return {
+        type: 'fairplay.warning',
+        title: 'Fairplay warning on your account',
+        body: reason,
+      };
+    case 2:
+    case 3:
+    case 4:
+      return {
+        type: 'fairplay.paid_play_suspended',
+        title: 'Paid-play suspended',
+        body: reason,
+      };
+    case 5:
+    case 6:
+      return {
+        type: 'fairplay.banned',
+        title: 'Your account has been suspended',
+        body: reason,
+      };
+  }
+}
+
+function fairplayEmailForSeverity(
+  severity: Severity,
+): { action: 'warning' | 'paid_play_suspended' | 'banned' } | null {
+  switch (severity) {
+    case 1:
+      return { action: 'warning' };
+    case 2:
+    case 3:
+    case 4:
+      return { action: 'paid_play_suspended' };
+    case 5:
+    case 6:
+      return { action: 'banned' };
+  }
 }
 
 function actionTakenLabel(severity: Severity): string {

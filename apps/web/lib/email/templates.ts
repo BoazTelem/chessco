@@ -16,7 +16,11 @@ export type EmailTemplateId =
   | 'challenge_accepted'
   | 'match_settled'
   | 'refund_decided'
-  | 'fairplay_action';
+  | 'fairplay_action'
+  | 'ban_applied'
+  | 'ban_lifted'
+  | 'mod_warning'
+  | 'referral_credited';
 
 export interface RenderedEmail {
   subject: string;
@@ -46,6 +50,26 @@ export interface TemplateInputs {
     displayName: string | null;
     action: 'warning' | 'paid_play_suspended' | 'banned';
     appealUrl: string;
+  };
+  ban_applied: {
+    displayName: string | null;
+    reason: string;
+    appealUrl: string;
+  };
+  ban_lifted: {
+    displayName: string | null;
+    signInUrl: string;
+  };
+  mod_warning: {
+    displayName: string | null;
+    reason: string;
+    inboxUrl: string;
+  };
+  referral_credited: {
+    displayName: string | null;
+    refereeLabel: string;
+    amount: number;
+    walletUrl: string;
   };
 }
 
@@ -147,6 +171,42 @@ export function renderEmail<K extends EmailTemplateId>(
         `<p>${greeting(i.displayName)}</p><p>A fairplay action has been recorded on your account: <strong>${i.action}</strong>.</p><p>If you believe this is in error, you can <a href="${escapeHtml(i.appealUrl)}">appeal</a>.</p>`,
       );
       return { subject: 'Fairplay action recorded', text, html };
+    }
+    case 'ban_applied': {
+      const i = input as TemplateInputs['ban_applied'];
+      const text = `${greeting(i.displayName)}\n\nYour Chessco account has been suspended.\n\nReason: ${i.reason}\n\nIf you believe this is in error, you can appeal: ${i.appealUrl}`;
+      const html = shell(
+        'Account suspended',
+        `<p>${greeting(i.displayName)}</p><p>Your Chessco account has been suspended.</p><p><strong>Reason:</strong> ${escapeHtml(i.reason)}</p><p>If you believe this is in error, you can <a href="${escapeHtml(i.appealUrl)}">appeal</a>.</p>`,
+      );
+      return { subject: 'Your Chessco account has been suspended', text, html };
+    }
+    case 'ban_lifted': {
+      const i = input as TemplateInputs['ban_lifted'];
+      const text = `${greeting(i.displayName)}\n\nYour Chessco account has been reinstated. You can sign back in: ${i.signInUrl}`;
+      const html = shell(
+        'Account reinstated',
+        `<p>${greeting(i.displayName)}</p><p>Your Chessco account has been reinstated. You can <a href="${escapeHtml(i.signInUrl)}">sign back in</a>.</p>`,
+      );
+      return { subject: 'Your Chessco account has been reinstated', text, html };
+    }
+    case 'mod_warning': {
+      const i = input as TemplateInputs['mod_warning'];
+      const text = `${greeting(i.displayName)}\n\nA moderator has issued a warning on your account.\n\nReason: ${i.reason}\n\nReview your inbox: ${i.inboxUrl}\n\nFurther violations may result in suspension.`;
+      const html = shell(
+        'Moderator warning',
+        `<p>${greeting(i.displayName)}</p><p>A moderator has issued a warning on your account.</p><p><strong>Reason:</strong> ${escapeHtml(i.reason)}</p><p>Further violations may result in suspension. <a href="${escapeHtml(i.inboxUrl)}">Review your inbox</a>.</p>`,
+      );
+      return { subject: 'Moderator warning on your Chessco account', text, html };
+    }
+    case 'referral_credited': {
+      const i = input as TemplateInputs['referral_credited'];
+      const text = `${greeting(i.displayName)}\n\n${i.refereeLabel} joined Chessco using your referral link. You've been credited ${i.amount} credits.\n\nWallet: ${i.walletUrl}`;
+      const html = shell(
+        'You earned referral credits',
+        `<p>${greeting(i.displayName)}</p><p><strong>${escapeHtml(i.refereeLabel)}</strong> joined Chessco using your referral link. You've been credited <strong>${i.amount} credits</strong>.</p><p><a href="${escapeHtml(i.walletUrl)}">Open your wallet</a></p>`,
+      );
+      return { subject: `You earned ${i.amount} referral credits`, text, html };
     }
   }
   // Exhaustive switch above; this is unreachable but TS doesn't know.
