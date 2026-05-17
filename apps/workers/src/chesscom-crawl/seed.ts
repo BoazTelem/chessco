@@ -10,10 +10,11 @@
  * Idempotent: ON CONFLICT DO NOTHING in chesscom_crawl_queue means
  * re-running this is safe.
  *
- * --priority-tier governs the top-down crawl order:
- *   T1: rating >= 1600 OR titled OR claimed-federation OR oauth → priority 100
- *   T2: rating 1300-1599 (no title)                              → priority  50
- *   T3: rating 1000-1299 (no title)                              → priority  20
+ * --priority-tier governs the top-down crawl order. Tier framework aligns
+ * with the business targeting layers (Premium / Main / Open):
+ *   T1: rating >= 1800 OR titled OR claimed-fed OR oauth → priority 100  (Premium)
+ *   T2: rating 1500-1799 (untitled, not T1)              → priority  50  (Main)
+ *   T3: rating 1000-1499 (untitled, not T1/T2)           → priority  20  (Open)
  *
  * The hard floor at filter.ts minElo=1000 cuts everything below; the queue
  * priority drains the tiers from highest down. Run T1 first to populate
@@ -97,18 +98,22 @@ async function selectHandles(
   // postgres-js doesn't compose fragments cleanly; switch over the small
   // tier × pulledVia × limit matrix instead. Tier predicates below.
   //
-  //   T1 (priority 100): rating_blitz >= 1600 OR rating_rapid >= 1600
-  //                       OR title IS NOT NULL
-  //                       OR claimed_federation_player_id IS NOT NULL
-  //                       OR is_verified_oauth = true
-  //   T2 (priority 50):  ((rating_blitz BETWEEN 1300 AND 1599)
-  //                        OR (rating_rapid BETWEEN 1300 AND 1599))
-  //                       AND title IS NULL
-  //                       AND NOT (rating_blitz >= 1600 OR rating_rapid >= 1600)
-  //   T3 (priority 20):  ((rating_blitz BETWEEN 1000 AND 1299)
-  //                        OR (rating_rapid BETWEEN 1000 AND 1299))
-  //                       AND title IS NULL
-  //                       AND NOT (rating_blitz >= 1300 OR rating_rapid >= 1300)
+  // chess.com tier framework (Premium / Main / Open targeting layers):
+  //   T1 (priority 100, Premium):
+  //     rating_blitz >= 1800 OR rating_rapid >= 1800
+  //     OR title IS NOT NULL
+  //     OR claimed_federation_player_id IS NOT NULL
+  //     OR is_verified_oauth = true
+  //   T2 (priority 50, Main):
+  //     ((rating_blitz BETWEEN 1500 AND 1799)
+  //       OR (rating_rapid BETWEEN 1500 AND 1799))
+  //     AND title IS NULL
+  //     AND NOT (rating_blitz >= 1800 OR rating_rapid >= 1800)
+  //   T3 (priority 20, Open):
+  //     ((rating_blitz BETWEEN 1000 AND 1499)
+  //       OR (rating_rapid BETWEEN 1000 AND 1499))
+  //     AND title IS NULL
+  //     AND NOT (rating_blitz >= 1500 OR rating_rapid >= 1500)
   type Row = { handle: string };
   const hasLimit = limit > 0;
 
@@ -119,8 +124,8 @@ async function selectHandles(
             SELECT handle FROM platform_players
             WHERE platform = 'chess.com' AND pulled_via = ${pulledVia}
               AND (
-                COALESCE(rating_blitz, 0) >= 1600
-                OR COALESCE(rating_rapid, 0) >= 1600
+                COALESCE(rating_blitz, 0) >= 1800
+                OR COALESCE(rating_rapid, 0) >= 1800
                 OR title IS NOT NULL
                 OR claimed_federation_player_id IS NOT NULL
                 OR is_verified_oauth = true
@@ -131,8 +136,8 @@ async function selectHandles(
             SELECT handle FROM platform_players
             WHERE platform = 'chess.com' AND pulled_via = ${pulledVia}
               AND (
-                COALESCE(rating_blitz, 0) >= 1600
-                OR COALESCE(rating_rapid, 0) >= 1600
+                COALESCE(rating_blitz, 0) >= 1800
+                OR COALESCE(rating_rapid, 0) >= 1800
                 OR title IS NOT NULL
                 OR claimed_federation_player_id IS NOT NULL
                 OR is_verified_oauth = true
@@ -175,12 +180,12 @@ async function selectHandles(
             WHERE platform = 'chess.com' AND pulled_via = ${pulledVia}
               AND title IS NULL
               AND (
-                (rating_blitz BETWEEN 1300 AND 1599)
-                OR (rating_rapid BETWEEN 1300 AND 1599)
+                (rating_blitz BETWEEN 1500 AND 1799)
+                OR (rating_rapid BETWEEN 1500 AND 1799)
               )
               AND NOT (
-                COALESCE(rating_blitz, 0) >= 1600
-                OR COALESCE(rating_rapid, 0) >= 1600
+                COALESCE(rating_blitz, 0) >= 1800
+                OR COALESCE(rating_rapid, 0) >= 1800
               )
             ORDER BY first_seen_at ASC
             LIMIT ${limit}`
@@ -189,12 +194,12 @@ async function selectHandles(
             WHERE platform = 'chess.com' AND pulled_via = ${pulledVia}
               AND title IS NULL
               AND (
-                (rating_blitz BETWEEN 1300 AND 1599)
-                OR (rating_rapid BETWEEN 1300 AND 1599)
+                (rating_blitz BETWEEN 1500 AND 1799)
+                OR (rating_rapid BETWEEN 1500 AND 1799)
               )
               AND NOT (
-                COALESCE(rating_blitz, 0) >= 1600
-                OR COALESCE(rating_rapid, 0) >= 1600
+                COALESCE(rating_blitz, 0) >= 1800
+                OR COALESCE(rating_rapid, 0) >= 1800
               )
             ORDER BY first_seen_at ASC`;
       return rows.map((r) => r.handle.toLowerCase());
@@ -205,12 +210,12 @@ async function selectHandles(
           WHERE platform = 'chess.com'
             AND title IS NULL
             AND (
-              (rating_blitz BETWEEN 1300 AND 1599)
-              OR (rating_rapid BETWEEN 1300 AND 1599)
+              (rating_blitz BETWEEN 1500 AND 1799)
+              OR (rating_rapid BETWEEN 1500 AND 1799)
             )
             AND NOT (
-              COALESCE(rating_blitz, 0) >= 1600
-              OR COALESCE(rating_rapid, 0) >= 1600
+              COALESCE(rating_blitz, 0) >= 1800
+              OR COALESCE(rating_rapid, 0) >= 1800
             )
           ORDER BY first_seen_at ASC
           LIMIT ${limit}`
@@ -219,12 +224,12 @@ async function selectHandles(
           WHERE platform = 'chess.com'
             AND title IS NULL
             AND (
-              (rating_blitz BETWEEN 1300 AND 1599)
-              OR (rating_rapid BETWEEN 1300 AND 1599)
+              (rating_blitz BETWEEN 1500 AND 1799)
+              OR (rating_rapid BETWEEN 1500 AND 1799)
             )
             AND NOT (
-              COALESCE(rating_blitz, 0) >= 1600
-              OR COALESCE(rating_rapid, 0) >= 1600
+              COALESCE(rating_blitz, 0) >= 1800
+              OR COALESCE(rating_rapid, 0) >= 1800
             )
           ORDER BY first_seen_at ASC`;
     return rows.map((r) => r.handle.toLowerCase());
@@ -238,12 +243,12 @@ async function selectHandles(
             WHERE platform = 'chess.com' AND pulled_via = ${pulledVia}
               AND title IS NULL
               AND (
-                (rating_blitz BETWEEN 1000 AND 1299)
-                OR (rating_rapid BETWEEN 1000 AND 1299)
+                (rating_blitz BETWEEN 1000 AND 1499)
+                OR (rating_rapid BETWEEN 1000 AND 1499)
               )
               AND NOT (
-                COALESCE(rating_blitz, 0) >= 1300
-                OR COALESCE(rating_rapid, 0) >= 1300
+                COALESCE(rating_blitz, 0) >= 1500
+                OR COALESCE(rating_rapid, 0) >= 1500
               )
             ORDER BY first_seen_at ASC
             LIMIT ${limit}`
@@ -252,12 +257,12 @@ async function selectHandles(
             WHERE platform = 'chess.com' AND pulled_via = ${pulledVia}
               AND title IS NULL
               AND (
-                (rating_blitz BETWEEN 1000 AND 1299)
-                OR (rating_rapid BETWEEN 1000 AND 1299)
+                (rating_blitz BETWEEN 1000 AND 1499)
+                OR (rating_rapid BETWEEN 1000 AND 1499)
               )
               AND NOT (
-                COALESCE(rating_blitz, 0) >= 1300
-                OR COALESCE(rating_rapid, 0) >= 1300
+                COALESCE(rating_blitz, 0) >= 1500
+                OR COALESCE(rating_rapid, 0) >= 1500
               )
             ORDER BY first_seen_at ASC`;
       return rows.map((r) => r.handle.toLowerCase());
@@ -268,12 +273,12 @@ async function selectHandles(
           WHERE platform = 'chess.com'
             AND title IS NULL
             AND (
-              (rating_blitz BETWEEN 1000 AND 1299)
-              OR (rating_rapid BETWEEN 1000 AND 1299)
+              (rating_blitz BETWEEN 1000 AND 1499)
+              OR (rating_rapid BETWEEN 1000 AND 1499)
             )
             AND NOT (
-              COALESCE(rating_blitz, 0) >= 1300
-              OR COALESCE(rating_rapid, 0) >= 1300
+              COALESCE(rating_blitz, 0) >= 1500
+              OR COALESCE(rating_rapid, 0) >= 1500
             )
           ORDER BY first_seen_at ASC
           LIMIT ${limit}`
@@ -282,12 +287,12 @@ async function selectHandles(
           WHERE platform = 'chess.com'
             AND title IS NULL
             AND (
-              (rating_blitz BETWEEN 1000 AND 1299)
-              OR (rating_rapid BETWEEN 1000 AND 1299)
+              (rating_blitz BETWEEN 1000 AND 1499)
+              OR (rating_rapid BETWEEN 1000 AND 1499)
             )
             AND NOT (
-              COALESCE(rating_blitz, 0) >= 1300
-              OR COALESCE(rating_rapid, 0) >= 1300
+              COALESCE(rating_blitz, 0) >= 1500
+              OR COALESCE(rating_rapid, 0) >= 1500
             )
           ORDER BY first_seen_at ASC`;
     return rows.map((r) => r.handle.toLowerCase());

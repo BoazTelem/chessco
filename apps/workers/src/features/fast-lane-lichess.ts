@@ -361,8 +361,12 @@ function argmaxKey(histogram: Record<string, number>): string | null {
   return best;
 }
 
-/** Lichess T1/T2/T3 cuts shifted up vs chess.com — Lichess ratings inflate.
- *  T1 ≈ FIDE 1400+, T2 ≈ FIDE 1200-1400, T3 ≈ FIDE 1000-1200. */
+/** Lichess T1/T2/T3 aligned to the business targeting framework
+ *  (Premium / Main / Open). Lichess ratings inflate vs FIDE so the
+ *  cuts sit higher than the chess.com equivalents:
+ *    T1 (priority 100, Premium): rating >= 2100 OR titled OR claimed-fed OR oauth
+ *    T2 (priority  50, Main):    rating 1800-2099 (untitled, not T1)
+ *    T3 (priority  20, Open):    rating 1400-1799 (untitled, not T1/T2) */
 async function selectHandles(
   supaSql: postgres.Sql,
   tier: PriorityTier,
@@ -375,8 +379,8 @@ async function selectHandles(
           SELECT handle FROM platform_players
           WHERE platform = 'lichess'
             AND (
-              COALESCE(rating_blitz, 0) >= 1900
-              OR COALESCE(rating_rapid, 0) >= 1900
+              COALESCE(rating_blitz, 0) >= 2100
+              OR COALESCE(rating_rapid, 0) >= 2100
               OR title IS NOT NULL
               OR claimed_federation_player_id IS NOT NULL
               OR is_verified_oauth = true
@@ -387,8 +391,8 @@ async function selectHandles(
           SELECT handle FROM platform_players
           WHERE platform = 'lichess'
             AND (
-              COALESCE(rating_blitz, 0) >= 1900
-              OR COALESCE(rating_rapid, 0) >= 1900
+              COALESCE(rating_blitz, 0) >= 2100
+              OR COALESCE(rating_rapid, 0) >= 2100
               OR title IS NOT NULL
               OR claimed_federation_player_id IS NOT NULL
               OR is_verified_oauth = true
@@ -403,12 +407,12 @@ async function selectHandles(
           WHERE platform = 'lichess'
             AND title IS NULL
             AND (
-              (rating_blitz BETWEEN 1700 AND 1899)
-              OR (rating_rapid BETWEEN 1700 AND 1899)
+              (rating_blitz BETWEEN 1800 AND 2099)
+              OR (rating_rapid BETWEEN 1800 AND 2099)
             )
             AND NOT (
-              COALESCE(rating_blitz, 0) >= 1900
-              OR COALESCE(rating_rapid, 0) >= 1900
+              COALESCE(rating_blitz, 0) >= 2100
+              OR COALESCE(rating_rapid, 0) >= 2100
             )
           ORDER BY first_seen_at ASC
           LIMIT ${maxHandles}`
@@ -417,12 +421,12 @@ async function selectHandles(
           WHERE platform = 'lichess'
             AND title IS NULL
             AND (
-              (rating_blitz BETWEEN 1700 AND 1899)
-              OR (rating_rapid BETWEEN 1700 AND 1899)
+              (rating_blitz BETWEEN 1800 AND 2099)
+              OR (rating_rapid BETWEEN 1800 AND 2099)
             )
             AND NOT (
-              COALESCE(rating_blitz, 0) >= 1900
-              OR COALESCE(rating_rapid, 0) >= 1900
+              COALESCE(rating_blitz, 0) >= 2100
+              OR COALESCE(rating_rapid, 0) >= 2100
             )
           ORDER BY first_seen_at ASC`;
     return rows.map((r) => r.handle.toLowerCase());
@@ -434,12 +438,12 @@ async function selectHandles(
         WHERE platform = 'lichess'
           AND title IS NULL
           AND (
-            (rating_blitz BETWEEN 1400 AND 1699)
-            OR (rating_rapid BETWEEN 1400 AND 1699)
+            (rating_blitz BETWEEN 1400 AND 1799)
+            OR (rating_rapid BETWEEN 1400 AND 1799)
           )
           AND NOT (
-            COALESCE(rating_blitz, 0) >= 1700
-            OR COALESCE(rating_rapid, 0) >= 1700
+            COALESCE(rating_blitz, 0) >= 1800
+            OR COALESCE(rating_rapid, 0) >= 1800
           )
         ORDER BY first_seen_at ASC
         LIMIT ${maxHandles}`
@@ -448,12 +452,12 @@ async function selectHandles(
         WHERE platform = 'lichess'
           AND title IS NULL
           AND (
-            (rating_blitz BETWEEN 1400 AND 1699)
-            OR (rating_rapid BETWEEN 1400 AND 1699)
+            (rating_blitz BETWEEN 1400 AND 1799)
+            OR (rating_rapid BETWEEN 1400 AND 1799)
           )
           AND NOT (
-            COALESCE(rating_blitz, 0) >= 1700
-            OR COALESCE(rating_rapid, 0) >= 1700
+            COALESCE(rating_blitz, 0) >= 1800
+            OR COALESCE(rating_rapid, 0) >= 1800
           )
         ORDER BY first_seen_at ASC`;
   return rows.map((r) => r.handle.toLowerCase());

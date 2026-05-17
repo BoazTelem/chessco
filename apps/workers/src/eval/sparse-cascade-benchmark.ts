@@ -160,6 +160,27 @@ interface BenchTarget {
   platform: 'chess.com' | 'lichess';
   handle: string;
   games_window: number;
+  median_rating: number | null;
+}
+
+type Tier = 'premium' | 'main' | 'open' | 'unknown';
+
+/** Bin a fingerprinted handle by its median_rating (avg_opponent_rating
+ *  proxy) into the Premium / Main / Open targeting layers. Lichess cuts
+ *  are higher than chess.com to account for rating inflation. */
+function tierFor(platform: 'chess.com' | 'lichess', medianRating: number | null): Tier {
+  if (medianRating === null) return 'unknown';
+  if (platform === 'chess.com') {
+    if (medianRating >= 1800) return 'premium';
+    if (medianRating >= 1500) return 'main';
+    if (medianRating >= 1000) return 'open';
+    return 'unknown';
+  }
+  // lichess
+  if (medianRating >= 2100) return 'premium';
+  if (medianRating >= 1800) return 'main';
+  if (medianRating >= 1400) return 'open';
+  return 'unknown';
 }
 
 /** Pick a random subset of fingerprinted handles with enough headroom for
@@ -178,18 +199,19 @@ async function selectTargets(
     platform: 'chess.com' | 'lichess';
     handle: string;
     games_window: number;
+    median_rating: number | null;
   };
   const rows =
     platformFilter === 'both'
       ? await sql<Row[]>`
-          SELECT handle_id::text, platform, handle, games_window
+          SELECT handle_id::text, platform, handle, games_window, median_rating
           FROM account_fingerprints
           WHERE games_window >= ${minGames}
           ORDER BY random()
           LIMIT ${limit}
         `
       : await sql<Row[]>`
-          SELECT handle_id::text, platform, handle, games_window
+          SELECT handle_id::text, platform, handle, games_window, median_rating
           FROM account_fingerprints
           WHERE games_window >= ${minGames}
             AND platform = ${platformFilter}
@@ -248,6 +270,7 @@ async function loadTargetGames(
 interface TrialResult {
   handle: string;
   platform: 'chess.com' | 'lichess';
+  tier: Tier;
   sample_size: number;
   seed: number;
   rank: number | null; // null = not in top-K
@@ -393,6 +416,7 @@ async function main(): Promise<void> {
           trials.push({
             handle: target.handle,
             platform: target.platform,
+            tier: tierFor(target.platform, target.median_rating),
             sample_size: sampleSize,
             seed,
             rank,
@@ -437,6 +461,34 @@ async function main(): Promise<void> {
       }
     }
 
+    // Per-tier breakdown: tells you whether the Premium pool is identifiable
+    // from sparser samples than Open. Tier copy in /scout/match should vary
+    // accordingly if these numbers diverge.
+    const perTier: Record<Tier, { sample_size: number; metrics: Metrics }[]> = {
+      premium: [],
+      main: [],
+      open: [],
+      unknown: [],
+    };
+    for (const tier of ['premium', 'main', 'open', 'unknown'] as Tier[]) {
+      perTier[tier] = args.sampleSizes
+        .map((size) => ({
+          sample_size: size,
+          metrics: aggregateMetrics(
+            trials.filter((t) => t.sample_size === size && t.tier === tier),
+            args.topK,
+          ),
+        }))
+        .sort((a, b) => a.sample_size - b.sample_size);
+    }
+    const tierCounts = trials.reduce(
+      (acc, t) => {
+        acc[t.tier] = (acc[t.tier] ?? 0) + 1;
+        return acc;
+      },
+      {} as Record<Tier, number>,
+    );
+
     const guidance = deriveGuidance(perSize);
 
     const totalDt = ((Date.now() - t0) / 1000).toFixed(1);
@@ -460,6 +512,25 @@ async function main(): Promise<void> {
     console.log(`    recommended       = ${guidance.recommended ?? '(not met)'} games`);
     console.log(`    high_confidence   = ${guidance.high_confidence ?? '(not met)'} games`);
 
+    console.log(
+      `\n  metrics by tier (Premium 1800+/2100+, Main 1500-1799/1800-2099, Open 1000-1499/1400-1799):`,
+    );
+    for (const tier of ['premium', 'main', 'open', 'unknown'] as Tier[]) {
+      const trialsInTier = tierCounts[tier] ?? 0;
+      if (trialsInTier === 0) continue;
+      console.log(`    ${tier.padEnd(8)} (${fmt(trialsInTier)} trials)`);
+      for (const r of perTier[tier]) {
+        const m = r.metrics;
+        if (m.trials === 0) continue;
+        console.log(
+          `      n=${String(r.sample_size).padStart(3)}: ` +
+            `top1=${(m.top1 * 100).toFixed(1).padStart(5)}%  ` +
+            `top3=${(m.top3 * 100).toFixed(1).padStart(5)}%  ` +
+            `top10=${(m.top10 * 100).toFixed(1).padStart(5)}%`,
+        );
+      }
+    }
+
     // ---- Write JSON artifact -------------------------------------------
     const artifact = {
       version: 'v1',
@@ -478,6 +549,8 @@ async function main(): Promise<void> {
       total_trials: trials.length,
       metrics_by_sample_size: perSize,
       metrics_by_platform: args.platform === 'both' ? perPlatform : undefined,
+      metrics_by_tier: perTier,
+      tier_counts: tierCounts,
       guidance,
     };
     await mkdir(path.dirname(args.out), { recursive: true });
