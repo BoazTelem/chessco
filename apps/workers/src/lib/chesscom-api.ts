@@ -132,6 +132,11 @@ export interface ChesscomPlayer {
   joined?: number;
   last_online?: number;
   followers?: number;
+  /** Self-reported FIDE rating from the player's bio. When present, this
+   *  is a far sharper Stage 2 signal than online-rating-vs-FIDE offset
+   *  heuristics — surfaced as platform_players.claimed_fide_rating
+   *  (migration 0049). */
+  fide?: number;
 }
 
 export async function fetchPlayer(handle: string): Promise<ChesscomPlayer | null> {

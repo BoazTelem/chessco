@@ -70,15 +70,20 @@ export async function upsertChesscomTitled(
       if (!player) continue;
       const claimedName = player.name ?? null;
       const claimedNormalized = claimedName ? normalizeClaimedName(claimedName) : null;
+      const claimedCountry = isoFromCountryUrl(player.country) ?? null;
+      const claimedFideRating =
+        typeof player.fide === 'number' && player.fide > 0 ? player.fide : null;
       await sql`
         UPDATE platform_players SET
-          country = ${isoFromCountryUrl(player.country) ?? null},
+          country = ${claimedCountry},
           rating_bullet = ${stats?.chess_bullet?.last?.rating ?? null},
           rating_blitz = ${stats?.chess_blitz?.last?.rating ?? null},
           rating_rapid = ${stats?.chess_rapid?.last?.rating ?? null},
           rating_classical = ${stats?.chess_daily?.last?.rating ?? null},
           claimed_name = ${claimedName},
           claimed_name_normalized = ${claimedNormalized},
+          claimed_fide_rating = ${claimedFideRating},
+          claimed_country = ${claimedCountry},
           raw = COALESCE(raw, '{}'::jsonb) || ${JSON.stringify({ player, stats })}::jsonb,
           last_seen_at = NOW()
         WHERE platform = 'chess.com' AND handle = ${normalized}
