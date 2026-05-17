@@ -152,11 +152,8 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
             Find any chess player
           </h1>
           <p className="text-sm text-muted-foreground md:text-base">
-            FIDE ({stats.fide.toLocaleString()})
-            {stats.uscf > 0 && <> + USCF ({stats.uscf.toLocaleString()})</>}
-            {stats.icf > 0 && <> + ICF ({stats.icf.toLocaleString()})</>}, with Lichess and
-            chess.com handles searched alongside — amateurs are findable too. Open a profile to
-            identify their other online accounts.
+            {(stats.fide + stats.uscf + stats.icf).toLocaleString()} indexed players, plus Lichess
+            and chess.com handles. Open a profile to identify their other online accounts.
           </p>
         </div>
 
@@ -265,8 +262,7 @@ function EmptyState() {
   return (
     <div className="rounded-lg border border-border bg-card p-8 text-center">
       <p className="text-sm text-muted-foreground">
-        Start with a name (Carlsen, Nepomniachtchi), filter by country (NOR, USA, ISR), or set a
-        rating range. Trigram fuzzy match — typos welcome.
+        Try a name, country code (NOR, USA, ISR), or rating range. Fuzzy match handles typos.
       </p>
       <div className="mt-4 flex flex-wrap justify-center gap-2 text-xs">
         <SampleQuery label="magnus carlsen" />
