@@ -37,14 +37,29 @@ export async function PATCH(
   }
 
   const sql = getPracticeDb();
-  const rows = await sql<{ id: string; status: string }[]>`
-    UPDATE challenge_invitations
-    SET status = 'declined', responded_at = NOW()
-    WHERE id = ${id}::uuid
-      AND invitee_id = ${user.id}::uuid
-      AND status = 'pending'
-    RETURNING id::text, status
-  `;
+  const rows = await sql.begin(async (tx) => {
+    const updated = await tx<{ id: string; status: string; challenge_id: string }[]>`
+      UPDATE challenge_invitations
+      SET status = 'declined', responded_at = NOW()
+      WHERE id = ${id}::uuid
+        AND invitee_id = ${user.id}::uuid
+        AND status = 'pending'
+      RETURNING id::text, status, challenge_id::text
+    `;
+
+    const invitation = updated[0];
+    if (invitation) {
+      await tx`
+        UPDATE challenges
+        SET target_opponent_id = NULL, updated_at = NOW()
+        WHERE id = ${invitation.challenge_id}::uuid
+          AND target_opponent_id = ${user.id}::uuid
+          AND status = 'open'
+      `;
+    }
+
+    return updated;
+  });
 
   if (rows.length === 0) {
     return NextResponse.json({ error: 'not_found_or_already_resolved' }, { status: 404 });

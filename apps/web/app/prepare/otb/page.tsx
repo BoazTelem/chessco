@@ -48,7 +48,7 @@ export default async function OtbPrepPage() {
         to request access.
       </section>
 
-      <form className="mt-8 grid gap-4" action="/api/prepare/otb" method="post" aria-disabled>
+      <form className="mt-8 grid gap-4" action="/api/prepare/otb" method="post">
         <label className="grid gap-1 text-sm">
           <span className="font-medium">Your FIDE ID</span>
           <input

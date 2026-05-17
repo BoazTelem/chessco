@@ -116,10 +116,12 @@ export async function initSentry(): Promise<{ initialized: boolean }> {
   const dsn = process.env.SENTRY_DSN;
   if (!dsn) return { initialized: false };
   try {
-    // Dynamic import so this module compiles when @sentry/nextjs is absent.
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore — optional peer dependency
-    const sentryMod = (await import('@sentry/nextjs').catch(() => null)) as {
+    // Dynamic import through a string variable so TS treats it as a true
+    // runtime specifier (no type checking, no @ts-ignore needed). The
+    // package is an optional peer dep; this module compiles + builds even
+    // when @sentry/nextjs isn't installed.
+    const sentrySpec = '@sentry/nextjs';
+    const sentryMod = (await import(sentrySpec).catch(() => null)) as {
       init: (opts: { dsn: string; tracesSampleRate: number }) => void;
     } | null;
     if (!sentryMod) return { initialized: false };
