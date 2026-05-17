@@ -4,13 +4,18 @@
  *
  * Body: { confirm: 'DELETE' } — primitive guard against accidental hits.
  *
- * Effect:
- *   - profiles.deleted_at = NOW(), display_name/avatar/bio cleared
- *   - email rewritten to `deleted-{id}@chessco.local` so the unique index
- *     stays valid and the original email can be re-registered.
- *   - 30-day purge: a background worker (not in scope for this WS) reads
- *     profiles.deleted_at and hard-deletes after the retention window so
- *     the financial ledger remains queryable until clear of disputes.
+ * Effect — all PII is cleared synchronously on first call. The row stays
+ * (deleted_at IS NOT NULL) so financial/audit references survive. There is
+ * no deferred-purge worker on this path; identifiable fields are nulled
+ * here and now.
+ *   - profiles.deleted_at = NOW()
+ *   - display_name, avatar_url, bio, country, city, date_of_birth,
+ *     chess_title, last_seen_at, stripe_*_id → NULL
+ *   - email rewritten to `deleted-{id}@chessco.local` (frees the unique
+ *     index so the original address can be re-registered)
+ *   - username rewritten to `deleted-{first-8-of-id}` (frees the unique
+ *     index, stays non-null)
+ *   - kyc_status → 'none', marketing_consent → false
  *
  * Idempotent: replays on an already-deleted account return 200.
  */
@@ -50,7 +55,11 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ already_deleted: true, deleted_at: existing.deleted_at });
   }
 
-  // Soft-delete in one transaction; audit-log the action.
+  // Soft-delete + full PII nullification in one transaction; audit-log
+  // the action. Fields not nullified: profile_visibility (just a flag),
+  // referral_code (NOT NULL UNIQUE — rewritten to sentinel), preferred_language,
+  // is_verified. ban_actions are kept (FK is RESTRICT) so this update
+  // cannot inadvertently erase moderation history.
   await sql.begin(async (tx) => {
     await tx`
       UPDATE profiles
@@ -58,7 +67,17 @@ export async function POST(req: Request): Promise<NextResponse> {
           display_name = NULL,
           avatar_url = NULL,
           bio = NULL,
+          country = NULL,
+          city = NULL,
+          date_of_birth = NULL,
+          chess_title = NULL,
+          last_seen_at = NULL,
+          stripe_account_id = NULL,
+          stripe_customer_id = NULL,
+          kyc_status = 'none',
           email = ${`deleted-${user.id}@chessco.local`},
+          username = ${`deleted-${user.id.slice(0, 8)}`},
+          referral_code = ${`deleted-${user.id.slice(0, 8)}`},
           marketing_consent = false,
           updated_at = NOW()
       WHERE id = ${user.id}::uuid
@@ -72,6 +91,6 @@ export async function POST(req: Request): Promise<NextResponse> {
   return NextResponse.json({
     deleted: true,
     deleted_at: new Date().toISOString(),
-    purge_after_days: 30,
+    pii_cleared: true,
   });
 }

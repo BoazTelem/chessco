@@ -1,34 +1,38 @@
 # Runbook — account deletion
 
-**When** a user requested account deletion via `/account/privacy` or email, OR a 30-day purge needs to run.
+**When** a user requested account deletion via `/account/privacy` or email.
 
-**Goal** the user's identifiable data is removed within 30 days; financial records retained per spec §24 retention policy.
+**Goal** the user's identifiable data is erased synchronously; financial and moderation references are retained against the soft-deleted row per spec §24.
 
-## Steps — initial soft-delete
+## Steps — soft-delete (one shot, no deferred work)
 
-1. User self-serves via `POST /api/account/delete` (body: `{ "confirm": "DELETE" }`). The endpoint:
+1. User self-serves via `POST /api/account/delete` (body: `{ "confirm": "DELETE" }`). The endpoint, in a single transaction:
    - sets `profiles.deleted_at = NOW()`
-   - rewrites display_name, avatar_url, bio, email → null/sentinel
-   - writes an audit_log row
+   - **nulls all PII**: display_name, avatar_url, bio, country, city, date_of_birth, chess_title, last_seen_at, stripe_account_id, stripe_customer_id
+   - sets kyc_status = 'none', marketing_consent = false
+   - rewrites email → `deleted-{id}@chessco.local`, username + referral_code → `deleted-{first-8-of-id}` (frees the unique indexes; original email/handle can be re-registered)
+   - writes an `audit_logs` row
+
+   Response: `{ deleted: true, deleted_at, pii_cleared: true }`. There is no 30-day deferred purge — PII is gone on return.
 
 2. If the user can't self-serve, follow [gdpr-data-request.md](./gdpr-data-request.md) "Article 17" steps.
 
-## Steps — 30-day hard-purge (cron)
+## Retained against the soft-deleted row
 
-Once landed, runs daily and deletes everything older than 30 days:
+These are NOT purged and remain queryable for disputes / audit / regulatory:
 
-    DELETE FROM profiles WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '30 days';
-
-Cascading FKs handle `external_accounts`, `players` (set null), `prep_reports`, `challenges`, `matches` (restrict — keep money-related rows), `ledger_entries` (no FK on profile to begin with).
-
-The Inngest function lives at (to be created) `apps/workers/src/account-purge/run.ts`. Until then, run manually monthly.
+- `matches`, `ledger_entries`, `refund_requests` (financial)
+- `ban_actions` (moderation history; FK is `ON DELETE RESTRICT`)
+- `audit_logs` rows where the user is actor or target
+- `external_accounts` (linked platform handles — could carry the user's lichess/chess.com id; consider broadening the route's null sweep if your legal review requires it)
 
 ## Verify
 
-- `SELECT count(*) FROM profiles WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '30 days'` returns 0 after the purge.
-- A re-registered email by the same user does not conflict with the rewritten sentinel.
+- `SELECT display_name, country, date_of_birth, email FROM profiles WHERE id = '...'` returns NULLs / sentinel email.
+- A re-registered email by the same user does not conflict.
+- An `audit_logs` row with action='account.delete' exists.
 
 ## Escalate
 
-- A match-related row prevents profile delete due to `ON DELETE RESTRICT`: leave the profile soft-deleted (already PII-cleared); revisit in 90 days when match disputes are resolved.
+- User asks for hard-delete of the row itself (not just PII): blocked by `ban_actions.profile_id ON DELETE RESTRICT` and `matches.creator_id ON DELETE RESTRICT`. Reverse any open bans via `POST /api/fairplay/[id]/reverse`, then escalate to legal — hard-deleting transactional rows is a policy decision, not a runbook step.
 - Mass-deletion request from an admin: log it, double-check, never automate.

@@ -73,9 +73,13 @@ CREATE TABLE IF NOT EXISTS ratings_by_time_class (
   PRIMARY KEY (profile_id, time_class)
 );
 
+-- ban_actions.profile_id is ON DELETE RESTRICT so a hard-purge of a banned
+-- profile fails loudly rather than silently erasing the ban record. A
+-- soft-deleted (deleted_at IS NOT NULL) profile keeps its bans intact;
+-- ops must explicitly reverse the ban before any hard delete.
 CREATE TABLE IF NOT EXISTS ban_actions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  profile_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  profile_id uuid NOT NULL REFERENCES profiles(id) ON DELETE RESTRICT,
   severity integer NOT NULL CHECK (severity BETWEEN 1 AND 6),
   reason text NOT NULL,
   evidence jsonb,

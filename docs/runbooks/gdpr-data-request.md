@@ -23,22 +23,33 @@
 
 1. Verify identity (same as Article 15).
 
-2. Direct the user to `/account/privacy` → "Delete my account" (calls `POST /api/account/delete`). Soft-deletes; 30-day purge worker hard-deletes.
+2. Direct the user to `/account/privacy` → "Delete my account" (calls `POST /api/account/delete`). The endpoint nullifies all PII synchronously (display_name, avatar_url, bio, country, city, date_of_birth, chess_title, last_seen_at, stripe_account_id, stripe_customer_id, kyc_status) and rewrites email/username/referral_code to sentinels. The row stays so financial/audit references survive.
 
-3. If the user cannot self-serve, run from admin:
+3. If the user cannot self-serve, run from admin (match the route's behavior exactly — keep all nullified columns in sync):
 
    UPDATE profiles
    SET deleted_at = NOW(),
    display_name = NULL,
    avatar_url = NULL,
    bio = NULL,
+   country = NULL,
+   city = NULL,
+   date_of_birth = NULL,
+   chess_title = NULL,
+   last_seen_at = NULL,
+   stripe_account_id = NULL,
+   stripe_customer_id = NULL,
+   kyc_status = 'none',
    email = 'deleted-' || id::text || '@chessco.local',
-   marketing_consent = false
+   username = 'deleted-' || left(id::text, 8),
+   referral_code = 'deleted-' || left(id::text, 8),
+   marketing_consent = false,
+   updated_at = NOW()
    WHERE id = '...';
-   INSERT INTO audit_logs (actor_type, actor_id, action, target_table, target_id, metadata)
-   VALUES ('admin', '<admin_id>', 'account.delete', 'profiles', '...', '{"via":"manual","reason":"gdpr_art_17"}'::jsonb);
+   INSERT INTO audit_logs (actor_type, actor_id, action, target_type, target_id, reason)
+   VALUES ('admin', '<admin_id>', 'account.delete', 'profile', '...', 'gdpr_art_17');
 
-4. Financial records (`ledger_entries`, `matches`) are retained for 30 days post-deletion per spec §24, then purged by the cron. Inform the user of the retention window.
+4. Financial records (`ledger_entries`, `matches`) and `ban_actions` are retained against the soft-deleted row. There is no hard-delete worker on the soft-delete path — the row remains queryable for disputes and audit. `ban_actions.profile_id` is `ON DELETE RESTRICT`, so any future hard-delete will fail until bans are reversed via `POST /api/fairplay/[id]/reverse`. Inform the user that PII has been erased but transactional references are retained.
 
 ## Verify
 

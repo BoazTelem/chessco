@@ -929,9 +929,12 @@ export const refundRequests = pgTable('refund_requests', {
 
 export const banActions = pgTable('ban_actions', {
   id: pkUuid(),
+  // RESTRICT (not cascade): a hard-delete of a profile with bans must fail
+  // loudly. Soft-delete (deleted_at) leaves bans intact. Reversal goes
+  // through POST /api/fairplay/[id]/reverse.
   profileId: uuid('profile_id')
     .notNull()
-    .references(() => profiles.id, { onDelete: 'cascade' }),
+    .references(() => profiles.id, { onDelete: 'restrict' }),
   // Spec §12 severity ladder: 1 = warning (logged), 2 = paid-play suspended
   // 7 days, 3 = paid-play suspended 30 days, 4 = paid-play permanently
   // suspended, 5 = full account suspended 30 days, 6 = permanent ban +
