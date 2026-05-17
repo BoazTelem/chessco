@@ -33,6 +33,7 @@
     "chesscom:crawl:refresh": "tsx src/chesscom-crawl/refresh-stale.ts",
     "stage2": "tsx src/identification/run.ts",
     "identification:expand": "tsx src/identification/federation-expand.ts",
+    "identification:expand:chesscom": "tsx src/identification/chesscom-federation-expand.ts",
     "features:run": "tsx src/features/run.ts",
     "features:fast-lane": "tsx src/features/fast-lane.ts",
     "features:fast-lane-lichess": "tsx src/features/fast-lane-lichess.ts",
