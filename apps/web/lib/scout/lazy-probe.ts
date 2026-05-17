@@ -29,6 +29,13 @@ export interface ProbeHit {
   rating_blitz: number | null;
   rating_rapid: number | null;
   rating_classical: number | null;
+  /** Self-reported FIDE rating from the player's bio (chess.com `.fide`
+   *  or Lichess `profile.fideRating`). Stored on
+   *  platform_players.claimed_fide_rating; read by Stage 2 scoring. */
+  claimed_fide_rating: number | null;
+  /** Self-reported country in the bio. Distinct from `country` (canonical
+   *  crawler-derived value) so disagreements stay visible. */
+  claimed_country: string | null;
 }
 
 /** Strip the trailing ISO code off a chess.com country URL. */
@@ -61,17 +68,20 @@ export async function probeChesscomOne(handle: string): Promise<ProbeHit | null>
     if (!player) return null;
     // Stats are best-effort; missing stats shouldn't drop the hit.
     const stats = await fetchChesscomJson<ChesscomStats>(`/player/${handle}/stats`, ac.signal);
+    const country = isoFromCountryUrl(player.country);
     return {
       platform: 'chess.com',
       handle: player.username,
       handle_normalized: player.username.toLowerCase(),
-      country: isoFromCountryUrl(player.country),
+      country,
       title: player.title ?? null,
       claimed_name: player.name ?? null,
       rating_bullet: stats?.chess_bullet?.last?.rating ?? null,
       rating_blitz: stats?.chess_blitz?.last?.rating ?? null,
       rating_rapid: stats?.chess_rapid?.last?.rating ?? null,
       rating_classical: stats?.chess_daily?.last?.rating ?? null,
+      claimed_fide_rating: typeof player.fide === 'number' && player.fide > 0 ? player.fide : null,
+      claimed_country: country,
     };
   } finally {
     clearTimeout(timer);
@@ -88,6 +98,8 @@ async function probeChesscom(handles: string[]): Promise<ProbeHit[]> {
 interface LichessProfileBlock {
   country?: string;
   realName?: string;
+  /** Self-reported FIDE rating; 0 means the player didn't fill it in. */
+  fideRating?: number;
 }
 interface LichessUserExtended extends LichessAccount {
   title?: string;
@@ -126,18 +138,26 @@ export async function probeLichess(handles: string[]): Promise<ProbeHit[]> {
     const users = (await res.json()) as LichessUserExtended[];
     return users
       .filter((u) => !u.disabled && !u.tosViolation)
-      .map((u) => ({
-        platform: 'lichess' as const,
-        handle: u.username,
-        handle_normalized: u.username.toLowerCase(),
-        country: u.profile?.country ?? null,
-        title: u.title ?? null,
-        claimed_name: u.profile?.realName ?? null,
-        rating_bullet: lichessRatingFromPerf(u.perfs?.bullet),
-        rating_blitz: lichessRatingFromPerf(u.perfs?.blitz),
-        rating_rapid: lichessRatingFromPerf(u.perfs?.rapid),
-        rating_classical: lichessRatingFromPerf(u.perfs?.classical),
-      }));
+      .map((u) => {
+        const country = u.profile?.country ?? null;
+        return {
+          platform: 'lichess' as const,
+          handle: u.username,
+          handle_normalized: u.username.toLowerCase(),
+          country,
+          title: u.title ?? null,
+          claimed_name: u.profile?.realName ?? null,
+          rating_bullet: lichessRatingFromPerf(u.perfs?.bullet),
+          rating_blitz: lichessRatingFromPerf(u.perfs?.blitz),
+          rating_rapid: lichessRatingFromPerf(u.perfs?.rapid),
+          rating_classical: lichessRatingFromPerf(u.perfs?.classical),
+          claimed_fide_rating:
+            typeof u.profile?.fideRating === 'number' && u.profile.fideRating > 0
+              ? u.profile.fideRating
+              : null,
+          claimed_country: country,
+        };
+      });
   } catch {
     return [];
   } finally {
@@ -171,7 +191,7 @@ export async function readCachedProbeHit(
   const { data } = await supabase
     .from('platform_players')
     .select(
-      'platform, handle, handle_normalized, country, title, claimed_name, rating_bullet, rating_blitz, rating_rapid, rating_classical',
+      'platform, handle, handle_normalized, country, title, claimed_name, rating_bullet, rating_blitz, rating_rapid, rating_classical, claimed_fide_rating, claimed_country',
     )
     .eq('platform', platform)
     .eq('handle_normalized', handle.toLowerCase())
@@ -202,6 +222,8 @@ export async function upsertProbeHits(
     rating_blitz: h.rating_blitz,
     rating_rapid: h.rating_rapid,
     rating_classical: h.rating_classical,
+    claimed_fide_rating: h.claimed_fide_rating,
+    claimed_country: h.claimed_country,
     pulled_via: 'lazy',
     last_seen_at: new Date().toISOString(),
   }));

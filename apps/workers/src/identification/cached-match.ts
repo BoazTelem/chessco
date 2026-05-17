@@ -29,6 +29,11 @@ export interface CachedMatch {
   rating_blitz: number | null;
   rating_rapid: number | null;
   rating_classical: number | null;
+  /** Self-reported FIDE rating from the platform bio. Read directly into
+   *  the Stage 2 scoring path as a sharp rating-band signal. */
+  claimed_fide_rating: number | null;
+  /** Self-reported country (separate from the canonical `country` column). */
+  claimed_country: string | null;
   /** pg_trgm similarity score (0..1) of best name-token match. */
   similarity: number;
   /** Which name token matched best. */
@@ -69,6 +74,8 @@ export async function cachedFuzzyMatch(
         rating_blitz,
         rating_rapid,
         rating_classical,
+        claimed_fide_rating,
+        claimed_country,
         similarity(handle_normalized, ${token}) AS similarity,
         ${token}::text AS matched_token
       FROM platform_players

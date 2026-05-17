@@ -91,6 +91,36 @@ export function ratingBandMatchExplicit(
 }
 
 /**
+ * Absolute confidence boost (added to the weighted-sum score) based on
+ * how well the candidate's self-reported FIDE rating matches the anchor's.
+ * This is qualitatively sharper than the rating-band signal — the
+ * candidate themselves is claiming a specific FIDE number — so it
+ * functions as a tiebreaker on top of the main score, not as a fifth
+ * weighted component.
+ *
+ * Returns:
+ *   +0.10  tight match  (|claimed - anchor| ≤ 50)
+ *   +0.05  loose match  (51 ≤ |claimed - anchor| ≤ 150)
+ *    0     no signal    (claimed absent OR anchor absent)
+ *   -0.10  clear mismatch (|claimed - anchor| > 250)
+ *
+ * Anchor can be either a FIDE rating (federation-anchored query) or the
+ * midpoint of a user-supplied rating band (ad-hoc query); both are on
+ * the OTB-equivalent scale and compare to claimed_fide_rating directly.
+ */
+export function claimedFideRatingBoost(
+  anchorRating: number | null | undefined,
+  claimedFide: number | null | undefined,
+): number {
+  if (anchorRating == null || claimedFide == null) return 0;
+  const gap = Math.abs(claimedFide - anchorRating);
+  if (gap <= 50) return 0.1;
+  if (gap <= 150) return 0.05;
+  if (gap > 250) return -0.1;
+  return 0;
+}
+
+/**
  * Are the candidate's online ratings within the rating band of fideStandard?
  * Rapid/blitz online runs higher than FIDE standard, so we widen the band.
  *

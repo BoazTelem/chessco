@@ -20,7 +20,8 @@ export interface ProbeResult {
   platform: ProbePlatform;
   handle: string;
   exists: boolean;
-  /** Country ISO when known (lichess profile.country / chess.com country URL tail). */
+  /** Crawler-derived country ISO (lichess profile.country / chess.com country
+   *  URL tail). Mapped to platform_players.country in the upsert. */
   country?: string | null;
   title?: string | null;
   ratings?: {
@@ -29,6 +30,17 @@ export interface ProbeResult {
     rapid?: number;
     classical?: number;
   };
+  /** Self-reported FIDE rating from the player's bio. Lichess
+   *  profile.fideRating / chess.com .fide. Stored in
+   *  platform_players.claimed_fide_rating (migration 0049). Stage 2 uses
+   *  this as a sharper rating signal than the online-rating ± offset
+   *  heuristic when present. */
+  claimed_fide_rating?: number | null;
+  /** Self-reported country (separate column from `country` since the two
+   *  signals can disagree — `country` is canonical/crawler-derived,
+   *  `claimed_country` is the player's bio). Maps to
+   *  platform_players.claimed_country (migration 0049). */
+  claimed_country?: string | null;
   /** Raw response payload (truncated upstream) — for upsert.raw column. */
   raw?: unknown;
 }
@@ -71,7 +83,7 @@ export async function probeLichess(handle: string): Promise<ProbeResult> {
       rapid?: { rating: number };
       classical?: { rating: number };
     };
-    profile?: { country?: string };
+    profile?: { country?: string; fideRating?: number };
     disabled?: boolean;
     closed?: boolean;
   };
@@ -79,11 +91,12 @@ export async function probeLichess(handle: string): Promise<ProbeResult> {
     negativeCache.set(cacheKey, true);
     return { platform: 'lichess', handle: lower, exists: false };
   }
+  const lichessCountry = u.profile?.country?.toUpperCase() ?? null;
   return {
     platform: 'lichess',
     handle: lower,
     exists: true,
-    country: u.profile?.country?.toUpperCase() ?? null,
+    country: lichessCountry,
     title: u.title ?? null,
     ratings: {
       bullet: u.perfs?.bullet?.rating,
@@ -91,6 +104,14 @@ export async function probeLichess(handle: string): Promise<ProbeResult> {
       rapid: u.perfs?.rapid?.rating,
       classical: u.perfs?.classical?.rating,
     },
+    // Lichess exposes the self-reported FIDE rating on profile.fideRating;
+    // a value of 0 (or missing) means the player didn't fill it in. We
+    // surface it on platform_players.claimed_fide_rating for Stage 2.
+    claimed_fide_rating:
+      typeof u.profile?.fideRating === 'number' && u.profile.fideRating > 0
+        ? u.profile.fideRating
+        : null,
+    claimed_country: lichessCountry,
     raw: u,
   };
 }
@@ -109,11 +130,12 @@ export async function probeChesscom(handle: string): Promise<ProbeResult> {
     return { platform: 'chess.com', handle: lower, exists: false };
   }
   const stats = await fetchPlayerStats(lower);
+  const chesscomCountry = isoFromCountryUrl(player.country);
   return {
     platform: 'chess.com',
     handle: lower,
     exists: true,
-    country: isoFromCountryUrl(player.country),
+    country: chesscomCountry,
     title: player.title ?? null,
     ratings: {
       bullet: stats?.chess_bullet?.last?.rating,
@@ -121,6 +143,11 @@ export async function probeChesscom(handle: string): Promise<ProbeResult> {
       rapid: stats?.chess_rapid?.last?.rating,
       classical: stats?.chess_daily?.last?.rating,
     },
+    // chess.com /pub/player exposes player.fide (integer rating); 0 / missing
+    // = player didn't enter it. Mirrors the upsert path in
+    // apps/workers/src/chesscom-titled/upsert.ts.
+    claimed_fide_rating: typeof player.fide === 'number' && player.fide > 0 ? player.fide : null,
+    claimed_country: chesscomCountry,
     raw: { player, stats },
   };
 }

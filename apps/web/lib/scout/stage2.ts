@@ -255,10 +255,36 @@ interface RpcRow {
   rating_blitz: number | null;
   rating_rapid: number | null;
   rating_classical: number | null;
+  /** Self-reported FIDE rating from the platform bio (migration 0049 +
+   *  RPC update 0050). Drives the claimed-FIDE tiebreaker boost. */
+  claimed_fide_rating: number | null;
+  claimed_country: string | null;
   sim: number;
   matched_token: string;
   claimed_name: string | null;
   claimed_name_normalized: string | null;
+}
+
+/**
+ * Absolute confidence boost based on claimed_fide_rating proximity to the
+ * anchor. Tight match (±50) is a near-conclusive signal: the candidate
+ * themselves is saying their FIDE rating is the same as our anchor's.
+ * Loose match (±150) is supporting evidence. Clear mismatch (>250) is
+ * counter-evidence.
+ *
+ * Anchor source: a federation_players.rating_standard OR the midpoint of
+ * a user-supplied ad-hoc rating band. Both are on OTB-equivalent scale.
+ */
+function claimedFideRatingBoost(
+  anchorRating: number | null | undefined,
+  claimedFide: number | null | undefined,
+): number {
+  if (anchorRating == null || claimedFide == null) return 0;
+  const gap = Math.abs(claimedFide - anchorRating);
+  if (gap <= 50) return 0.1;
+  if (gap <= 150) return 0.05;
+  if (gap > 250) return -0.1;
+  return 0;
 }
 
 interface FedMatchRow {
@@ -322,6 +348,11 @@ export async function runStage2Cached(input: Stage2Input): Promise<Stage2Candida
   // rather than a FIDE rating. Federation/club imports get full weight too —
   // they're audited sources. Only user_estimate is dialled down.
   const ratingMultiplier = input.rating_band?.source === 'user_estimate' ? 0.85 : 1;
+  // Anchor for the claimed-FIDE tiebreaker: prefer the anchor's FIDE
+  // rating; fall back to the ad-hoc band midpoint.
+  const anchorRatingForClaimedFide =
+    input.fide_rating ??
+    (input.rating_band ? Math.round((input.rating_band.low + input.rating_band.high) / 2) : null);
 
   const candidates: Stage2Candidate[] = rows.map((r) => {
     const onlineRatings = {
@@ -344,6 +375,18 @@ export async function runStage2Cached(input: Stage2Input): Promise<Stage2Candida
       title_match: titleMatches(r.title, input.title),
       rating_weight_multiplier: ratingMultiplier,
     });
+    const claimedBoost = claimedFideRatingBoost(anchorRatingForClaimedFide, r.claimed_fide_rating);
+    const finalConfidence = Math.min(1, Math.max(0, s.confidence + claimedBoost));
+    const claimedReasons: string[] = [];
+    if (claimedBoost > 0) {
+      claimedReasons.push(
+        claimedBoost === 0.1
+          ? `claimed FIDE ${r.claimed_fide_rating} tight match`
+          : `claimed FIDE ${r.claimed_fide_rating} loose match`,
+      );
+    } else if (claimedBoost < 0) {
+      claimedReasons.push(`claimed FIDE ${r.claimed_fide_rating} mismatch`);
+    }
     const fedMatch = r.claimed_name_normalized
       ? (fedMatchByName.get(r.claimed_name_normalized) ?? null)
       : null;
@@ -351,8 +394,8 @@ export async function runStage2Cached(input: Stage2Input): Promise<Stage2Candida
     return {
       platform: r.platform,
       handle: r.handle,
-      confidence: s.confidence,
-      reasons: [`fuzzy match on '${matchedDisplay}'`, ...s.reasons],
+      confidence: finalConfidence,
+      reasons: [`fuzzy match on '${matchedDisplay}'`, ...s.reasons, ...claimedReasons],
       country: r.country,
       title: r.title,
       ratings: {
@@ -429,6 +472,8 @@ function mergeWithLazyHits(cached: RpcRow[], lazy: ProbeHit[], nameTokens: strin
       rating_blitz: h.rating_blitz,
       rating_rapid: h.rating_rapid,
       rating_classical: h.rating_classical,
+      claimed_fide_rating: h.claimed_fide_rating,
+      claimed_country: h.claimed_country,
       sim: 1,
       matched_token: matchedDisplay,
       claimed_name: h.claimed_name,

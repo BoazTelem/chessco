@@ -18,7 +18,7 @@ import { countryMatches } from '../lib/country-code';
 import { cachedFuzzyMatch } from './cached-match';
 import { hypothesizeHandles } from './hypothesize';
 import { probeChesscom, probeLichess, type ProbeResult } from './probe';
-import { ratingBandMatch, ratingBandMatchExplicit, score } from './score';
+import { claimedFideRatingBoost, ratingBandMatch, ratingBandMatchExplicit, score } from './score';
 
 function extractClaimedName(p: ProbeResult): string | null {
   const raw = p.raw as
@@ -96,6 +96,13 @@ function isImplausibleByRating(
 export async function runStage2(sql: postgres.Sql, input: Stage2Input): Promise<Stage2Candidate[]> {
   const maxProbes = input.maxProbesPerPlatform ?? 8;
   const ratingMultiplier = input.rating_band?.source === 'user_estimate' ? 0.85 : 1;
+  // Effective anchor rating for the claimed_fide_rating tiebreaker: prefer
+  // a direct FIDE number, fall back to the ad-hoc band midpoint when
+  // present. Used outside the weighted-sum score because it's a much
+  // sharper signal than rating_band_match.
+  const anchorRatingForClaimedFide =
+    input.fide_rating ??
+    (input.rating_band ? Math.round((input.rating_band.low + input.rating_band.high) / 2) : null);
 
   // ---- 1. Cached fuzzy match ---------------------------------------------
   const cached = await cachedFuzzyMatch(sql, {
@@ -130,11 +137,23 @@ export async function runStage2(sql: postgres.Sql, input: Stage2Input): Promise<
       title_match: c.title ? c.title === (input.title ?? c.title) : null,
       rating_weight_multiplier: ratingMultiplier,
     });
+    const claimedBoost = claimedFideRatingBoost(anchorRatingForClaimedFide, c.claimed_fide_rating);
+    const finalConfidence = Math.min(1, Math.max(0, s.confidence + claimedBoost));
+    const claimedReasons: string[] = [];
+    if (claimedBoost > 0) {
+      claimedReasons.push(
+        claimedBoost === 0.1
+          ? `claimed FIDE ${c.claimed_fide_rating} tight match`
+          : `claimed FIDE ${c.claimed_fide_rating} loose match`,
+      );
+    } else if (claimedBoost < 0) {
+      claimedReasons.push(`claimed FIDE ${c.claimed_fide_rating} MISMATCH`);
+    }
     candidates.set(key, {
       platform: c.platform,
       handle: c.handle,
-      confidence: s.confidence,
-      reasons: [`cached row (${c.matched_token})`, ...s.reasons],
+      confidence: finalConfidence,
+      reasons: [`cached row (${c.matched_token})`, ...s.reasons, ...claimedReasons],
       source: 'cached',
       ratings,
       country: c.country,
@@ -182,6 +201,8 @@ export async function runStage2(sql: postgres.Sql, input: Stage2Input): Promise<
                   rating_blitz: result.ratings?.blitz ?? null,
                   rating_rapid: result.ratings?.rapid ?? null,
                   rating_classical: result.ratings?.classical ?? null,
+                  claimed_fide_rating: result.claimed_fide_rating ?? null,
+                  claimed_country: result.claimed_country ?? null,
                   pulled_via: 'lazy',
                   raw: JSON.stringify(result.raw ?? {}),
                 },
@@ -195,12 +216,16 @@ export async function runStage2(sql: postgres.Sql, input: Stage2Input): Promise<
               'rating_blitz',
               'rating_rapid',
               'rating_classical',
+              'claimed_fide_rating',
+              'claimed_country',
               'pulled_via',
               'raw',
             )}
           ON CONFLICT (platform, handle) DO UPDATE SET
             country = COALESCE(EXCLUDED.country, platform_players.country),
             title = COALESCE(EXCLUDED.title, platform_players.title),
+            claimed_fide_rating = COALESCE(EXCLUDED.claimed_fide_rating, platform_players.claimed_fide_rating),
+            claimed_country = COALESCE(EXCLUDED.claimed_country, platform_players.claimed_country),
             rating_bullet = COALESCE(EXCLUDED.rating_bullet, platform_players.rating_bullet),
             rating_blitz = COALESCE(EXCLUDED.rating_blitz, platform_players.rating_blitz),
             rating_rapid = COALESCE(EXCLUDED.rating_rapid, platform_players.rating_rapid),
@@ -218,13 +243,28 @@ export async function runStage2(sql: postgres.Sql, input: Stage2Input): Promise<
           title_match: result.title ? true : null,
           rating_weight_multiplier: ratingMultiplier,
         });
+        const claimedBoost = claimedFideRatingBoost(
+          anchorRatingForClaimedFide,
+          result.claimed_fide_rating,
+        );
+        const finalConfidence = Math.min(1, Math.max(0, s.confidence + claimedBoost));
+        const claimedReasons: string[] = [];
+        if (claimedBoost > 0) {
+          claimedReasons.push(
+            claimedBoost === 0.1
+              ? `claimed FIDE ${result.claimed_fide_rating} tight match`
+              : `claimed FIDE ${result.claimed_fide_rating} loose match`,
+          );
+        } else if (claimedBoost < 0) {
+          claimedReasons.push(`claimed FIDE ${result.claimed_fide_rating} MISMATCH`);
+        }
 
         const claimedName = extractClaimedName(result);
         candidates.set(`${result.platform}:${result.handle}`, {
           platform: result.platform,
           handle: result.handle,
-          confidence: s.confidence,
-          reasons: [`probed pattern '${h.pattern}'`, ...s.reasons],
+          confidence: finalConfidence,
+          reasons: [`probed pattern '${h.pattern}'`, ...s.reasons, ...claimedReasons],
           source: 'probed',
           ratings: result.ratings,
           country: result.country,

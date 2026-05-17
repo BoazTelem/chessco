@@ -29,6 +29,9 @@ export type ChesscomPlayer = {
   last_online: number;
   followers: number;
   is_streamer?: boolean;
+  /** Self-reported FIDE rating in the player's bio. Surfaced on
+   *  platform_players.claimed_fide_rating (migration 0049). */
+  fide?: number;
 };
 
 export type ChesscomStats = {
