@@ -1,0 +1,8 @@
+{
+  "id": "b6",
+  "title": "Leak precision@5 (CQ-2)",
+  "status": "pending",
+  "headline": "No leak-precision dataset published yet. Curate via apps/workers/scripts/leaks-smoke.ts and drop the result at apps/workers/src/eval/fixtures/leak-eval/precision.json.",
+  "criteria": [],
+  "generatedAt": "2026-05-16T21:34:14.695Z"
+}

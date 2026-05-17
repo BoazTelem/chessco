@@ -22,6 +22,12 @@
  *     error → return empty RerankResult, caller falls back to algorithmic
  *     order + bullet reasons.
  *   - Provider-agnostic via getProseProvider().
+ *
+ * TODO(WS-4 → Scout-Ready Pipeline Phase 5): migrate this module to use
+ *   @chessco/ai's `runPrompt('evidence_v1', ...)` per-candidate (plus a
+ *   batched verdict variant) so prompt caching kicks in on the shared
+ *   coach-voice system block. Keeping the DeepSeek path intact behind a
+ *   `SCOUT_PROSE_PROVIDER=claude` flag is the safe cutover order.
  */
 import { getProseProvider } from './llm-providers';
 

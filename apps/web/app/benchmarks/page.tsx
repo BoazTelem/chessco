@@ -9,6 +9,122 @@ export const metadata: Metadata = {
 };
 
 // ============================================================================
+// Verdict tiles (B1 / B3 / B11 …) — read from apps/web/public/benchmarks/*.json
+// ============================================================================
+
+type VerdictStatus = 'pass' | 'fail' | 'pending' | 'error';
+
+type Verdict = {
+  id: string;
+  title: string;
+  status: VerdictStatus;
+  headline: string;
+  criteria: Array<{ label: string; threshold: string; actual: string; passed: boolean }>;
+  source?: { artifact: string; runAt: string | null };
+  generatedAt: string;
+  error?: string;
+};
+
+function loadVerdict(id: string): Verdict | null {
+  const candidates = [
+    join(process.cwd(), 'public', 'benchmarks', `${id}.json`),
+    join(process.cwd(), 'apps', 'web', 'public', 'benchmarks', `${id}.json`),
+  ];
+  const path = candidates.find((p) => existsSync(p));
+  if (!path) return null;
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')) as Verdict;
+  } catch {
+    return null;
+  }
+}
+
+function VerdictTile({ verdict }: { verdict: Verdict }) {
+  const palette: Record<VerdictStatus, { icon: string; label: string; cls: string }> = {
+    pass: {
+      icon: '✓',
+      label: 'Pass',
+      cls: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300',
+    },
+    fail: { icon: '✗', label: 'Fail', cls: 'border-red-500/40 bg-red-500/10 text-red-300' },
+    pending: {
+      icon: '⏳',
+      label: 'Pending',
+      cls: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
+    },
+    error: {
+      icon: '!',
+      label: 'Error',
+      cls: 'border-orange-500/40 bg-orange-500/10 text-orange-300',
+    },
+  };
+  const p = palette[verdict.status];
+  const runAt = verdict.source?.runAt;
+  return (
+    <div className="rounded-md border border-border bg-card p-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+          {verdict.id.toUpperCase()}
+        </p>
+        <span
+          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${p.cls}`}
+        >
+          <span aria-hidden>{p.icon}</span>
+          {p.label}
+        </span>
+      </div>
+      <p className="mt-2 text-sm font-semibold">{verdict.title}</p>
+      <p className="mt-2 text-xs leading-5 text-muted-foreground">{verdict.headline}</p>
+      {runAt ? (
+        <p className="mt-2 text-[10px] uppercase tracking-wide text-muted-foreground">
+          source run {new Date(runAt).toLocaleDateString()}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function VerdictsSection() {
+  const ids = ['b1', 'b3', 'b6', 'b7', 'b8', 'b11'];
+  const verdicts = ids.map((id) => loadVerdict(id)).filter((v): v is Verdict => v !== null);
+
+  if (verdicts.length === 0) {
+    return (
+      <section className="mt-8 rounded-md border border-dashed border-border bg-card p-5">
+        <h2 className="font-display text-lg font-semibold">Benchmark verdicts</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          No verdict files in{' '}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">apps/web/public/benchmarks/</code>{' '}
+          yet. Run{' '}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            pnpm --filter @chessco/workers bench:verdicts
+          </code>{' '}
+          to populate them, or run the full{' '}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">bench:all</code> to refresh source
+          artifacts first.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="mt-10">
+      <header className="flex items-baseline justify-between">
+        <h2 className="font-display text-xl font-semibold">Critical-quality benchmark verdicts</h2>
+        <p className="text-xs text-muted-foreground">
+          Pass/fail vs. plan-locked CQ-1 and CQ-2 targets
+        </p>
+      </header>
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        {verdicts.map((v) => (
+          <VerdictTile key={v.id} verdict={v} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ============================================================================
 // Sparse cascade benchmark (v4 matcher — the current production path)
 // ============================================================================
 
@@ -415,7 +531,8 @@ pnpm --filter @chessco/workers eval:repertoire`}
 export default function BenchmarksPage() {
   const sparse = loadSparseBenchmark();
   const legacy = loadLegacyBenchmark();
-  if (!sparse && !legacy) return <MissingBenchmark />;
+  const anyVerdict = ['b1', 'b3', 'b6', 'b7', 'b8', 'b11'].some((id) => loadVerdict(id) !== null);
+  if (!sparse && !legacy && !anyVerdict) return <MissingBenchmark />;
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-12 md:py-16">
@@ -431,6 +548,8 @@ export default function BenchmarksPage() {
           counts based on evidence, not guesswork.
         </p>
       </section>
+
+      <VerdictsSection />
 
       {sparse ? <SparseSection benchmark={sparse} /> : null}
       {legacy ? <LegacySection benchmark={legacy} /> : null}

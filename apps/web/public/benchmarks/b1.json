@@ -1,0 +1,37 @@
+{
+  "id": "b1",
+  "title": "Identification top-1 / top-3 (CQ-1)",
+  "status": "fail",
+  "headline": "Top-1 best cohort: 98.7% at 20 games, Top-3@5: 82.3%",
+  "criteria": [
+    {
+      "label": "Top-1 (Phase 1 gate, best cohort)",
+      "threshold": "≥ 75.0%",
+      "actual": "98.7% at 20 games",
+      "passed": true
+    },
+    {
+      "label": "Top-1 (Phase 2 gate)",
+      "threshold": "≥ 80.0%",
+      "actual": "98.7%",
+      "passed": true
+    },
+    {
+      "label": "Top-3 (≥5-game cohort)",
+      "threshold": "≥ 90.0%",
+      "actual": "82.3% at 5 games",
+      "passed": false
+    },
+    {
+      "label": "Trials recorded",
+      "threshold": "> 0",
+      "actual": "1,200",
+      "passed": true
+    }
+  ],
+  "source": {
+    "artifact": "apps/web/public/sparse-cascade-benchmark.json",
+    "runAt": "2026-05-15T10:39:37.664Z"
+  },
+  "generatedAt": "2026-05-16T21:27:39.107Z"
+}

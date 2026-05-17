@@ -16,13 +16,13 @@
  * UPDATEs.
  *
  *   pnpm --filter @chessco/workers exec tsx \
- *     src/stockfish/backfill.ts --workers 4 --depth 10 --batch 200
+ *     src/stockfish/backfill.ts --workers 4 --depth 18 --batch 200
  *   pnpm --filter @chessco/workers exec tsx \
  *     src/stockfish/backfill.ts --platform lichess --handle drnykterstein --limit 100 --start-ply 1 --end-ply 60
  *
  * Flags:
  *   --workers N           parallel Stockfish engines (default 4)
- *   --depth D             Stockfish search depth per position (default 10)
+ *   --depth D             Stockfish search depth per position (default 18 per spec §6)
  *   --batch B             games per chunk pulled from DB (default 200)
  *   --limit L             stop after L games analyzed (default ∞)
  *   --source S            only analyze 'lichess' | 'chess.com' games (default: both)
@@ -64,7 +64,9 @@ export interface CliArgs {
 
 function parseArgs(argv: string[]): CliArgs {
   let workers = 4;
-  let depth = 10;
+  // Spec §6: Stockfish on Cloud Run, depth 18 default. Callers can drop to
+  // 10 for a quick smoke when iterating, but production analysis runs at 18.
+  let depth = 18;
   let batch = 200;
   let limit = Number.POSITIVE_INFINITY;
   let source: CliArgs['source'] = null;
@@ -525,7 +527,7 @@ export function runScopedBackfillForHandle(args: {
 }): Promise<BackfillStats> {
   return runBackfill({
     workers: args.workers ?? 2,
-    depth: args.depth ?? 10,
+    depth: args.depth ?? 18,
     batch: args.limit ?? 100,
     limit: args.limit ?? 100,
     source: null,

@@ -94,9 +94,38 @@ function gaussianScalar(a: number | null, b: number | null, sigma = 250): number
   return Math.exp(-(diff * diff) / (2 * sigma * sigma));
 }
 
+export type MatchCohort = 'standard' | 'few_games';
+
+/** At/below this sample-game count we lean on the few-games weight profile. */
+export const FEW_GAMES_THRESHOLD = 8;
+
+export function cohortFromSampleSize(n: number): MatchCohort {
+  return n <= FEW_GAMES_THRESHOLD ? 'few_games' : 'standard';
+}
+
+const COHORT_WEIGHTS: Record<
+  MatchCohort,
+  {
+    ecoW: number;
+    ecoB: number;
+    seqW: number;
+    seqB: number;
+    time: number;
+    opp: number;
+    cpLoss: number;
+  }
+> = {
+  // Few-games tilt: at small N, opp_rating + cp_loss are too noisy to be
+  // useful, so we reweight onto the opening fingerprint. See
+  // apps/workers/src/stage3/match.ts for the rationale.
+  standard: { ecoW: 0.18, ecoB: 0.18, seqW: 0.18, seqB: 0.18, time: 0.08, opp: 0.1, cpLoss: 0.1 },
+  few_games: { ecoW: 0.24, ecoB: 0.24, seqW: 0.24, seqB: 0.24, time: 0.04, opp: 0.0, cpLoss: 0.0 },
+};
+
 export function compareFingerprints(
   target: PlayerFeaturesV0,
   cand: PlayerFeaturesV0,
+  cohort: MatchCohort = 'standard',
 ): { combined: number; components: Stage3Match['components'] } {
   const ecoW = cosineSparse(target.eco_white, cand.eco_white);
   const ecoB = cosineSparse(target.eco_black, cand.eco_black);
@@ -105,8 +134,15 @@ export function compareFingerprints(
   const time = cosineSparse(target.time_class, cand.time_class);
   const opp = gaussianScalar(target.avg_opponent_rating, cand.avg_opponent_rating, 250);
   const cpLoss = gaussianScalar(target.mean_cp_loss ?? null, cand.mean_cp_loss ?? null, 20);
+  const w = COHORT_WEIGHTS[cohort];
   const combined =
-    0.18 * ecoW + 0.18 * ecoB + 0.18 * seqW + 0.18 * seqB + 0.08 * time + 0.1 * opp + 0.1 * cpLoss;
+    w.ecoW * ecoW +
+    w.ecoB * ecoB +
+    w.seqW * seqW +
+    w.seqB * seqB +
+    w.time * time +
+    w.opp * opp +
+    w.cpLoss * cpLoss;
   return {
     combined,
     components: {
@@ -123,11 +159,15 @@ export function compareFingerprints(
 
 export async function rankBySampleGames(
   games: GameRow[],
-  opts: { topK?: number; minGamesWindow?: number } = {},
+  opts: { topK?: number; minGamesWindow?: number; cohort?: MatchCohort } = {},
 ): Promise<{ target: PlayerFeaturesV0; matches: Stage3Match[] }> {
   const topK = opts.topK ?? 15;
   const minGames = opts.minGamesWindow ?? 10;
   const target = extractFeaturesV0(games);
+  // Default cohort comes from games.length, not target.games_total — at the
+  // entrypoint the two are equal, but explicit input count is the API
+  // contract callers reason about.
+  const cohort: MatchCohort = opts.cohort ?? cohortFromSampleSize(games.length);
   const targetTerms = extractFingerprintTerms(target);
 
   // Empty target → no signal to retrieve against. Bail cleanly so the
@@ -227,7 +267,7 @@ export async function rankBySampleGames(
     if (!h) continue;
     const cand: PlayerFeaturesV0 =
       typeof h.scalar_summary === 'string' ? JSON.parse(h.scalar_summary) : h.scalar_summary;
-    const { combined, components } = compareFingerprints(target, cand);
+    const { combined, components } = compareFingerprints(target, cand, cohort);
     scored.push({
       player_id: id,
       platform: h.platform,

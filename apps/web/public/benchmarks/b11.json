@@ -1,0 +1,99 @@
+{
+  "id": "b11",
+  "title": "AI prompt regression",
+  "status": "pass",
+  "headline": "3 fixture(s) checked across 3 prompt(s)",
+  "criteria": [
+    {
+      "label": "evidence_v1 • id",
+      "threshold": "= evidence_v1",
+      "actual": "evidence_v1",
+      "passed": true
+    },
+    {
+      "label": "evidence_v1 • version",
+      "threshold": "= 1.0.0",
+      "actual": "1.0.0",
+      "passed": true
+    },
+    {
+      "label": "evidence_v1 • model",
+      "threshold": "= claude-haiku-4-5-20251001",
+      "actual": "claude-haiku-4-5-20251001",
+      "passed": true
+    },
+    {
+      "label": "evidence_v1 • params.maxTokens",
+      "threshold": "= 120",
+      "actual": "120",
+      "passed": true
+    },
+    {
+      "label": "evidence_v1 • params.temperature",
+      "threshold": "= 0.2",
+      "actual": "0.2",
+      "passed": true
+    },
+    {
+      "label": "prep_summary_v1 • id",
+      "threshold": "= prep_summary_v1",
+      "actual": "prep_summary_v1",
+      "passed": true
+    },
+    {
+      "label": "prep_summary_v1 • version",
+      "threshold": "= 1.0.0",
+      "actual": "1.0.0",
+      "passed": true
+    },
+    {
+      "label": "prep_summary_v1 • model",
+      "threshold": "= claude-opus-4-7",
+      "actual": "claude-opus-4-7",
+      "passed": true
+    },
+    {
+      "label": "prep_summary_v1 • description",
+      "threshold": "present",
+      "actual": "present",
+      "passed": true
+    },
+    {
+      "label": "prep_summary_v1 • params.maxTokens",
+      "threshold": "= 800",
+      "actual": "800",
+      "passed": true
+    },
+    {
+      "label": "prep_summary_v1 • params.temperature",
+      "threshold": "= 0.4",
+      "actual": "0.4",
+      "passed": true
+    },
+    {
+      "label": "style_fingerprint_v1 • id",
+      "threshold": "= style_fingerprint_v1",
+      "actual": "style_fingerprint_v1",
+      "passed": true
+    },
+    {
+      "label": "style_fingerprint_v1 • version",
+      "threshold": "= 1.0.0",
+      "actual": "1.0.0",
+      "passed": true
+    },
+    {
+      "label": "style_fingerprint_v1 • model",
+      "threshold": "= claude-haiku-4-5-20251001",
+      "actual": "claude-haiku-4-5-20251001",
+      "passed": true
+    },
+    {
+      "label": "style_fingerprint_v1 • params.maxTokens",
+      "threshold": "= 250",
+      "actual": "250",
+      "passed": true
+    }
+  ],
+  "generatedAt": "2026-05-16T21:19:04.794Z"
+}

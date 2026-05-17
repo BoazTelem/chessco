@@ -252,7 +252,13 @@ export default function PricingPage() {
           </p>
         </header>
 
-        <section className="mt-12 grid gap-5 md:grid-cols-3 lg:grid-cols-5">
+        <section className="mt-8 rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
+          Real-money subscription billing is paused while we finalize our payment partner. Credit
+          tiers and the free plan are live now; paid-tier checkout opens once provider integration
+          lands.
+        </section>
+
+        <section className="mt-8 grid gap-5 md:grid-cols-3 lg:grid-cols-5">
           {TIERS.map((t) => (
             <TierCard key={t.code} tier={t} />
           ))}

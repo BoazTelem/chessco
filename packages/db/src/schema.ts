@@ -20,6 +20,7 @@ import {
   jsonb,
   numeric,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -196,6 +197,12 @@ export const players = pgTable('players', {
   fideId: text('fide_id'),
   peakRating: integer('peak_rating'),
   embedding: vector('embedding', { dimensions: 384 }),
+  // Right-to-delist (spec §6 privacy). When non-null, the player's profile
+  // and aliases are excluded from /scout results, /p/[id] returns 404, and
+  // the embedding is null-cleared in the next aggregate recompute. The
+  // canonical row itself stays for audit + deduplication.
+  delistedAt: timestamptz('delisted_at'),
+  delistReason: text('delist_reason'),
   createdAt: timestamptz('created_at').notNull().defaultNow(),
   updatedAt: timestamptz('updated_at').notNull().defaultNow(),
 });
@@ -436,6 +443,11 @@ export const prepReports = pgTable('prep_reports', {
   targetHandleNormalized: text('target_handle_normalized'),
   leaksJson: jsonb('leaks_json'),
   errorText: text('error_text'),
+  // Share token: when non-null, /reports/[id]?t=<token> bypasses the
+  // owner-only auth check. The owner mints/rotates/revokes via
+  // POST/DELETE /api/prepare/reports/[id]/share. Stored as a short
+  // hex string; collision-resistant per crypto.randomUUID().
+  shareToken: text('share_token'),
   createdAt: timestamptz('created_at').notNull().defaultNow(),
   completedAt: timestamptz('completed_at'),
   expiresAt: timestamptz('expires_at'),
@@ -510,6 +522,87 @@ export const challenges = pgTable('challenges', {
   createdAt: timestamptz('created_at').notNull().defaultNow(),
   updatedAt: timestamptz('updated_at').notNull().defaultNow(),
 });
+
+// ============================================================================
+// MARKETPLACE — INVITATIONS + SPARRING PROFILE
+// (Spec §8: /sparring directory + private-challenge invitations.)
+// ============================================================================
+
+export const challengeInvitations = pgTable('challenge_invitations', {
+  id: pkUuid(),
+  challengeId: uuid('challenge_id')
+    .notNull()
+    .references(() => challenges.id, { onDelete: 'cascade' }),
+  inviterId: uuid('inviter_id')
+    .notNull()
+    .references(() => profiles.id, { onDelete: 'cascade' }),
+  inviteeId: uuid('invitee_id')
+    .notNull()
+    .references(() => profiles.id, { onDelete: 'cascade' }),
+  status: text('status')
+    .$type<'pending' | 'accepted' | 'declined' | 'withdrawn' | 'expired'>()
+    .notNull()
+    .default('pending'),
+  // Optional free-text note from the inviter (capped to 280 chars at the
+  // route layer; column allows longer for migration headroom).
+  message: text('message'),
+  respondedAt: timestamptz('responded_at'),
+  expiresAt: timestamptz('expires_at'),
+  createdAt: timestamptz('created_at').notNull().defaultNow(),
+});
+
+export const playerSparringProfiles = pgTable('player_sparring_profiles', {
+  // 1:1 with profiles — primary key IS the profile id so upsert is by-id.
+  profileId: uuid('profile_id')
+    .primaryKey()
+    .references(() => profiles.id, { onDelete: 'cascade' }),
+  // Public opt-in: when false, this profile does NOT appear in /sparring.
+  optedIn: boolean('opted_in').notNull().default(false),
+  // Display blurb (~140 chars, route-enforced).
+  bio: text('bio'),
+  // Away-until: when in the future, /sparring banners the player as away
+  // and the suggested-players ranker drops their priority. Spec §8.
+  awayUntil: timestamptz('away_until'),
+  // Cached "last seen online" so /sparring can sort by recency without a
+  // realtime presence subscription on the public directory page.
+  lastOnlineAt: timestamptz('last_online_at'),
+  // Aggregate fields used by the suggested-players ranker (refreshed by
+  // background job; no FK to ratings so we can null safely).
+  glickoRating: integer('glicko_rating'),
+  completedMatches: integer('completed_matches').notNull().default(0),
+  createdAt: timestamptz('created_at').notNull().defaultNow(),
+  updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+});
+
+export const playerSparringFees = pgTable(
+  'player_sparring_fees',
+  {
+    id: pkUuid(),
+    profileId: uuid('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    timeClass: text('time_class').$type<'bullet' | 'blitz' | 'rapid' | 'classical'>().notNull(),
+    feeCents: integer('fee_cents').notNull(),
+    currency: char('currency', { length: 3 }).notNull().default('USD'),
+    // Some players accept credits-only matches; some require cash. Spec
+    // §8 "per-time-class fees" — this column lets the UI render either.
+    fundingType: text('funding_type')
+      .$type<'cash' | 'credits' | 'either'>()
+      .notNull()
+      .default('either'),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+    updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+  },
+  (t) => ({
+    // One row per (profile, time_class) — a player publishes one fee per
+    // category. UNIQUE so upsert-by-(profile,time_class) works.
+    profileTimeClassUnique: uniqueIndex('player_sparring_fees_profile_time_class_unique').on(
+      t.profileId,
+      t.timeClass,
+    ),
+  }),
+);
 
 export type MatchStatus =
   | 'accepted'
@@ -752,6 +845,32 @@ export const ratings = pgTable('ratings', {
   lastRecalculatedAt: timestamptz('last_recalculated_at').notNull().defaultNow(),
 });
 
+/**
+ * Per-time-class Glicko-2 ratings (spec §9). The aggregate `ratings`
+ * table above keeps the legacy single-rating column for backwards
+ * compatibility; this table is the canonical source for per-time-class
+ * skill and ships in WS-9.
+ *
+ * Primary key is composite (profile_id, time_class) so the matcher and
+ * trust-tier logic can fetch a player's rating for the time class they
+ * are about to play without joining or coalescing nulls.
+ */
+export const ratingsByTimeClass = pgTable(
+  'ratings_by_time_class',
+  {
+    profileId: uuid('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    timeClass: text('time_class').$type<'bullet' | 'blitz' | 'rapid' | 'classical'>().notNull(),
+    rating: numeric('rating').notNull().default('1500'),
+    rd: numeric('rd').notNull().default('350'),
+    volatility: numeric('volatility').notNull().default('0.06'),
+    gamesPlayed: integer('games_played').notNull().default(0),
+    lastUpdatedAt: timestamptz('last_updated_at').notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.profileId, t.timeClass] })],
+);
+
 export const ratingHistory = pgTable('rating_history', {
   id: pkBigserial(),
   profileId: uuid('profile_id')
@@ -803,6 +922,106 @@ export const refundRequests = pgTable('refund_requests', {
   createdAt: timestamptz('created_at').notNull().defaultNow(),
   resolvedAt: timestamptz('resolved_at'),
 });
+
+// ============================================================================
+// BAN ACTIONS (spec §12 severity 1–6 ladder)
+// ============================================================================
+
+export const banActions = pgTable('ban_actions', {
+  id: pkUuid(),
+  profileId: uuid('profile_id')
+    .notNull()
+    .references(() => profiles.id, { onDelete: 'cascade' }),
+  // Spec §12 severity ladder: 1 = warning (logged), 2 = paid-play suspended
+  // 7 days, 3 = paid-play suspended 30 days, 4 = paid-play permanently
+  // suspended, 5 = full account suspended 30 days, 6 = permanent ban +
+  // earnings forfeit.
+  severity: integer('severity').notNull(),
+  reason: text('reason').notNull(),
+  // Free-text + structured evidence (engine correlation IDs, telemetry
+  // refs, manual report ids).
+  evidence: jsonb('evidence'),
+  // Recipient of forfeited earnings, when severity = 6. NULL if no
+  // forfeit, or if forfeit went to platform_revenue.
+  forfeitTransactionId: uuid('forfeit_transaction_id'),
+  appliedBy: uuid('applied_by').references(() => profiles.id, { onDelete: 'set null' }),
+  expiresAt: timestamptz('expires_at'),
+  reversedAt: timestamptz('reversed_at'),
+  reversedBy: uuid('reversed_by').references(() => profiles.id, { onDelete: 'set null' }),
+  createdAt: timestamptz('created_at').notNull().defaultNow(),
+});
+
+// ============================================================================
+// COACH ↔ STUDENT (spec §6 Phase 6 — stub for migration headroom)
+// ============================================================================
+
+export const coachStudents = pgTable(
+  'coach_students',
+  {
+    id: pkUuid(),
+    coachProfileId: uuid('coach_profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    studentProfileId: uuid('student_profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    status: text('status').$type<'pending' | 'active' | 'ended'>().notNull().default('pending'),
+    invitedAt: timestamptz('invited_at').notNull().defaultNow(),
+    acceptedAt: timestamptz('accepted_at'),
+    endedAt: timestamptz('ended_at'),
+  },
+  (t) => [
+    uniqueIndex('coach_students_pair_unique').on(t.coachProfileId, t.studentProfileId),
+    index('coach_students_coach_idx').on(t.coachProfileId),
+    index('coach_students_student_idx').on(t.studentProfileId),
+  ],
+);
+
+// ============================================================================
+// MAIA WEIGHTS (spec §6 Phase 6 — per-player style-mimicking bots)
+// ============================================================================
+
+/**
+ * One row per (target_profile, training_run). Real weights binary lives in
+ * Supabase Storage; this row carries the metadata + storage URL + status
+ * so the inference worker can fetch the latest ready weights for a player.
+ */
+export const maiaWeights = pgTable(
+  'maia_weights',
+  {
+    id: pkUuid(),
+    // The player whose style this Maia variant mimics. Can be a Chessco
+    // profile or an external account (one of the two must be set).
+    targetProfileId: uuid('target_profile_id').references(() => profiles.id, {
+      onDelete: 'set null',
+    }),
+    targetPlayerId: uuid('target_player_id').references(() => players.id, {
+      onDelete: 'set null',
+    }),
+    // Base Maia model the fine-tune started from (e.g. 'maia-1500',
+    // 'maia-1900'). Used to render "trained from" UI.
+    baseModel: text('base_model').notNull(),
+    version: text('version').notNull(),
+    status: text('status')
+      .$type<'queued' | 'training' | 'ready' | 'failed' | 'deprecated'>()
+      .notNull()
+      .default('queued'),
+    // Supabase Storage URL of the trained weights. NULL while training.
+    weightsUrl: text('weights_url'),
+    // Hash of the training dataset (game IDs + timestamps) so re-runs can
+    // skip when nothing changed.
+    datasetHash: text('dataset_hash'),
+    trainingGamesCount: integer('training_games_count'),
+    trainingStartedAt: timestamptz('training_started_at'),
+    trainingFinishedAt: timestamptz('training_finished_at'),
+    errorText: text('error_text'),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('maia_weights_target_profile_idx').on(t.targetProfileId, t.status),
+    index('maia_weights_target_player_idx').on(t.targetPlayerId, t.status),
+  ],
+);
 
 // ============================================================================
 // ANTI-CHEAT
@@ -912,12 +1131,26 @@ export type NewPrepReport = typeof prepReports.$inferInsert;
 export type PrepLeakUnlock = typeof prepLeakUnlocks.$inferSelect;
 export type NewPrepLeakUnlock = typeof prepLeakUnlocks.$inferInsert;
 export type Challenge = typeof challenges.$inferSelect;
+export type ChallengeInvitation = typeof challengeInvitations.$inferSelect;
+export type NewChallengeInvitation = typeof challengeInvitations.$inferInsert;
+export type PlayerSparringProfile = typeof playerSparringProfiles.$inferSelect;
+export type NewPlayerSparringProfile = typeof playerSparringProfiles.$inferInsert;
+export type PlayerSparringFee = typeof playerSparringFees.$inferSelect;
+export type NewPlayerSparringFee = typeof playerSparringFees.$inferInsert;
 export type Match = typeof matches.$inferSelect;
 export type LiveGame = typeof liveGames.$inferSelect;
 export type Wallet = typeof wallets.$inferSelect;
 export type LedgerEntry = typeof ledgerEntries.$inferSelect;
 export type Rating = typeof ratings.$inferSelect;
+export type RatingByTimeClass = typeof ratingsByTimeClass.$inferSelect;
+export type NewRatingByTimeClass = typeof ratingsByTimeClass.$inferInsert;
 export type RefundRequest = typeof refundRequests.$inferSelect;
 export type FairplayFlag = typeof fairplayFlags.$inferSelect;
+export type BanAction = typeof banActions.$inferSelect;
+export type NewBanAction = typeof banActions.$inferInsert;
+export type CoachStudent = typeof coachStudents.$inferSelect;
+export type NewCoachStudent = typeof coachStudents.$inferInsert;
+export type MaiaWeights = typeof maiaWeights.$inferSelect;
+export type NewMaiaWeights = typeof maiaWeights.$inferInsert;
 export type UserPracticePrefs = typeof userPracticePrefs.$inferSelect;
 export type NewUserPracticePrefs = typeof userPracticePrefs.$inferInsert;

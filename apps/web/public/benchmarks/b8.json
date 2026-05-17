@@ -1,0 +1,8 @@
+{
+  "id": "b8",
+  "title": "Prep report latency P95 (CQ-2)",
+  "status": "pending",
+  "headline": "No prep-latency dataset published yet. Capture 5+ samples by timing GET /api/prepare/reports/[id] in production; drop the JSON at apps/workers/src/eval/fixtures/leak-eval/prep-latency.json.",
+  "criteria": [],
+  "generatedAt": "2026-05-16T21:34:17.403Z"
+}

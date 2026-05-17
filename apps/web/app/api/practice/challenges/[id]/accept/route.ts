@@ -20,7 +20,7 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-export async function POST(_req: Request, ctx: RouteContext): Promise<NextResponse> {
+export async function POST(req: Request, ctx: RouteContext): Promise<NextResponse> {
   const { id: challengeId } = await ctx.params;
   if (!/^[a-f0-9-]{36}$/i.test(challengeId)) {
     return NextResponse.json({ error: 'invalid challenge id' }, { status: 400 });
@@ -35,6 +35,16 @@ export async function POST(_req: Request, ctx: RouteContext): Promise<NextRespon
   const sql = getPracticeDb();
 
   try {
+    let invitationId: string | null = null;
+    try {
+      const body = (await req.json()) as { invitation_id?: unknown };
+      if (typeof body.invitation_id === 'string' && /^[a-f0-9-]{36}$/i.test(body.invitation_id)) {
+        invitationId = body.invitation_id;
+      }
+    } catch {
+      // Empty/non-JSON body is fine; direct lobby accepts do not carry an invitation id.
+    }
+
     const matchId = (await sql.begin(async (tx) => {
       // Block the user if they're banned. (is_banned is a SQL helper from 0022.)
       const banned = (await tx`SELECT is_banned(${user.id}) AS banned`) as Array<{
@@ -71,6 +81,29 @@ export async function POST(_req: Request, ctx: RouteContext): Promise<NextRespon
       // Direct invites are private to the named opponent.
       if (ch.target_opponent_id && ch.target_opponent_id !== user.id) {
         throw new HttpError(403, 'this invite is for a different player');
+      }
+
+      if (invitationId) {
+        const invitationRows = (await tx`
+          SELECT challenge_id::text, invitee_id::text, status, expires_at::text
+          FROM challenge_invitations
+          WHERE id = ${invitationId}::uuid
+          FOR UPDATE
+        `) as Array<{
+          challenge_id: string;
+          invitee_id: string;
+          status: string;
+          expires_at: string | null;
+        }>;
+        const inv = invitationRows[0];
+        if (!inv) throw new HttpError(404, 'invitation not found');
+        if (inv.challenge_id !== challengeId || inv.invitee_id !== user.id) {
+          throw new HttpError(403, 'invitation does not belong to this challenge');
+        }
+        if (inv.status !== 'pending') throw new HttpError(409, 'invitation already resolved');
+        if (inv.expires_at && new Date(inv.expires_at).getTime() <= Date.now()) {
+          throw new HttpError(409, 'invitation expired');
+        }
       }
 
       // Reject if the creator's heartbeat is stale — the lobby already
@@ -150,6 +183,14 @@ export async function POST(_req: Request, ctx: RouteContext): Promise<NextRespon
       } else {
         await tx`UPDATE challenges SET games_completed = ${newCompleted} WHERE id = ${ch.id}`;
       }
+
+      await tx`
+        UPDATE challenge_invitations
+        SET status = 'accepted', responded_at = NOW()
+        WHERE challenge_id = ${ch.id}
+          AND invitee_id = ${user.id}
+          AND status = 'pending'
+      `;
 
       return match.id;
     })) as string;

@@ -53,10 +53,19 @@ export interface Stage3Match {
   };
 }
 
+export type MatchCohort = 'standard' | 'few_games';
+
 export interface MatchOptions {
   topK?: number;
   /** Drop candidates whose games_window < this. Default 10. */
   minGamesWindow?: number;
+  /**
+   * Re-rank weighting profile. 'few_games' downweights cp_loss and
+   * opponent-rating (high variance at N≤8) and tilts toward the opening
+   * fingerprint (eco + move_seq). Default 'standard'. Use 'few_games' when
+   * the user query has 8 or fewer input games — see cohortFromSampleSize().
+   */
+  cohort?: MatchCohort;
 }
 
 /** Stage B retrieval weights per kind, mirroring the histogram half of the
@@ -74,9 +83,44 @@ const KIND_WEIGHTS: Record<FingerprintTerm['kind'], number> = {
 const STAGE_B_CANDIDATE_CAP = 2000;
 const RATING_BAND = 400;
 
+/** At/below this sample-game count we lean on the few-games weight profile. */
+export const FEW_GAMES_THRESHOLD = 8;
+
+export function cohortFromSampleSize(n: number): MatchCohort {
+  return n <= FEW_GAMES_THRESHOLD ? 'few_games' : 'standard';
+}
+
+/**
+ * Per-component weights for the re-rank blend, by cohort.
+ *
+ * Few-games rationale: at small N, opp_rating's variance dominates noise
+ * (a single high-rated opponent can swing the avg by hundreds) and cp_loss
+ * is usually unavailable for user-uploaded PGN (no Stockfish backfill).
+ * Move-seq is the only signal that grows linearly with games and rarely
+ * confounds, so we tilt the blend toward eco + move_seq.
+ *
+ * Sums to 1.0 per cohort. Tunable; B1 cohort metrics are the ground truth.
+ */
+const COHORT_WEIGHTS: Record<
+  MatchCohort,
+  {
+    ecoW: number;
+    ecoB: number;
+    seqW: number;
+    seqB: number;
+    time: number;
+    opp: number;
+    cpLoss: number;
+  }
+> = {
+  standard: { ecoW: 0.18, ecoB: 0.18, seqW: 0.18, seqB: 0.18, time: 0.08, opp: 0.1, cpLoss: 0.1 },
+  few_games: { ecoW: 0.24, ecoB: 0.24, seqW: 0.24, seqB: 0.24, time: 0.04, opp: 0.0, cpLoss: 0.0 },
+};
+
 export function compareFingerprints(
   target: PlayerFeaturesV0,
   cand: PlayerFeaturesV0,
+  cohort: MatchCohort = 'standard',
 ): { combined: number; components: Stage3Match['components'] } {
   const ecoW = cosineSparse(target.eco_white, cand.eco_white);
   const ecoB = cosineSparse(target.eco_black, cand.eco_black);
@@ -89,8 +133,15 @@ export function compareFingerprints(
   const opp = gaussianScalar(target.avg_opponent_rating, cand.avg_opponent_rating, 250);
   const cpLoss = gaussianScalar(target.mean_cp_loss ?? null, cand.mean_cp_loss ?? null, 20);
 
+  const w = COHORT_WEIGHTS[cohort];
   const combined =
-    0.18 * ecoW + 0.18 * ecoB + 0.18 * seqW + 0.18 * seqB + 0.08 * time + 0.1 * opp + 0.1 * cpLoss;
+    w.ecoW * ecoW +
+    w.ecoB * ecoB +
+    w.seqW * seqW +
+    w.seqB * seqB +
+    w.time * time +
+    w.opp * opp +
+    w.cpLoss * cpLoss;
 
   return {
     combined,
@@ -113,6 +164,7 @@ export async function rankFingerprints(
 ): Promise<Stage3Match[]> {
   const topK = opts.topK ?? 10;
   const minGames = opts.minGamesWindow ?? 10;
+  const cohort: MatchCohort = opts.cohort ?? cohortFromSampleSize(target.games_total);
   const targetTerms = extractFingerprintTerms(target);
 
   // Empty target → no signal to retrieve against.
@@ -200,7 +252,7 @@ export async function rankFingerprints(
     if (!h) continue;
     const cand: PlayerFeaturesV0 =
       typeof h.scalar_summary === 'string' ? JSON.parse(h.scalar_summary) : h.scalar_summary;
-    const { combined, components } = compareFingerprints(target, cand);
+    const { combined, components } = compareFingerprints(target, cand, cohort);
     scored.push({
       player_id: id,
       platform: h.platform,

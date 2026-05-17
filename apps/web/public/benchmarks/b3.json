@@ -1,0 +1,8 @@
+{
+  "id": "b3",
+  "title": "Repertoire matcher tree-match precision (CQ-2)",
+  "status": "pending",
+  "headline": "No repertoire-vector artifact published yet. Run `pnpm --filter @chessco/workers eval:repertoire` first.",
+  "criteria": [],
+  "generatedAt": "2026-05-16T21:05:23.260Z"
+}

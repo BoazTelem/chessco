@@ -1,0 +1,11 @@
+{
+  "prompt_id": "evidence_v1",
+  "model_version": "claude-haiku-4-5-20251001",
+  "shape_invariants": [
+    { "path": "id", "expect": "evidence_v1" },
+    { "path": "version", "expect": "1.0.0" },
+    { "path": "model", "expect": "claude-haiku-4-5-20251001" },
+    { "path": "params.maxTokens", "expect": 120 },
+    { "path": "params.temperature", "expect": 0.2 }
+  ]
+}

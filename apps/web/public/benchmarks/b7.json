@@ -1,0 +1,8 @@
+{
+  "id": "b7",
+  "title": "Leak recall sanity (CQ-2)",
+  "status": "pending",
+  "headline": "No leak-recall dataset published yet. Curate 10 opponents with known-weak-line labels and drop them at apps/workers/src/eval/fixtures/leak-eval/recall.json.",
+  "criteria": [],
+  "generatedAt": "2026-05-16T21:34:16.050Z"
+}
