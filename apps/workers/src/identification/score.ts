@@ -17,6 +17,10 @@ export interface ScoreInput {
   country_match: boolean | null; // null = no info to compare
   rating_band_match: boolean | null;
   title_match: boolean | null;
+  /** Multiplier on the rating component's weight when the rating signal is
+   *  softer than a FIDE rating (e.g. user-supplied estimate on an ad-hoc
+   *  anchor). Default 1.0 (full weight). Set to ~0.85 for 'user_estimate'. */
+  rating_weight_multiplier?: number;
 }
 
 export interface ScoreOutput {
@@ -26,12 +30,13 @@ export interface ScoreOutput {
 
 export function score(input: ScoreInput): ScoreOutput {
   const reasons: string[] = [];
+  const ratingMul = input.rating_weight_multiplier ?? 1;
 
   // Renormalize weights based on which signals we have data for.
   const weights = {
     name: 0.5,
     country: input.country_match === null ? 0 : 0.2,
-    rating: input.rating_band_match === null ? 0 : 0.2,
+    rating: input.rating_band_match === null ? 0 : 0.2 * ratingMul,
     title: input.title_match === null ? 0 : 0.1,
   };
   const totalWeight = weights.name + weights.country + weights.rating + weights.title;
@@ -50,9 +55,9 @@ export function score(input: ScoreInput): ScoreOutput {
 
   if (input.rating_band_match === true) {
     raw += weights.rating;
-    reasons.push('rating in band');
+    reasons.push(ratingMul < 1 ? 'rating in estimated band' : 'rating in band');
   } else if (input.rating_band_match === false) {
-    reasons.push('rating outside band');
+    reasons.push(ratingMul < 1 ? 'rating outside estimated band' : 'rating outside band');
   }
 
   if (input.title_match === true) {
@@ -61,6 +66,28 @@ export function score(input: ScoreInput): ScoreOutput {
   }
 
   return { confidence: raw / totalWeight, reasons };
+}
+
+/**
+ * Ad-hoc-anchor variant of ratingBandMatch. The user supplied a band on
+ * the OTB-equivalent scale they think the opponent plays at — no FIDE→
+ * online offset to apply. Match if ANY online rating across the four
+ * time controls falls inside [low, high].
+ */
+export function ratingBandMatchExplicit(
+  band: { low: number; high: number },
+  online: {
+    bullet?: number | null;
+    blitz?: number | null;
+    rapid?: number | null;
+    classical?: number | null;
+  },
+): boolean | null {
+  const ratings = [online.bullet, online.blitz, online.rapid, online.classical].filter(
+    (r): r is number => typeof r === 'number',
+  );
+  if (ratings.length === 0) return null;
+  return ratings.some((r) => r >= band.low && r <= band.high);
 }
 
 /**

@@ -23,6 +23,18 @@ export interface Stage2Input {
    *  filter to drop candidates whose claimed_name resolves to a DIFFERENT
    *  FIDE-registered player. */
   federation_player_id?: string | null;
+  /** Cold-tail fallback: when the anchor is an ad_hoc_players row, the
+   *  user supplies an estimated rating band instead of a FIDE rating.
+   *  Stage 2 matches candidate online ratings literally against [low, high]
+   *  (no FIDE→online offset — the user's estimate is already on the
+   *  OTB-equivalent scale they think the opponent plays at). Source drives
+   *  a confidence multiplier on the rating component: user_estimate is
+   *  softer than federation/club data, so its weight is dialled down. */
+  rating_band?: {
+    low: number;
+    high: number;
+    source: 'user_estimate' | 'national_federation' | 'club' | 'self_reported';
+  } | null;
 }
 
 export interface Stage2Candidate {
@@ -125,6 +137,28 @@ function ratingBandMatch(
 }
 
 /**
+ * Ad-hoc-anchor variant. The user already gave us a band on the scale they
+ * estimate the opponent plays at — no FIDE→online offset to apply. We accept
+ * a candidate if ANY of its online ratings (across the four time controls)
+ * lies inside [low, high]. Same null-handling contract as ratingBandMatch.
+ */
+function ratingBandMatchExplicit(
+  band: { low: number; high: number },
+  online: {
+    bullet?: number | null;
+    blitz?: number | null;
+    rapid?: number | null;
+    classical?: number | null;
+  },
+): boolean | null {
+  const ratings = [online.bullet, online.blitz, online.rapid, online.classical].filter(
+    (r): r is number => typeof r === 'number',
+  );
+  if (ratings.length === 0) return null;
+  return ratings.some((r) => r >= band.low && r <= band.high);
+}
+
+/**
  * If the handle contains EVERY name token as a substring, it's almost
  * certainly the same person — `magnuscarlsen` for "Carlsen, Magnus",
  * `hikarunakamura` for "Nakamura, Hikaru". Per-token trigram similarity
@@ -173,14 +207,19 @@ interface ScoreInput {
   country_match: boolean | null;
   rating_band_match: boolean | null;
   title_match: boolean | null;
+  /** Multiplier on the rating component's weight when the rating signal is
+   *  softer than a FIDE rating (e.g. user-supplied estimate on an ad-hoc
+   *  anchor). Default 1.0 (full weight). Set to ~0.85 for 'user_estimate'. */
+  rating_weight_multiplier?: number;
 }
 
 function score(input: ScoreInput): { confidence: number; reasons: string[] } {
   const reasons: string[] = [];
+  const ratingMul = input.rating_weight_multiplier ?? 1;
   const w = {
     name: 0.5,
     country: input.country_match === null ? 0 : 0.2,
-    rating: input.rating_band_match === null ? 0 : 0.2,
+    rating: input.rating_band_match === null ? 0 : 0.2 * ratingMul,
     title: input.title_match === null ? 0 : 0.1,
   };
   const total = w.name + w.country + w.rating + w.title;
@@ -195,9 +234,9 @@ function score(input: ScoreInput): { confidence: number; reasons: string[] } {
   }
   if (input.rating_band_match === true) {
     raw += w.rating;
-    reasons.push('rating in band');
+    reasons.push(ratingMul < 1 ? 'rating in estimated band' : 'rating in band');
   } else if (input.rating_band_match === false) {
-    reasons.push('rating outside band');
+    reasons.push(ratingMul < 1 ? 'rating outside estimated band' : 'rating outside band');
   }
   if (input.title_match === true) {
     raw += w.title;
@@ -279,13 +318,23 @@ export async function runStage2Cached(input: Stage2Input): Promise<Stage2Candida
     }
   }
 
+  // Soften the rating component when the band came from a user estimate
+  // rather than a FIDE rating. Federation/club imports get full weight too —
+  // they're audited sources. Only user_estimate is dialled down.
+  const ratingMultiplier = input.rating_band?.source === 'user_estimate' ? 0.85 : 1;
+
   const candidates: Stage2Candidate[] = rows.map((r) => {
-    const rbm = ratingBandMatch(input.fide_rating, {
+    const onlineRatings = {
       bullet: r.rating_bullet,
       blitz: r.rating_blitz,
       rapid: r.rating_rapid,
       classical: r.rating_classical,
-    });
+    };
+    // Ad-hoc anchor → explicit user-supplied band on the OTB-equivalent
+    // scale. FIDE anchor → derived band with online→FIDE offset compensation.
+    const rbm = input.rating_band
+      ? ratingBandMatchExplicit(input.rating_band, onlineRatings)
+      : ratingBandMatch(input.fide_rating, onlineRatings);
     const compoundSim = compoundContainmentSim(normalizeName(r.handle), nameTokens);
     const effectiveSim = Math.max(r.sim, compoundSim);
     const s = score({
@@ -293,6 +342,7 @@ export async function runStage2Cached(input: Stage2Input): Promise<Stage2Candida
       country_match: countryMatches(r.country, input.country),
       rating_band_match: rbm,
       title_match: titleMatches(r.title, input.title),
+      rating_weight_multiplier: ratingMultiplier,
     });
     const fedMatch = r.claimed_name_normalized
       ? (fedMatchByName.get(r.claimed_name_normalized) ?? null)
@@ -317,8 +367,14 @@ export async function runStage2Cached(input: Stage2Input): Promise<Stage2Candida
     };
   });
 
+  // Use the ad-hoc band's midpoint as the implausibility yardstick when
+  // there's no FIDE rating; otherwise fall back to the FIDE check.
+  const implausibilityAnchor =
+    input.fide_rating ??
+    (input.rating_band ? Math.round((input.rating_band.low + input.rating_band.high) / 2) : null);
+
   return candidates
-    .filter((c) => !isImplausibleByRating(input.fide_rating, c.ratings))
+    .filter((c) => !isImplausibleByRating(implausibilityAnchor, c.ratings))
     .filter((c) => !isDifferentFederationPlayer(c, input.federation_player_id))
     .sort((a, b) => b.confidence - a.confidence);
 }

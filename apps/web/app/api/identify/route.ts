@@ -51,6 +51,11 @@ interface AdHocPlayerLite {
   id: string;
   name: string;
   country: string | null;
+  rating_estimate: number | null;
+  rating_band_low: number | null;
+  rating_band_high: number | null;
+  rating_source: 'user_estimate' | 'national_federation' | 'club' | 'self_reported' | null;
+  title: string | null;
 }
 
 const MAX_CANDIDATES_PERSISTED = 15;
@@ -296,7 +301,9 @@ async function handleAdHocStage2(
 ): Promise<NextResponse> {
   const { data: ah, error: ahErr } = await supabase
     .from('ad_hoc_players')
-    .select('id, name, country')
+    .select(
+      'id, name, country, rating_estimate, rating_band_low, rating_band_high, rating_source, title',
+    )
     .eq('id', adHocPlayerId)
     .maybeSingle();
   if (ahErr) return NextResponse.json({ error: ahErr.message }, { status: 500 });
@@ -304,11 +311,24 @@ async function handleAdHocStage2(
 
   const adHoc = ah as AdHocPlayerLite;
 
+  // Build the rating_band only when the ad-hoc row carries one. The user
+  // can skip the rating field entirely; in that case Stage 2 runs with no
+  // rating signal (degrades gracefully — name + country still rank).
+  const ratingBand =
+    adHoc.rating_band_low != null && adHoc.rating_band_high != null
+      ? {
+          low: adHoc.rating_band_low,
+          high: adHoc.rating_band_high,
+          source: adHoc.rating_source ?? 'user_estimate',
+        }
+      : null;
+
   const stage2Input = {
     name: adHoc.name,
     country: adHoc.country,
     fide_rating: null,
-    title: null,
+    title: adHoc.title,
+    rating_band: ratingBand,
   };
 
   const { data: queryRow, error: insertErr } = await supabase
@@ -318,6 +338,13 @@ async function handleAdHocStage2(
         ad_hoc_player_id: adHoc.id,
         name: adHoc.name,
         country: adHoc.country,
+        // Surface rating context on the query row so the match page UI and
+        // the LLM rerank can cite the user's estimate when explaining hits.
+        rating_estimate: adHoc.rating_estimate,
+        rating_band_low: adHoc.rating_band_low,
+        rating_band_high: adHoc.rating_band_high,
+        rating_source: adHoc.rating_source,
+        title: adHoc.title,
       },
       input_method: 'name',
       ad_hoc_player_id: adHoc.id,
@@ -346,8 +373,18 @@ async function handleAdHocStage2(
   }
 
   const persistedAlgo = candidates.slice(0, MAX_CANDIDATES_PERSISTED);
+  // Surface the user's rating estimate to the LLM rerank as `fide_rating` —
+  // ProseSubject doesn't model an explicit estimated-band yet (Workstream D
+  // will), but the rating midpoint is still a useful signal for the prose
+  // and the LLM's confidence assessment.
   const rerank = await generateRerankSafe(
-    { name: adHoc.name, country: adHoc.country, via: 'name' },
+    {
+      name: adHoc.name,
+      country: adHoc.country,
+      fide_rating: adHoc.rating_estimate,
+      title: adHoc.title,
+      via: 'name',
+    },
     persistedAlgo.map((c) => ({
       platform: c.platform,
       handle: c.handle,
@@ -424,7 +461,9 @@ async function handleSamplePgn(
   } else if (adHocPlayerId) {
     const { data, error } = await supabase
       .from('ad_hoc_players')
-      .select('id, name, country')
+      .select(
+        'id, name, country, rating_estimate, rating_band_low, rating_band_high, rating_source, title',
+      )
       .eq('id', adHocPlayerId)
       .maybeSingle();
     if (error) {
@@ -452,6 +491,11 @@ async function handleSamplePgn(
                 ad_hoc_player_id: adHocAnchor.id,
                 name: adHocAnchor.name,
                 country: adHocAnchor.country,
+                rating_estimate: adHocAnchor.rating_estimate,
+                rating_band_low: adHocAnchor.rating_band_low,
+                rating_band_high: adHocAnchor.rating_band_high,
+                rating_source: adHocAnchor.rating_source,
+                title: adHocAnchor.title,
               }
             : {}),
       },
@@ -486,8 +530,8 @@ async function handleSamplePgn(
   const proseSubject: ProseSubject = {
     name: anchorPlayer?.name ?? adHocAnchor?.name ?? 'unknown subject',
     country: anchorPlayer?.country ?? adHocAnchor?.country ?? null,
-    fide_rating: anchorPlayer?.rating_standard ?? null,
-    title: anchorPlayer?.title ?? null,
+    fide_rating: anchorPlayer?.rating_standard ?? adHocAnchor?.rating_estimate ?? null,
+    title: anchorPlayer?.title ?? adHocAnchor?.title ?? null,
     via: 'sample_game',
   };
   const matchReasons = (m: Stage3Match): string[] => {

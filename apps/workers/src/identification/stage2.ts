@@ -18,7 +18,7 @@ import { countryMatches } from '../lib/country-code';
 import { cachedFuzzyMatch } from './cached-match';
 import { hypothesizeHandles } from './hypothesize';
 import { probeChesscom, probeLichess, type ProbeResult } from './probe';
-import { ratingBandMatch, score } from './score';
+import { ratingBandMatch, ratingBandMatchExplicit, score } from './score';
 
 function extractClaimedName(p: ProbeResult): string | null {
   const raw = p.raw as
@@ -42,6 +42,15 @@ export interface Stage2Input {
   /** Cap on hypothesized handles to probe per platform. Default 8 to keep
    *  end-to-end Stage 2 runtime under ~5s. */
   maxProbesPerPlatform?: number;
+  /** Ad-hoc anchor — user-supplied rating band on the OTB-equivalent
+   *  scale. When set, candidate online ratings are matched against
+   *  [low, high] directly (no FIDE→online offset). Source drives a
+   *  rating-component weight multiplier (user_estimate gets 0.85). */
+  rating_band?: {
+    low: number;
+    high: number;
+    source: 'user_estimate' | 'national_federation' | 'club' | 'self_reported';
+  } | null;
 }
 
 export interface Stage2Candidate {
@@ -86,6 +95,7 @@ function isImplausibleByRating(
 
 export async function runStage2(sql: postgres.Sql, input: Stage2Input): Promise<Stage2Candidate[]> {
   const maxProbes = input.maxProbesPerPlatform ?? 8;
+  const ratingMultiplier = input.rating_band?.source === 'user_estimate' ? 0.85 : 1;
 
   // ---- 1. Cached fuzzy match ---------------------------------------------
   const cached = await cachedFuzzyMatch(sql, {
@@ -104,17 +114,21 @@ export async function runStage2(sql: postgres.Sql, input: Stage2Input): Promise<
       rapid: c.rating_rapid ?? undefined,
       classical: c.rating_classical ?? undefined,
     };
-    const rbm = ratingBandMatch(input.fide_rating, {
+    const onlineRatings = {
       bullet: c.rating_bullet,
       blitz: c.rating_blitz,
       rapid: c.rating_rapid,
       classical: c.rating_classical,
-    });
+    };
+    const rbm = input.rating_band
+      ? ratingBandMatchExplicit(input.rating_band, onlineRatings)
+      : ratingBandMatch(input.fide_rating, onlineRatings);
     const s = score({
       name_similarity: c.similarity,
       country_match: countryMatches(c.country, input.country),
       rating_band_match: rbm,
       title_match: c.title ? c.title === (input.title ?? c.title) : null,
+      rating_weight_multiplier: ratingMultiplier,
     });
     candidates.set(key, {
       platform: c.platform,
@@ -194,12 +208,15 @@ export async function runStage2(sql: postgres.Sql, input: Stage2Input): Promise<
             last_seen_at = NOW()
         `;
 
-        const rbmProbe = ratingBandMatch(input.fide_rating, result.ratings ?? {});
+        const rbmProbe = input.rating_band
+          ? ratingBandMatchExplicit(input.rating_band, result.ratings ?? {})
+          : ratingBandMatch(input.fide_rating, result.ratings ?? {});
         const s = score({
           name_similarity: 0.95, // hypothesized handle matched an expected pattern
           country_match: countryMatches(result.country, input.country),
           rating_band_match: rbmProbe,
           title_match: result.title ? true : null,
+          rating_weight_multiplier: ratingMultiplier,
         });
 
         const claimedName = extractClaimedName(result);
@@ -221,7 +238,13 @@ export async function runStage2(sql: postgres.Sql, input: Stage2Input): Promise<
     }
   }
 
+  // Use the ad-hoc band midpoint as the implausibility anchor when there's
+  // no FIDE rating; otherwise the FIDE rating itself.
+  const implausibilityAnchor =
+    input.fide_rating ??
+    (input.rating_band ? Math.round((input.rating_band.low + input.rating_band.high) / 2) : null);
+
   return [...candidates.values()]
-    .filter((c) => !isImplausibleByRating(input.fide_rating, c.ratings))
+    .filter((c) => !isImplausibleByRating(implausibilityAnchor, c.ratings))
     .sort((a, b) => b.confidence - a.confidence);
 }
