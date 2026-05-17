@@ -130,3 +130,38 @@ CREATE INDEX IF NOT EXISTS maia_weights_target_profile_idx
   ON maia_weights (target_profile_id, status);
 CREATE INDEX IF NOT EXISTS maia_weights_target_player_idx
   ON maia_weights (target_player_id, status);
+
+-- ----------------------------------------------------------------------------
+-- Idempotent forward-port for environments that applied an earlier draft of
+-- this migration.
+--
+-- CREATE TABLE IF NOT EXISTS does NOT alter an existing table, so a DB that
+-- received the original 0042 (ban_actions.profile_id ON DELETE CASCADE, no
+-- RLS) needs the block below to catch up. Fresh applies pass through both
+-- statements as no-ops.
+-- ----------------------------------------------------------------------------
+
+-- (1) Swap CASCADE -> RESTRICT on ban_actions.profile_id if still cascading.
+-- pg_constraint.confdeltype = 'c' means cascade; 'r' means restrict.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'ban_actions'::regclass
+      AND conname = 'ban_actions_profile_id_fkey'
+      AND confdeltype = 'c'
+  ) THEN
+    ALTER TABLE ban_actions DROP CONSTRAINT ban_actions_profile_id_fkey;
+    ALTER TABLE ban_actions
+      ADD CONSTRAINT ban_actions_profile_id_fkey
+      FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE RESTRICT;
+  END IF;
+END
+$$;
+
+-- (2) RLS on ban_actions. The public /fairplay/bans page and the
+-- /admin/fairplay queue read through the practice DB (service role), which
+-- bypasses RLS. Anon/authenticated Supabase clients have no legitimate read
+-- path; ENABLE RLS without any policy locks them out. Idempotent.
+ALTER TABLE ban_actions ENABLE ROW LEVEL SECURITY;
