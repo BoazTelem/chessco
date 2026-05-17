@@ -57,6 +57,7 @@
     "test:ws12-surface": "tsx src/eval/ws12-surface.test.ts",
     "test:match": "tsx src/stage3/match.test.ts",
     "test:hypothesize": "tsx src/eval/hypothesize.test.ts",
+    "external:twic:probe": "tsx src/external-pgn/twic/probe.ts",
     "test:lichess-rate-gate": "tsx src/eval/lichess-rate-gate.test.ts",
     "bench:b6": "tsx src/eval/b6.ts",
     "bench:b7": "tsx src/eval/b7.ts",
