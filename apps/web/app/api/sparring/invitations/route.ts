@@ -9,8 +9,8 @@
  *   - Cannot invite yourself.
  *
  * Idempotency: a unique pending invitation per (challenge, invitee) is
- * enforced application-side here; the schema doesn't have a partial
- * unique index yet (operator migration follow-up).
+ * enforced by the partial unique index in migration 0042 and by
+ * ON CONFLICT below, so concurrent requests return the same invitation.
  */
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -105,7 +105,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       WHERE id = ${body.challenge_id}::uuid
         AND (target_opponent_id IS NULL OR target_opponent_id = ${body.invitee_id}::uuid)
     `;
-    return tx<{ id: string }[]>`
+    const inserted = await tx<{ id: string }[]>`
       INSERT INTO challenge_invitations
         (challenge_id, inviter_id, invitee_id, message, expires_at)
       VALUES
@@ -114,9 +114,26 @@ export async function POST(req: Request): Promise<NextResponse> {
          ${body.invitee_id}::uuid,
          ${body.message ?? null},
          NOW() + (${hours}::int * INTERVAL '1 hour'))
+      ON CONFLICT (challenge_id, invitee_id) WHERE status = 'pending'
+      DO NOTHING
       RETURNING id::text
     `;
+    if (inserted.length > 0) return { id: inserted[0]!.id, deduped: false };
+
+    const existingAfterConflict = await tx<{ id: string }[]>`
+      SELECT id::text
+      FROM challenge_invitations
+      WHERE challenge_id = ${body.challenge_id}::uuid
+        AND invitee_id = ${body.invitee_id}::uuid
+        AND status = 'pending'
+      LIMIT 1
+    `;
+    return { id: existingAfterConflict[0]?.id ?? null, deduped: true };
   });
 
-  return NextResponse.json({ invitation_id: created[0]!.id });
+  if (!created.id) {
+    return NextResponse.json({ error: 'invitation_conflict_retry' }, { status: 409 });
+  }
+
+  return NextResponse.json({ invitation_id: created.id, deduped: created.deduped });
 }

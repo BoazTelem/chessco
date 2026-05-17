@@ -13,7 +13,7 @@
  *     chess_title, last_seen_at, stripe_*_id → NULL
  *   - email rewritten to `deleted-{id}@chessco.local` (frees the unique
  *     index so the original address can be re-registered)
- *   - username rewritten to `deleted-{first-8-of-id}` (frees the unique
+ *   - username rewritten to `deleted-{id}` (frees the unique
  *     index, stays non-null)
  *   - kyc_status → 'none', marketing_consent → false
  *
@@ -76,8 +76,8 @@ export async function POST(req: Request): Promise<NextResponse> {
           stripe_customer_id = NULL,
           kyc_status = 'none',
           email = ${`deleted-${user.id}@chessco.local`},
-          username = ${`deleted-${user.id.slice(0, 8)}`},
-          referral_code = ${`deleted-${user.id.slice(0, 8)}`},
+          username = ${`deleted-${user.id}`},
+          referral_code = ${`deleted-${user.id}`},
           marketing_consent = false,
           updated_at = NOW()
       WHERE id = ${user.id}::uuid
