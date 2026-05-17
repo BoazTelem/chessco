@@ -300,6 +300,71 @@ export async function fetchLichessUserBulk<T>(handles: string[]): Promise<T[]> {
 }
 
 /**
+ * Lichess time-class buckets that have a top-N leaderboard.
+ * Note: Lichess deprecated /api/users/titled (404 as of 2026), so per-perf
+ * top-N is the only public top-down seed source left.
+ */
+export const LICHESS_TOP_PERFS = [
+  'bullet',
+  'blitz',
+  'rapid',
+  'classical',
+  'ultraBullet',
+  'chess960',
+  'crazyhouse',
+  'kingOfTheHill',
+] as const;
+export type LichessTopPerf = (typeof LICHESS_TOP_PERFS)[number];
+
+/**
+ * GET /api/player/top/{nb}/{perfType} — top-N rated handles for a perf.
+ * Each per-perf response is a `{ users: [{ id, username, title?, perfs }] }`
+ * object. Returns lowercased ids in rank order (highest rating first).
+ *
+ * Lichess caps `nb` at 200 per request.
+ */
+export async function fetchTopLichessHandles(perf: LichessTopPerf, nb = 200): Promise<string[]> {
+  if (nb < 1 || nb > 200) {
+    throw new Error(`fetchTopLichessHandles: nb must be 1..200 (got ${nb})`);
+  }
+  const url = `${LICHESS_API_BASE}/player/top/${nb}/${perf}`;
+  let lastErr: Error | null = null;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    if (attempt > 0) await backoff(attempt);
+    await rateLimitGap();
+    let res: Response;
+    try {
+      const headers: Record<string, string> = {
+        'User-Agent': USER_AGENT,
+        Accept: 'application/vnd.lichess.v3+json',
+      };
+      if (LICHESS_API_TOKEN) headers.Authorization = `Bearer ${LICHESS_API_TOKEN}`;
+      res = await fetch(url, { headers });
+    } catch (err) {
+      lastErr = err as Error;
+      continue;
+    }
+    if (res.status === 429 || res.status >= 500) {
+      try {
+        await res.body?.cancel();
+      } catch {
+        // ignore
+      }
+      lastErr = new LichessApiError(`${res.status} ${res.statusText}`, res.status, url);
+      continue;
+    }
+    if (!res.ok) {
+      throw new LichessApiError(`${res.status} ${res.statusText}`, res.status, url);
+    }
+    const body = (await res.json()) as { users?: Array<{ id?: string; username?: string }> };
+    return (body.users ?? [])
+      .map((u) => (u.id ?? u.username ?? '').toLowerCase())
+      .filter((h) => h.length > 0);
+  }
+  throw lastErr ?? new Error(`fetchTopLichessHandles(${url}): exhausted retries`);
+}
+
+/**
  * Compute (sinceMs, untilMs) for "last N months from now".
  */
 export function monthsBackWindow(

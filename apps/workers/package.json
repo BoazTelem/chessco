@@ -20,6 +20,7 @@
     "lichess:dump": "tsx src/lichess-dumps/run.ts",
     "lichess:dump:dry": "tsx src/lichess-dumps/run.ts --dry-run",
     "lichess:dump:scan": "tsx src/lichess-dumps/run.ts --scan-handles-only",
+    "lichess:titled": "tsx src/lichess-titled/run.ts",
     "chesscom:titled": "tsx src/chesscom-titled/run.ts",
     "chesscom:country": "tsx src/chesscom-country/run.ts",
     "chesscom:crawl": "tsx src/chesscom-crawl/run.ts",
