@@ -59,6 +59,7 @@
     "test:hypothesize": "tsx src/eval/hypothesize.test.ts",
     "external:twic:probe": "tsx src/external-pgn/twic/probe.ts",
     "external:twic:ingest": "tsx src/external-pgn/twic/ingest.ts",
+    "external:resolve-fide": "tsx src/external-pgn/resolve.ts",
     "test:lichess-rate-gate": "tsx src/eval/lichess-rate-gate.test.ts",
     "bench:b6": "tsx src/eval/b6.ts",
     "bench:b7": "tsx src/eval/b7.ts",
