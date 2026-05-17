@@ -117,9 +117,9 @@ Subscription gates the _intelligence_; the marketplace is gated by _verification
                      │      │
                      ▼      ▼
        ┌──────────────┐ ┌──────────────┐
-       │ Stockfish    │ │ Anthropic    │
-       │ workers      │ │ Claude API   │
-       │ (Cloud Run)  │ │              │
+       │ Stockfish    │ │ DeepSeek API │
+       │ workers      │ │ (chat-       │
+       │ (Cloud Run)  │ │  completions)│
        └──────────────┘ └──────────────┘
 
        ┌──────────────────────────────────────────────────┐
@@ -207,7 +207,8 @@ A written legal opinion is required confirming:
 - **Queues / state cache:** Upstash Redis
 - **Background jobs:** Inngest (event-driven workflow engine, integrates with Next.js)
 - **Engine workers:** Stockfish 16+ in containers on Google Cloud Run, autoscaling
-- **AI:** Anthropic Claude API (Claude Opus for narrative reports; Claude Haiku for short-form completions and prompts that don't need depth)
+- **AI:** DeepSeek (OpenAI-compatible chat-completions API). `deepseek-chat` default for all prompts; `deepseek-reasoner` available as a per-call override for prompts where narrative depth matters more than latency (e.g., prep summary, risk paragraphs). Migrated from Anthropic 2026-05-17 — see [PLAN.md "Tech Stack"](PLAN.md) and `packages/ai/src/`.
+- **Practice bots:** [Maia](https://maiachess.com/) (GPL-3.0) running on [lc0](https://lczero.org/), hosted as a self-managed Cloud Run inference service. Per-opponent fine-tuning via the Maia-Individual technique. See [MAIA-DEPLOYMENT.md](MAIA-DEPLOYMENT.md) + [MAIA-INFERENCE.md](MAIA-INFERENCE.md).
 - **Payments:** Stripe Connect Express accounts
 - **Email:** Resend (transactional) + Loops or Customer.io (lifecycle)
 - **Monitoring:** Sentry (errors), Vercel Analytics + PostHog (product analytics), BetterStack (uptime + logs)
@@ -1496,21 +1497,26 @@ Server → Client:
 
 ## 15. AI Integration
 
-### Where Claude is used
+**Provider:** DeepSeek (migrated from Anthropic 2026-05-17). OpenAI-compatible chat-completions HTTP at `https://api.deepseek.com/chat/completions`. Two models in play:
 
-| Surface                        | Model         | Purpose                                          | Caching             |
-| ------------------------------ | ------------- | ------------------------------------------------ | ------------------- |
-| Player identification evidence | Haiku         | "Why we think this is the same player" prose     | Per-result, 24h     |
-| Prep report executive summary  | Opus / Sonnet | Coach-style game plan                            | Per-report, 30 days |
-| Prep report risk paragraphs    | Sonnet        | "Lines to avoid against this opponent"           | Per-report          |
-| Style fingerprint description  | Haiku         | 1-paragraph stylistic description                | Per-player, 7 days  |
-| Blog content drafts            | Sonnet        | First-draft generation (human edits)             | n/a                 |
-| Knowledge base FAQ matcher     | Haiku         | Match user question to KB article                | n/a                 |
-| In-app help chat               | Haiku         | Conversational support for non-billing questions | n/a                 |
+- `deepseek-chat` — default for all prompts; cheap (~$0.27/M output tokens), fast.
+- `deepseek-reasoner` — per-call override via `runPrompt`'s `modelOverride` for prompts where narrative depth matters more than latency. Use sparingly — slower + pricier.
 
-### What Claude is **never** used for
+### Where DeepSeek is used
 
-- Chess analysis (Stockfish + engine workers only)
+| Surface                        | Default model   | Escalate to `deepseek-reasoner`? | Purpose                                          | Caching             |
+| ------------------------------ | --------------- | -------------------------------- | ------------------------------------------------ | ------------------- |
+| Player identification evidence | `deepseek-chat` | no                               | "Why we think this is the same player" prose     | Per-result, 24h     |
+| Prep report executive summary  | `deepseek-chat` | optional                         | Coach-style game plan                            | Per-report, 30 days |
+| Prep report risk paragraphs    | `deepseek-chat` | optional                         | "Lines to avoid against this opponent"           | Per-report          |
+| Style fingerprint description  | `deepseek-chat` | no                               | 1-paragraph stylistic description                | Per-player, 7 days  |
+| Blog content drafts            | `deepseek-chat` | optional                         | First-draft generation (human edits)             | n/a                 |
+| Knowledge base FAQ matcher     | `deepseek-chat` | no                               | Match user question to KB article                | n/a                 |
+| In-app help chat               | `deepseek-chat` | no                               | Conversational support for non-billing questions | n/a                 |
+
+### What DeepSeek is **never** used for
+
+- Chess analysis (Stockfish + engine workers only; Maia for human-style move generation)
 - Move recommendations beyond what Stockfish already computed
 - Identification confidence scores (computed numerically, not by LLM)
 - Wallet or payment logic
@@ -1520,21 +1526,22 @@ Server → Client:
 
 ### Prompt discipline
 
-Every Claude call has:
+Every DeepSeek call has:
 
 - System prompt declaring it as a _coach_, _writer_, or _summarizer_ — never an analyst
 - Explicit instruction not to invent moves, evaluations, or facts
 - Structured input (JSON of computed findings) as the source of truth
-- Output schema specified (JSON for structured outputs, markdown for prose)
+- Output schema specified (JSON via `response_format: json_object` for structured outputs, plain text for prose)
 
-Maintain a `prompts/` directory in the monorepo. Every prompt versioned (`prep_summary_v1.md`). Evals run on a held-out set whenever a prompt is changed.
+Prompts live in `packages/ai/src/prompts/` as TypeScript files (not loose markdown). Every prompt versioned in code (`evidencePrompt.version`); the B11 benchmark in `apps/workers/src/eval/b11.ts` verifies prompt-metadata shape against `apps/workers/src/eval/fixtures/ai-prompts/*.json` so refactors that drift the prompt shape fail loudly. The `inspectPrompt(id)` helper exposes metadata-only views without spending API tokens.
 
 ### Cost management
 
-- Cache aggressively (see table above)
-- Use Haiku for short tasks; reserve Opus for prep summaries where quality matters
-- Set per-user monthly Claude token budgets (subscribed users get higher caps)
-- Monitor cost-per-report and adjust prompt length
+- DeepSeek has automatic server-side prompt caching — the API reports `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens` in the usage block; we surface those via `CacheTelemetry` so cost-per-call is observable. We do NOT control cache breakpoints.
+- Stay on `deepseek-chat` unless `deepseek-reasoner` measurably improves output quality for a specific prompt.
+- Per-PGN cache in `identification_queries` (24h TTL) for evidence-prose calls — most users hit a cached row, not a fresh API call.
+- Set per-user monthly DeepSeek token budgets (subscribed users get higher caps).
+- Monitor cost-per-report and adjust prompt length.
 
 ---
 
@@ -1721,7 +1728,7 @@ Initial 50 keyword targets focused on:
 
 ### AI assist
 
-- Use Claude Sonnet to generate first drafts from a structured outline
+- Use DeepSeek-chat to generate first drafts from a structured outline (escalate to `deepseek-reasoner` if the topic warrants deeper synthesis)
 - Human editor (could be Boaz or freelance) reviews, fact-checks, edits voice, adds personal touches
 - Never publish raw AI output — too risky for chess accuracy and brand voice
 
@@ -1835,7 +1842,7 @@ GDPR + CCPA compliant. Sections:
 1. Data collected (account, gameplay, payment, analytics, fairplay telemetry)
 2. How we use data (service provision, fraud prevention, AI training — opt-in only)
 3. Legal bases (contract, legitimate interest, consent)
-4. Sharing (Stripe, Supabase, Vercel, Anthropic, Lichess/chess.com, etc. — disclosed in subprocessor list)
+4. Sharing (Stripe, Supabase, Vercel, DeepSeek, Maia/lc0 (self-hosted inference), Lichess/chess.com, etc. — disclosed in subprocessor list)
 5. International transfers (Standard Contractual Clauses)
 6. Retention (per data category)
 7. Rights (access, deletion, portability, objection, restriction)
@@ -2069,7 +2076,7 @@ Maintain `/ops/runbooks/` in the repo as MDX:
 ### Secrets
 
 - All API keys in Vercel env (production), GitHub Secrets (CI), .env.local (dev)
-- Rotate: monthly for sensitive (Stripe, Anthropic), quarterly for others
+- Rotate: monthly for sensitive (Stripe, DeepSeek), quarterly for others
 - No secrets in source code, ever
 
 ### Data retention
@@ -2237,7 +2244,7 @@ Soft launch to Israel + EU only. US delayed pending state-by-state legal review.
 | Sandbagging                                                 | High        | Medium     | External rating prior; rating-band stretching limits; review queue                                             |
 | Withdrawal fraud (stolen card → deposit → match → withdraw) | Medium      | High       | Hold periods; trust-tier withdrawal caps; KYC gates; Stripe Radar                                              |
 | Low marketplace liquidity (no opponents)                    | Medium      | High       | Seed with paid sparring partners (FM/IM contractors); subsidize early payouts                                  |
-| Customer support overload                                   | High        | Low (each) | Aggressive KB; auto-resolution for refunds; in-app help chat with Haiku                                        |
+| Customer support overload                                   | High        | Low (each) | Aggressive KB; auto-resolution for refunds; in-app help chat via DeepSeek                                      |
 | Storage scale (games corpus) exceeds Supabase tier          | Medium      | Medium     | Partition `games` by month from day one; plan to split corpus to dedicated Postgres if needed                  |
 
 ---
@@ -2257,7 +2264,7 @@ Decisions Boaz needs to make before or during development:
 7. **Brand voice gender** — direct/intense (think: Whoop) or friendly/aspirational (think: Lichess)?
 8. **Coach accounts** — Phase 1 or Phase 5+?
 9. **OTB / FIDE focus** — central to product or adjacent niche?
-10. **AI model choice** — commit to Anthropic, or also use OpenAI for redundancy?
+10. **AI model choice** — committed to DeepSeek 2026-05-17 (migrated from Anthropic; see PLAN.md "Tech Stack"). OpenAI redundancy parked; revisit if DeepSeek availability becomes a launch risk.
 
 ---
 
@@ -2322,7 +2329,7 @@ Phases 0–4 to revenue-generating MVP:
 - ~$80–120k in engineering cost (depending on location)
 - ~$5–10k legal (initial + Phase 4 sign-off)
 - ~$5k design (one-off + retainer)
-- ~$3–8k infra during build (mostly Vercel + Supabase + Anthropic credits)
+- ~$3–8k infra during build (mostly Vercel + Supabase + Google Cloud SQL + DeepSeek + Maia inference on Cloud Run)
 
 Phase 5–6 add another 14–18 weeks.
 
