@@ -59,6 +59,8 @@
     "test:hypothesize": "tsx src/eval/hypothesize.test.ts",
     "external:twic:probe": "tsx src/external-pgn/twic/probe.ts",
     "external:twic:ingest": "tsx src/external-pgn/twic/ingest.ts",
+    "external:broadcasts:list": "tsx src/external-pgn/lichess-broadcasts/list.ts",
+    "external:broadcasts:ingest": "tsx src/external-pgn/lichess-broadcasts/ingest.ts",
     "external:resolve-fide": "tsx src/external-pgn/resolve.ts",
     "external:ingest-games": "tsx src/external-pgn/ingest-games.ts",
     "test:lichess-rate-gate": "tsx src/eval/lichess-rate-gate.test.ts",
