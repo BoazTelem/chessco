@@ -1,29 +1,20 @@
 /**
- * Build the system array Anthropic expects, with `cache_control` markers
- * on the blocks we want the prompt cache to hold across calls.
+ * Flatten a prompt's `SystemBlock[]` into a single system-message string.
  *
- * Anthropic prompt caching has a 5-minute ephemeral TTL and supports up to
- * 4 cache breakpoints per request. We expose `cache_control: { type:
- * 'ephemeral' }` on any SystemBlock marked `cached: true`. Callers should
- * mark stable, large blocks (style guides, glossaries, vocab tables) so a
- * sequence of related calls re-uses the same cached prefix.
+ * DeepSeek's chat-completions API takes one `{ role: 'system', content }`
+ * message, not an array of cached/uncached blocks. The `cached` flag on
+ * SystemBlock is preserved on the type for inspectPrompt() / B11 fixture
+ * regression but is a no-op at runtime: DeepSeek has no caller-controlled
+ * prompt cache (its server-side cache is automatic and reported back via
+ * `prompt_cache_hit_tokens` in usage). We concatenate blocks in order with
+ * blank-line separators so a future provider that does support cache
+ * markers can re-introduce them without changing call sites.
  */
-import type { TextBlockParam } from '@anthropic-ai/sdk/resources/messages';
 import type { SystemBlock } from './types';
 
-const MAX_CACHE_BREAKPOINTS = 4;
-
-export function buildSystem(blocks: SystemBlock[]): TextBlockParam[] {
-  let breakpointsUsed = 0;
-  return blocks.map<TextBlockParam>((block) => {
-    if (block.cached && breakpointsUsed < MAX_CACHE_BREAKPOINTS) {
-      breakpointsUsed++;
-      return {
-        type: 'text',
-        text: block.text,
-        cache_control: { type: 'ephemeral' },
-      };
-    }
-    return { type: 'text', text: block.text };
-  });
+export function buildSystemPrompt(blocks: SystemBlock[]): string {
+  return blocks
+    .map((b) => b.text.trim())
+    .filter((t) => t.length > 0)
+    .join('\n\n');
 }

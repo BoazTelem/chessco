@@ -6,7 +6,6 @@
       "dependsOn": ["^build"],
       "env": [
         "SUPABASE_SERVICE_ROLE_KEY",
-        "SCOUT_PROSE_PROVIDER",
         "DEEPSEEK_API_KEY",
         "GAMES_DATABASE_HOST",
         "GAMES_DATABASE_PORT",

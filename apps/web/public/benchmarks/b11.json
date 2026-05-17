@@ -18,8 +18,8 @@
     },
     {
       "label": "evidence_v1 • model",
-      "threshold": "= claude-haiku-4-5-20251001",
-      "actual": "claude-haiku-4-5-20251001",
+      "threshold": "= deepseek-chat",
+      "actual": "deepseek-chat",
       "passed": true
     },
     {
@@ -48,8 +48,8 @@
     },
     {
       "label": "prep_summary_v1 • model",
-      "threshold": "= claude-opus-4-7",
-      "actual": "claude-opus-4-7",
+      "threshold": "= deepseek-chat",
+      "actual": "deepseek-chat",
       "passed": true
     },
     {
@@ -84,8 +84,8 @@
     },
     {
       "label": "style_fingerprint_v1 • model",
-      "threshold": "= claude-haiku-4-5-20251001",
-      "actual": "claude-haiku-4-5-20251001",
+      "threshold": "= deepseek-chat",
+      "actual": "deepseek-chat",
       "passed": true
     },
     {

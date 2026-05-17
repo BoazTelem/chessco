@@ -1,12 +1,12 @@
 /**
- * runPrompt(id, input) — dispatch through the registry, send to Anthropic
- * with prompt-cache markers, parse the response.
+ * runPrompt(id, input) — dispatch through the registry, send to DeepSeek
+ * (OpenAI-compatible chat-completions), parse the response.
  *
  * inspectPrompt(id) returns a metadata-only view useful for B11 (so the
  * shape regression doesn't need to spend API tokens) and admin tooling.
  */
-import { getAnthropicClient } from './client';
-import { buildSystem } from './cache';
+import { getDeepseekClient } from './client';
+import { buildSystemPrompt } from './cache';
 import { getPromptDefinition, type PromptIO } from './registry';
 import type {
   CacheTelemetry,
@@ -22,49 +22,42 @@ export async function runPrompt<K extends PromptId>(
   options: PromptRunOptions = {},
 ): Promise<PromptResult<PromptIO[K]['output']>> {
   const def = getPromptDefinition(id);
-  const client = getAnthropicClient();
-  const system = buildSystem(def.system);
+  const client = getDeepseekClient();
+  const systemContent = buildSystemPrompt(def.system);
   const userMessage = def.buildUserMessage(input);
 
-  const response = await client.messages.create({
+  const response = await client.chatComplete({
     model: options.modelOverride ?? def.model,
     max_tokens: options.maxTokens ?? def.params.maxTokens,
     temperature: def.params.temperature,
-    system,
-    messages: [{ role: 'user', content: userMessage }],
+    response_format: def.params.responseFormat ? { type: def.params.responseFormat } : undefined,
+    messages: [
+      { role: 'system', content: systemContent },
+      { role: 'user', content: userMessage },
+    ],
   });
 
-  const raw = response.content
-    .filter(
-      (block): block is { type: 'text'; text: string; citations: unknown } => block.type === 'text',
-    )
-    .map((block) => block.text)
-    .join('');
+  const choice = response.choices[0];
+  const raw = choice?.message.content ?? '';
+  if (!raw) {
+    throw new Error(`${id}: DeepSeek returned empty content`);
+  }
 
-  // cache_creation_input_tokens / cache_read_input_tokens are present on
-  // recent SDK versions but the type only exposes them when the SDK was
-  // compiled with the prompt-caching surface. Access via a typed shim so
-  // older SDK pins still compile.
-  const usage = response.usage as {
-    input_tokens: number;
-    output_tokens: number;
-    cache_creation_input_tokens?: number | null;
-    cache_read_input_tokens?: number | null;
-  };
+  const usage = response.usage;
   const telemetry: CacheTelemetry = {
-    cacheCreationInputTokens: usage.cache_creation_input_tokens ?? 0,
-    cacheReadInputTokens: usage.cache_read_input_tokens ?? 0,
-    inputTokens: usage.input_tokens,
-    outputTokens: usage.output_tokens,
+    cacheHitTokens: usage?.prompt_cache_hit_tokens ?? 0,
+    cacheMissTokens: usage?.prompt_cache_miss_tokens ?? 0,
+    inputTokens: usage?.prompt_tokens ?? 0,
+    outputTokens: usage?.completion_tokens ?? 0,
   };
 
   return {
     output: def.parseResponse(raw),
     raw,
-    model: def.model,
+    model: options.modelOverride ?? def.model,
     promptId: id,
     version: def.version,
-    stopReason: response.stop_reason,
+    stopReason: choice?.finish_reason ?? null,
     telemetry,
   };
 }

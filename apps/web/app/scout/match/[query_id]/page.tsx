@@ -56,8 +56,8 @@ interface Candidate {
       rapid: number | null;
       classical: number | null;
     };
-    /** Claude Haiku one-sentence explanation. Null until LLM enrichment ran
-     *  (missing ANTHROPIC_API_KEY, API failure, etc.). UI falls back to the
+    /** DeepSeek one-sentence explanation. Null until LLM enrichment ran
+     *  (missing DEEPSEEK_API_KEY, API failure, etc.). UI falls back to the
      *  bullet `reasons` when null. */
     prose?: string | null;
   };

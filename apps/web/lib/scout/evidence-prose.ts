@@ -3,8 +3,7 @@
  *
  * The algorithmic Stage 2/3 matcher produces a top-K ranked candidate list
  * with per-component scores. This module hands that structured evidence to
- * an LLM (DeepSeek by default; swappable via SCOUT_PROSE_PROVIDER) and
- * asks it to do three things in one prompt:
+ * DeepSeek and asks it to do three things in one prompt:
  *
  *   1. **Re-rank** the candidates — synthesize the close calls the
  *      algorithm couldn't resolve (e.g. "rank #2 has perfect ECO and
@@ -25,9 +24,9 @@
  *
  * TODO(WS-4 → Scout-Ready Pipeline Phase 5): migrate this module to use
  *   @chessco/ai's `runPrompt('evidence_v1', ...)` per-candidate (plus a
- *   batched verdict variant) so prompt caching kicks in on the shared
- *   coach-voice system block. Keeping the DeepSeek path intact behind a
- *   `SCOUT_PROSE_PROVIDER=claude` flag is the safe cutover order.
+ *   batched verdict variant) so DeepSeek's automatic prompt cache kicks
+ *   in on the shared coach-voice system block. Both code paths share
+ *   the same DEEPSEEK_API_KEY today.
  */
 import { getProseProvider } from './llm-providers';
 

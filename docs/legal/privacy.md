@@ -32,7 +32,7 @@ We do not collect: precise location, biometric data, government IDs (KYC is prov
 
 ## Who we share with
 
-- **Subprocessors**: Supabase (auth + Postgres + storage), Google Cloud (Cloud SQL + Cloud Run), Vercel (web hosting), Fly.io (game server), Inngest (workers), Anthropic (LLM prompts — content-only, no PII metadata), Resend (transactional email), PostHog (analytics), Sentry (error monitoring). Stripe / Paddle when billing launches.
+- **Subprocessors**: Supabase (auth + Postgres + storage), Google Cloud (Cloud SQL + Cloud Run), Vercel (web hosting), Fly.io (game server), Inngest (workers), DeepSeek (LLM prompts — content-only, no PII metadata), Resend (transactional email), PostHog (analytics), Sentry (error monitoring). Stripe / Paddle when billing launches.
 - **Authorities**: when legally compelled.
 - **No selling** of personal data to advertisers.
 

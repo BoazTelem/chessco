@@ -1,9 +1,8 @@
 /**
- * help_chat_v1 — the in-app support chat. Lightweight Q&A with Haiku that
- * answers based on a passed-in knowledge-base excerpt + recent user
- * messages.
+ * help_chat_v1 — the in-app support chat. Lightweight Q&A that answers
+ * based on a passed-in knowledge-base excerpt + recent user messages.
  *
- * Spec §15: Haiku 4.5. Never gives legal, medical, or financial advice.
+ * Spec §15: deepseek-chat. Never gives legal, medical, or financial advice.
  */
 import type { PromptDefinition } from '../types';
 
@@ -63,7 +62,7 @@ function parseResponse(raw: string): HelpChatOutput {
 export const helpChatPrompt: PromptDefinition<HelpChatInput, HelpChatOutput> = {
   id: 'help_chat_v1',
   version: '1.0.0',
-  model: 'claude-haiku-4-5-20251001',
+  model: 'deepseek-chat',
   description: 'In-app support chat with KB-grounded answers.',
   system: [
     { label: 'voice-rules', text: SYSTEM_VOICE, cached: true },

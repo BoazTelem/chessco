@@ -1,7 +1,7 @@
 /**
  * prep_summary_v1 — 3-paragraph executive summary of a prep report.
  *
- * Spec §15: Opus 4.7. Role is coach/writer/summarizer (NOT analyst). Takes
+ * Spec §15: deepseek-chat. Role is coach/writer/summarizer (NOT analyst). Takes
  * structured findings as input and renders them as prose; never invents
  * facts that aren't in the findings.
  */
@@ -86,7 +86,7 @@ function parseResponse(raw: string): PrepSummaryOutput {
 export const prepSummaryPrompt: PromptDefinition<PrepSummaryInput, PrepSummaryOutput> = {
   id: 'prep_summary_v1',
   version: '1.0.0',
-  model: 'claude-opus-4-7',
+  model: 'deepseek-chat',
   description:
     'Three-paragraph executive summary of a prep report (coach voice, evidence-grounded).',
   system: [

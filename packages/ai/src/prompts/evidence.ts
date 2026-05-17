@@ -2,7 +2,7 @@
  * evidence_v1 — one-sentence "why we think this is the right account"
  * confidence prose for the identification result card.
  *
- * Spec §15: Haiku 4.5. Fast, cheap, deterministic.
+ * Spec §15: deepseek-chat. Fast, cheap, deterministic.
  */
 import type { PromptDefinition } from '../types';
 
@@ -50,7 +50,7 @@ function parseResponse(raw: string): EvidenceOutput {
 export const evidencePrompt: PromptDefinition<EvidenceInput, EvidenceOutput> = {
   id: 'evidence_v1',
   version: '1.0.0',
-  model: 'claude-haiku-4-5-20251001',
+  model: 'deepseek-chat',
   description: 'One-sentence evidence prose for the identification result card.',
   system: [
     { label: 'voice-rules', text: SYSTEM_VOICE, cached: true },

@@ -2,7 +2,7 @@
  * risk_paragraphs_v1 — short coaching paragraphs that flag the specific
  * risks the user faces in each leak line.
  *
- * Spec §15: Sonnet 4.6. One paragraph per leak, plain text.
+ * Spec §15: deepseek-chat. One paragraph per leak, plain text.
  */
 import type { PromptDefinition } from '../types';
 
@@ -71,7 +71,7 @@ function parseResponse(raw: string): RiskParagraphsOutput {
 export const riskParagraphsPrompt: PromptDefinition<RiskParagraphsInput, RiskParagraphsOutput> = {
   id: 'risk_paragraphs_v1',
   version: '1.0.0',
-  model: 'claude-sonnet-4-6',
+  model: 'deepseek-chat',
   description: 'One short coaching paragraph per leak line, evidence-grounded.',
   system: [
     { label: 'coach-voice', text: SYSTEM_VOICE, cached: true },

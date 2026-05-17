@@ -28,7 +28,7 @@ Three integrated capabilities, built on a single product loop (`Scout â†’ Find â
 - **Backend:** Supabase (Postgres + Auth + Storage + Realtime + pgvector), Drizzle ORM
 - **Game server:** Fly.io (Node WebSocket, server-authoritative clocks)
 - **Workers:** Inngest, Stockfish on Cloud Run
-- **AI:** Anthropic Claude (Opus / Sonnet / Haiku)
+- **AI:** DeepSeek (chat-completions; OpenAI-compatible API)
 - **Payments:** Stripe Connect Express (MCC 8299 services marketplace)
 - **Monorepo:** pnpm workspaces + Turborepo
 

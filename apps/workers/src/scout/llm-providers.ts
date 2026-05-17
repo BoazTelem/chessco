@@ -4,8 +4,7 @@
  * Same provider seam, same env contract. Both copies must stay in sync;
  * future change would be extraction to a packages/scout-llm shared module.
  *
- * DeepSeek is the production default (see memory note feedback-deepseek-
- * default-llm). Don't reach for Anthropic without an explicit reason.
+ * DeepSeek is the only provider today.
  */
 
 export interface LlmProvider {
@@ -55,27 +54,16 @@ class DeepSeekProvider implements LlmProvider {
 }
 
 /**
- * Resolve the configured provider from env. Returns `null` (not throws) when
- * no provider is configured, so callers can fall back to algorithmic-only.
+ * Resolve the provider from env. Returns `null` (not throws) when no
+ * provider is configured, so callers can fall back to algorithmic-only.
  *
- * SCOUT_PROSE_PROVIDER: 'deepseek' (default)
- * Required key: DEEPSEEK_API_KEY
- *
- * Anthropic is intentionally NOT exposed on the workers side — DeepSeek is
- * the production default and workers doesn't depend on @anthropic-ai/sdk.
- * If a non-deepseek provider is ever needed in batch jobs, add the SDK
- * dependency to apps/workers/package.json and mirror the web Anthropic
- * provider here.
+ * Required key: DEEPSEEK_API_KEY.
  *
  * Optional `model` override lets the call site pick a reasoning-tier model
  * (e.g. 'deepseek-reasoner') for close-call escalation without restructuring.
  */
 export function getProseProvider(opts: { model?: string } = {}): LlmProvider | null {
-  const name = (process.env.SCOUT_PROSE_PROVIDER ?? 'deepseek').toLowerCase();
-  if (name === 'deepseek') {
-    const key = process.env.DEEPSEEK_API_KEY;
-    if (!key) return null;
-    return new DeepSeekProvider(key, opts.model);
-  }
-  return null;
+  const key = process.env.DEEPSEEK_API_KEY;
+  if (!key) return null;
+  return new DeepSeekProvider(key, opts.model);
 }

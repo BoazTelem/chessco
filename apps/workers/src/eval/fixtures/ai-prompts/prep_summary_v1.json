@@ -1,10 +1,10 @@
 {
   "prompt_id": "prep_summary_v1",
-  "model_version": "claude-opus-4-7",
+  "model_version": "deepseek-chat",
   "shape_invariants": [
     { "path": "id", "expect": "prep_summary_v1" },
     { "path": "version", "expect": "1.0.0" },
-    { "path": "model", "expect": "claude-opus-4-7" },
+    { "path": "model", "expect": "deepseek-chat" },
     { "path": "description", "expect": "<defined>" },
     { "path": "params.maxTokens", "expect": 800 },
     { "path": "params.temperature", "expect": 0.4 }

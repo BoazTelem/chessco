@@ -244,9 +244,7 @@ async function main() {
 async function llmRerank(matches: Stage3Match[], sourceLabel: string): Promise<void> {
   const provider = getProseProvider();
   if (!provider) {
-    console.log(
-      '\n[stage3] --llm: no provider configured (set SCOUT_PROSE_PROVIDER + DEEPSEEK_API_KEY in env).',
-    );
+    console.log('\n[stage3] --llm: no provider configured (set DEEPSEEK_API_KEY in env).');
     return;
   }
   if (matches.length === 0) {

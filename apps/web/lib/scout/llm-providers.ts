@@ -1,18 +1,16 @@
 /**
- * LLM provider registry for Scout's evidence-prose generation.
+ * LLM provider for Scout's evidence-prose generation.
  *
- * Today we use a single provider at a time (selected by SCOUT_PROSE_PROVIDER
- * env var, defaulting to DeepSeek). The interface is intentionally small —
- * one async `generate(prompt) → text` call — because evidence-prose is a
- * presentation-layer task: all chess pattern matching is already done by
- * the deterministic Stage 2/3 pipeline before the LLM is asked to write
- * a sentence. Any chat-completion model with passable JSON-following can
- * fill this slot.
+ * Single provider: DeepSeek chat-completions (OpenAI-compatible).
+ * Evidence-prose is a presentation-layer task: all chess pattern matching
+ * is already done by the deterministic Stage 2/3 pipeline before the LLM
+ * is asked to write a sentence. Any chat-completion model with passable
+ * JSON-following can fill this slot.
  *
- * The provider seam exists so we can later A/B candidate engines (DeepSeek,
- * Claude Haiku, GPT-4o-mini, Gemini Flash, etc.) and pick the best on cost,
- * latency, and JSON adherence — without touching `evidence-prose.ts` or
- * the call sites in `/api/identify`.
+ * The seam (interface + factory) is kept so we can later A/B candidate
+ * engines without touching `evidence-prose.ts` or the call sites in
+ * `/api/identify`. To add a provider, add a new class + branch in
+ * getProseProvider; today we only ship DeepSeek.
  *
  * Each provider returns plain text; the caller is responsible for JSON
  * extraction. Failures throw — `generateEvidenceProse` catches at the
@@ -69,55 +67,17 @@ class DeepSeekProvider implements LlmProvider {
   }
 }
 
-/** Anthropic Claude Haiku — kept available so a future env flip turns it on
- *  for A/B comparison against DeepSeek without code changes. Loaded lazily
- *  to avoid bundling the SDK when the default DeepSeek provider is selected. */
-class AnthropicProvider implements LlmProvider {
-  readonly name = 'anthropic';
-  readonly model: string;
-  private readonly apiKey: string;
-
-  constructor(apiKey: string, model = 'claude-haiku-4-5-20251001') {
-    this.apiKey = apiKey;
-    this.model = model;
-  }
-
-  async generate({ prompt, maxTokens }: { prompt: string; maxTokens: number }): Promise<string> {
-    const { default: Anthropic } = await import('@anthropic-ai/sdk');
-    const client = new Anthropic({ apiKey: this.apiKey });
-    const res = await client.messages.create({
-      model: this.model,
-      max_tokens: maxTokens,
-      messages: [{ role: 'user', content: prompt }],
-    });
-    return res.content
-      .filter((b) => b.type === 'text')
-      .map((b) => (b as { text: string }).text)
-      .join('');
-  }
-}
-
 /**
  * Resolve the configured provider from env. Returns `null` (not throws) when
  * no provider is configured, so callers can fall back to bullet reasons.
  *
- * SCOUT_PROSE_PROVIDER: 'deepseek' (default) | 'anthropic'
- * Required key per provider: DEEPSEEK_API_KEY | ANTHROPIC_API_KEY
+ * Required key: DEEPSEEK_API_KEY.
  *
  * Optional `model` override lets the call site pick a reasoning-tier model
  * (e.g. 'deepseek-reasoner') for close-call escalation without restructuring.
  */
 export function getProseProvider(opts: { model?: string } = {}): LlmProvider | null {
-  const name = (process.env.SCOUT_PROSE_PROVIDER ?? 'deepseek').toLowerCase();
-  if (name === 'deepseek') {
-    const key = process.env.DEEPSEEK_API_KEY;
-    if (!key) return null;
-    return new DeepSeekProvider(key, opts.model);
-  }
-  if (name === 'anthropic') {
-    const key = process.env.ANTHROPIC_API_KEY;
-    if (!key) return null;
-    return new AnthropicProvider(key, opts.model);
-  }
-  return null;
+  const key = process.env.DEEPSEEK_API_KEY;
+  if (!key) return null;
+  return new DeepSeekProvider(key, opts.model);
 }

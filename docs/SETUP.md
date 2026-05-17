@@ -202,7 +202,7 @@ Once Claude has the above, the next step is **Phase 0 Week 2** — Drizzle schem
 | `SUPABASE_SERVICE_ROLE_KEY`          | Workers, admin routes | Phase 0 W5+ |
 | `NEXT_PUBLIC_APP_URL`                | Auth callbacks, OG    | Phase 0 W3+ |
 | `LICHESS_OAUTH_CLIENT_ID/SECRET`     | Lichess OAuth         | Phase 0 W4  |
-| `ANTHROPIC_API_KEY`                  | AI workers            | Phase 1 W8  |
+| `DEEPSEEK_API_KEY`                   | AI / scout prose      | Phase 1 W5  |
 | `STRIPE_SECRET_KEY` / webhook secret | Subscription billing  | Phase 1 W10 |
 | `UPSTASH_REDIS_REST_URL/TOKEN`       | Game server, rate-lim | Phase 3 W1  |
 | `SENTRY_DSN` / `NEXT_PUBLIC_*`       | Error tracking        | Phase 0 W7  |

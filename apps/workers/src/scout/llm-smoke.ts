@@ -69,10 +69,7 @@ async function main(): Promise<void> {
   const model = process.env.LLM_SMOKE_MODEL;
   const provider = getProseProvider(model ? { model } : {});
   if (!provider) {
-    console.error(
-      'No LLM provider configured. Set SCOUT_PROSE_PROVIDER (default deepseek) ' +
-        '+ DEEPSEEK_API_KEY in env.',
-    );
+    console.error('No LLM provider configured. Set DEEPSEEK_API_KEY in env.');
     process.exit(1);
   }
   console.log(`[llm-smoke] provider=${provider.name} model=${provider.model}`);

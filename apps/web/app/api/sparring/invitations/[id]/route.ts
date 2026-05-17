@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getUser } from '@/lib/auth';
 import { getPracticeDb } from '@/lib/practice/db';
+import { createNotification } from '@/lib/notifications';
 
 const Input = z.object({
   action: z.enum(['decline']),
@@ -38,13 +39,15 @@ export async function PATCH(
 
   const sql = getPracticeDb();
   const rows = await sql.begin(async (tx) => {
-    const updated = await tx<{ id: string; status: string; challenge_id: string }[]>`
+    const updated = await tx<
+      { id: string; status: string; challenge_id: string; inviter_id: string }[]
+    >`
       UPDATE challenge_invitations
       SET status = 'declined', responded_at = NOW()
       WHERE id = ${id}::uuid
         AND invitee_id = ${user.id}::uuid
         AND status = 'pending'
-      RETURNING id::text, status, challenge_id::text
+      RETURNING id::text, status, challenge_id::text, inviter_id::text
     `;
 
     const invitation = updated[0];
@@ -56,6 +59,22 @@ export async function PATCH(
           AND target_opponent_id = ${user.id}::uuid
           AND status = 'open'
       `;
+
+      await createNotification(
+        {
+          profileId: invitation.inviter_id,
+          type: 'invitation.declined',
+          category: 'social',
+          title: 'Your sparring invitation was declined',
+          data: {
+            challenge_id: invitation.challenge_id,
+            invitation_id: invitation.id,
+            invitee_id: user.id,
+          },
+          actionUrl: '/practice',
+        },
+        tx,
+      );
     }
 
     return updated;

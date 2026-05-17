@@ -3,7 +3,7 @@
  * next to. Reads the player's engineered features and tells the user what
  * the radar is saying.
  *
- * Spec §15: Haiku 4.5.
+ * Spec §15: deepseek-chat.
  */
 import type { PromptDefinition } from '../types';
 
@@ -82,7 +82,7 @@ export const styleFingerprintPrompt: PromptDefinition<
 > = {
   id: 'style_fingerprint_v1',
   version: '1.0.0',
-  model: 'claude-haiku-4-5-20251001',
+  model: 'deepseek-chat',
   description: '80–140 word style summary that matches the radar chart.',
   system: [
     { label: 'voice-rules', text: SYSTEM_VOICE, cached: true },

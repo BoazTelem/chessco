@@ -20,7 +20,7 @@
  *
  * Stage D (LLM rerank + verdict + per-candidate prose via DeepSeek) is
  * handled by `generateRerankProse` in evidence-prose.ts — already wired,
- * fail-soft, env-controlled via SCOUT_PROSE_PROVIDER.
+ * fail-soft, env-gated on DEEPSEEK_API_KEY.
  *
  * Mirror of apps/workers/src/stage3/match.ts — both copies must stay in
  * sync. The sparse cascade replaced the linear-scan v3 matcher when the

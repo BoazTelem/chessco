@@ -16,6 +16,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getUser } from '@/lib/auth';
 import { getPracticeDb } from '@/lib/practice/db';
+import { createNotification } from '@/lib/notifications';
 
 const Input = z.object({
   challenge_id: z.string().uuid(),
@@ -118,7 +119,25 @@ export async function POST(req: Request): Promise<NextResponse> {
       DO NOTHING
       RETURNING id::text
     `;
-    if (inserted.length > 0) return { id: inserted[0]!.id, deduped: false };
+    if (inserted.length > 0) {
+      await createNotification(
+        {
+          profileId: body.invitee_id,
+          type: 'invitation.received',
+          category: 'social',
+          title: 'You received a sparring invitation',
+          body: body.message ?? undefined,
+          data: {
+            challenge_id: body.challenge_id,
+            invitation_id: inserted[0]!.id,
+            inviter_id: user.id,
+          },
+          actionUrl: '/inbox/invitations',
+        },
+        tx,
+      );
+      return { id: inserted[0]!.id, deduped: false };
+    }
 
     const existingAfterConflict = await tx<{ id: string }[]>`
       SELECT id::text

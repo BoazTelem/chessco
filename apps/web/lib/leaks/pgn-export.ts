@@ -7,7 +7,7 @@
  * valid PGN that Lichess Studies and ChessBase will both import, so a user
  * can paste straight into their study workflow.
  *
- * Pure function — no DB, no Anthropic, no Playwright. Tested by virtue of
+ * Pure function — no DB, no LLM, no Playwright. Tested by virtue of
  * round-trip via chess.js when the export endpoint runs.
  */
 import type { Leak } from './types';
