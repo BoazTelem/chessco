@@ -125,6 +125,192 @@ function VerdictsSection() {
 }
 
 // ============================================================================
+// Feature 1 — Name matching coverage (federation → platform handles)
+// ============================================================================
+
+type CoverageTier = {
+  label: string;
+  fide_pool: number;
+  claimed_total: number;
+  claimed_lichess: number;
+  claimed_chesscom: number;
+  coverage_pct: number;
+  v1_target_pct: number;
+  realistic_max_pct: number;
+};
+
+type CoverageStats = {
+  as_of: string;
+  methodology: string;
+  totals: {
+    fide_pool_1400_plus: number;
+    titled_pool: number;
+    platforms: Record<string, { matchable: number; claimed: number }>;
+  };
+  tiers: CoverageTier[];
+};
+
+function loadCoverageStats(): CoverageStats | null {
+  const candidates = [
+    join(process.cwd(), 'public', 'coverage-stats.json'),
+    join(process.cwd(), 'apps', 'web', 'public', 'coverage-stats.json'),
+  ];
+  const path = candidates.find((p) => existsSync(p));
+  if (!path) return null;
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')) as CoverageStats;
+  } catch {
+    return null;
+  }
+}
+
+function CoverageBar({ current, target, max }: { current: number; target: number; max: number }) {
+  // Bar shows 0..max, with a target marker and the current fill.
+  const denom = Math.max(max, target, current, 1);
+  const fillPct = Math.min(100, (current / denom) * 100);
+  const targetPct = Math.min(100, (target / denom) * 100);
+  const reached = current >= target;
+  return (
+    <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
+      <div
+        className={`h-full ${reached ? 'bg-emerald-500/70' : 'bg-amber-500/70'}`}
+        style={{ width: `${fillPct}%` }}
+      />
+      <div
+        className="absolute top-0 h-full w-px bg-foreground/60"
+        style={{ left: `${targetPct}%` }}
+        title={`v1 target ${target}%`}
+        aria-label={`v1 target ${target}%`}
+      />
+    </div>
+  );
+}
+
+function CoverageSection({ stats }: { stats: CoverageStats }) {
+  const asOf = new Date(stats.as_of);
+  const totalPlatforms = Object.values(stats.totals.platforms).reduce(
+    (sum, p) => sum + p.matchable,
+    0,
+  );
+  const totalClaimed = Object.values(stats.totals.platforms).reduce((sum, p) => sum + p.claimed, 0);
+
+  return (
+    <section className="mt-12">
+      <header>
+        <h2 className="font-display text-2xl font-semibold md:text-3xl">
+          Name matching coverage (Feature 1)
+        </h2>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+          What fraction of each FIDE rating tier has at least one matched online handle (chess.com
+          or Lichess)? Drives whether an opponent search will land on the right person before
+          Feature 2 (games matching) ever runs.
+        </p>
+      </header>
+
+      <div className="mt-6 grid gap-3 md:grid-cols-4">
+        <Stat
+          label="FIDE 1400+ pool"
+          value={num(stats.totals.fide_pool_1400_plus)}
+          detail="tournament-rated denominator"
+        />
+        <Stat
+          label="Titled players (FIDE)"
+          value={num(stats.totals.titled_pool)}
+          detail="GM / IM / FM / CM / WGM / WIM / WFM / WCM"
+        />
+        <Stat
+          label="Online handles indexed"
+          value={num(totalPlatforms)}
+          detail={Object.entries(stats.totals.platforms)
+            .map(([p, v]) => `${p}: ${num(v.matchable)}`)
+            .join(' · ')}
+        />
+        <Stat
+          label="Handles with FIDE claim"
+          value={num(totalClaimed)}
+          detail={`${((totalClaimed / Math.max(totalPlatforms, 1)) * 100).toFixed(1)}% of indexed handles`}
+        />
+      </div>
+
+      <div className="mt-8 overflow-hidden rounded-md border border-border">
+        <div className="border-b border-border bg-card px-4 py-3">
+          <h3 className="font-display text-lg font-semibold">Coverage by FIDE tier</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            As of {Number.isFinite(asOf.getTime()) ? asOf.toLocaleString() : stats.as_of}. Bars show
+            current coverage relative to the v1 sprint target marker.
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-muted/40 text-left text-muted-foreground">
+              <tr>
+                <th className="px-4 py-3 font-medium">Tier</th>
+                <th className="px-4 py-3 font-medium">FIDE pool</th>
+                <th className="px-4 py-3 font-medium">Claimed</th>
+                <th className="px-4 py-3 font-medium">Coverage</th>
+                <th className="px-4 py-3 font-medium">v1 target</th>
+                <th className="px-4 py-3 font-medium">Max</th>
+                <th className="w-1/4 px-4 py-3 font-medium">Progress</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {stats.tiers.map((tier) => (
+                <tr key={tier.label} className="bg-background">
+                  <td className="px-4 py-3 font-medium">{tier.label}</td>
+                  <td className="px-4 py-3">{num(tier.fide_pool)}</td>
+                  <td className="px-4 py-3">
+                    {num(tier.claimed_total)}
+                    <span className="ml-1 text-xs text-muted-foreground">
+                      (li {num(tier.claimed_lichess)} · cc {num(tier.claimed_chesscom)})
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 font-medium">{tier.coverage_pct.toFixed(2)}%</td>
+                  <td className="px-4 py-3 text-muted-foreground">{tier.v1_target_pct}%</td>
+                  <td className="px-4 py-3 text-muted-foreground">{tier.realistic_max_pct}%</td>
+                  <td className="px-4 py-3">
+                    <CoverageBar
+                      current={tier.coverage_pct}
+                      target={tier.v1_target_pct}
+                      max={tier.realistic_max_pct}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="mt-6 grid gap-4 md:grid-cols-2">
+        <div className="rounded-md border border-border bg-card p-5">
+          <h3 className="font-display text-lg font-semibold">Methodology</h3>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">{stats.methodology}</p>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            Refresh:{' '}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              pnpm --filter @chessco/workers eval:coverage
+            </code>
+          </p>
+        </div>
+        <div className="rounded-md border border-border bg-card p-5">
+          <h3 className="font-display text-lg font-semibold">Two features, tracked separately</h3>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            <strong>Feature 1 (this section)</strong> — Name matching: linking FIDE-rated tournament
+            players to their online accounts so an opponent search can find them. Capacity-limited
+            by how many handles use real-name patterns we can hypothesise.
+          </p>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            <strong>Feature 2 (sparse cascade below)</strong> — Games matching: identifying which
+            handle a given PGN sample belongs to. Capacity-limited by how many of those handles have
+            a fingerprint in our corpus.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ============================================================================
 // Sparse cascade benchmark (v4 matcher — the current production path)
 // ============================================================================
 
@@ -531,8 +717,9 @@ pnpm --filter @chessco/workers eval:repertoire`}
 export default function BenchmarksPage() {
   const sparse = loadSparseBenchmark();
   const legacy = loadLegacyBenchmark();
+  const coverage = loadCoverageStats();
   const anyVerdict = ['b1', 'b3', 'b6', 'b7', 'b8', 'b11'].some((id) => loadVerdict(id) !== null);
-  if (!sparse && !legacy && !anyVerdict) return <MissingBenchmark />;
+  if (!sparse && !legacy && !coverage && !anyVerdict) return <MissingBenchmark />;
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-12 md:py-16">
@@ -543,14 +730,16 @@ export default function BenchmarksPage() {
       <section className="mt-8">
         <h1 className="font-display text-4xl font-semibold md:text-5xl">Matcher benchmarks</h1>
         <p className="mt-4 max-w-3xl text-base leading-7 text-muted-foreground">
-          These results measure how reliably Chessco recovers a known target&apos;s handle from a
-          small PGN sample of their games. The benchmark exists so product copy can promise game
-          counts based on evidence, not guesswork.
+          Two measurements drive product copy here: <strong>Name matching coverage</strong> (can we
+          find your opponent at all?) and <strong>Games matching accuracy</strong> (given a PGN
+          sample, do we identify them correctly?). The benchmarks exist so promises rest on
+          evidence, not guesswork.
         </p>
       </section>
 
       <VerdictsSection />
 
+      {coverage ? <CoverageSection stats={coverage} /> : null}
       {sparse ? <SparseSection benchmark={sparse} /> : null}
       {legacy ? <LegacySection benchmark={legacy} /> : null}
     </main>

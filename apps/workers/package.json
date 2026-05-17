@@ -42,6 +42,7 @@
     "features:inspect": "tsx src/features/inspect.ts",
     "eval:repertoire": "tsx src/eval/repertoire-benchmark.ts",
     "eval:cascade": "tsx src/eval/sparse-cascade-benchmark.ts",
+    "eval:coverage": "tsx src/eval/coverage-stats.ts",
     "bench:b1:verdict": "tsx src/eval/b1.ts",
     "bench:b1": "pnpm eval:cascade && pnpm bench:b1:verdict",
     "bench:b3:verdict": "tsx src/eval/b3.ts",
