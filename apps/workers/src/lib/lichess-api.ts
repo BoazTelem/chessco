@@ -34,10 +34,30 @@ const MAX_RETRIES = 5;
 
 let lastRequestAt = 0;
 
+/**
+ * Promise-chain mutex for the rate-gate.
+ *
+ * Earlier impl was a plain `lastRequestAt` read + sleep + write. With N
+ * concurrent callers, every caller saw the same `lastRequestAt`, slept the
+ * same duration, then fired simultaneously — producing the bursts that
+ * tripped Lichess rate limits even with the throttle in place (57% 429s on
+ * the last fast-lane-lichess T1 run, sprint lever 3).
+ *
+ * The chain serialises callers: each caller appends its sleep slot onto the
+ * tail of the chain, so only one slot runs at a time. The `.catch(() =>
+ * undefined)` guards against a single rejected slot poisoning the rest of
+ * the queue — caller-side errors are surfaced by `await myTurn` separately.
+ */
+let gateChain: Promise<void> = Promise.resolve();
+
 async function rateLimitGap(): Promise<void> {
-  const wait = MIN_REQUEST_GAP_MS - (Date.now() - lastRequestAt);
-  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-  lastRequestAt = Date.now();
+  const myTurn = gateChain.then(async () => {
+    const wait = MIN_REQUEST_GAP_MS - (Date.now() - lastRequestAt);
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    lastRequestAt = Date.now();
+  });
+  gateChain = myTurn.catch(() => undefined);
+  await myTurn;
 }
 
 async function backoff(attempt: number): Promise<void> {
