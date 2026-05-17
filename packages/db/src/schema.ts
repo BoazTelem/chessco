@@ -717,12 +717,20 @@ export const creditLedgerEntries = pgTable(
         | 'referral_bonus'
         | 'prep_leak_reveal'
         | 'practice_reward'
+        | 'practice_bot_win'
+        | 'practice_bot_loss'
         | 'subscription_grant'
         | 'cycle_expiry'
       >()
       .notNull(),
     referenceType: text('reference_type').$type<
-      'external_account' | 'challenge' | 'match' | 'manual' | 'profile' | 'prep_leak_unlock'
+      | 'external_account'
+      | 'challenge'
+      | 'match'
+      | 'manual'
+      | 'profile'
+      | 'prep_leak_unlock'
+      | 'practice_bot_game'
     >(),
     referenceId: text('reference_id'),
     counterpartProfileId: uuid('counterpart_profile_id').references(() => profiles.id, {
@@ -1025,6 +1033,52 @@ export const maiaWeights = pgTable(
     index('maia_weights_target_player_idx').on(t.targetPlayerId, t.status),
   ],
 );
+
+// ============================================================================
+// PRACTICE BOT GAMES (Phase 6A/6C — casual + credit-mode bot play)
+// ============================================================================
+
+/**
+ * One row per bot game played on /practice/sandbox or /practice/otb.
+ *
+ * The migration enforces the credit-mode rating-floor rule in SQL via a
+ * CHECK constraint: `mode = 'casual' OR bot_rating >= user_rating`. The
+ * route layer also checks this, but the constraint is load-bearing — a
+ * route bug must never insert a credit-mode row with a weaker bot.
+ *
+ * See docs/PRACTICE-CREDIT-MODE.md for the full design.
+ */
+export const practiceBotGames = pgTable(
+  'practice_bot_games',
+  {
+    id: pkUuid(),
+    profileId: uuid('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    surface: text('surface').$type<'sandbox' | 'otb'>().notNull(),
+    botKind: text('bot_kind').$type<'ladder' | 'opponent_individual'>().notNull(),
+    botRating: integer('bot_rating').notNull(),
+    userRating: integer('user_rating').notNull(),
+    weightsId: uuid('weights_id')
+      .notNull()
+      .references(() => maiaWeights.id),
+    timeClass: text('time_class').$type<'bullet' | 'blitz' | 'rapid' | 'classical'>().notNull(),
+    timeControl: text('time_control').notNull(),
+    mode: text('mode').$type<'casual' | 'credit'>().notNull(),
+    result: text('result').$type<'user_win' | 'user_loss' | 'draw' | 'abandoned'>(),
+    resultReason: text('result_reason'),
+    pgn: text('pgn'),
+    startedAt: timestamptz('started_at').notNull().defaultNow(),
+    endedAt: timestamptz('ended_at'),
+  },
+  (t) => [
+    index('practice_bot_games_profile_idx').on(t.profileId, t.startedAt),
+    index('practice_bot_games_weights_idx').on(t.weightsId),
+  ],
+);
+
+export type PracticeBotGame = typeof practiceBotGames.$inferSelect;
+export type NewPracticeBotGame = typeof practiceBotGames.$inferInsert;
 
 // ============================================================================
 // ANTI-CHEAT
