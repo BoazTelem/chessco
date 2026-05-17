@@ -7,8 +7,8 @@
  * Settlement is one Postgres transaction (see lib/practice/bot-game.ts
  * `settleBotGame`):
  *   1. Update practice_bot_games.result + result_reason + ended_at + pgn.
- *   2. If mode='credit' and result moves credits, insert a single-sided
- *      credit_ledger_entries row (direction='C'/'D', amount=1).
+ *   2. If mode='credit' and result moves credits, update the wallet and insert
+ *      a single-sided credit_ledger_entries row (direction='C'/'D', amount=1).
  *
  * Credit deltas (matches docs/PRACTICE-CREDIT-MODE.md):
  *   user_win  -> +1, user_loss -> -1, abandoned -> -1, draw -> 0.
@@ -81,6 +81,9 @@ export async function POST(req: Request): Promise<NextResponse> {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg === 'game_not_found_or_already_ended') {
       return NextResponse.json({ error: msg }, { status: 409 });
+    }
+    if (msg === 'insufficient_credits') {
+      return NextResponse.json({ error: msg }, { status: 402 });
     }
     return NextResponse.json({ error: 'settle_failed', detail: msg }, { status: 500 });
   }

@@ -151,8 +151,8 @@ export async function resolveLadderWeightsId(
 /**
  * Settle a finished bot game in one transaction:
  *   1. Update practice_bot_games with result + ended_at + (final) pgn.
- *   2. If mode='credit' and the result moves credits, insert a single-
- *      sided credit_ledger_entries row.
+ *   2. If mode='credit' and the result moves credits, update the wallet and
+ *      insert a single-sided credit_ledger_entries row.
  *
  * Credit delta rules (matches docs/PRACTICE-CREDIT-MODE.md):
  *   user_win  -> +1 credit  (direction='C', category='practice_bot_win')
@@ -202,18 +202,82 @@ export async function settleBotGame(
           return null;
       }
     })();
-    if (!ledgerEffect) return { creditDelta: 0 };
+    if (!ledgerEffect) {
+      await tx`
+        INSERT INTO audit_logs (actor_type, actor_id, action, target_type, target_id, after)
+        VALUES (
+          'system',
+          ${args.profileId}::uuid,
+          'practice_bot.settle',
+          'practice_bot_game',
+          ${args.gameId},
+          ${JSON.stringify({
+            result: args.result,
+            result_reason: args.resultReason,
+            credit_delta: 0,
+          })}::jsonb
+        )
+      `;
+      return { creditDelta: 0 };
+    }
+
+    await tx`
+      INSERT INTO wallets (profile_id)
+      VALUES (${args.profileId}::uuid)
+      ON CONFLICT (profile_id) DO NOTHING
+    `;
+
+    if (ledgerEffect.direction === 'D') {
+      const debited = await tx<{ credit_available: number }[]>`
+        UPDATE wallets
+        SET credit_available = credit_available - 1,
+            updated_at = NOW()
+        WHERE profile_id = ${args.profileId}::uuid
+          AND credit_available >= 1
+        RETURNING credit_available
+      `;
+      if (debited.length === 0) {
+        throw new Error('insufficient_credits');
+      }
+    } else {
+      await tx`
+        UPDATE wallets
+        SET credit_available = credit_available + 1,
+            updated_at = NOW()
+        WHERE profile_id = ${args.profileId}::uuid
+      `;
+    }
 
     await tx`
       INSERT INTO credit_ledger_entries
-        (profile_id, direction, amount, category, reference_type, reference_id)
+        (profile_id, direction, amount, category, reference_type, reference_id, metadata)
       VALUES (
         ${args.profileId}::uuid,
         ${ledgerEffect.direction},
         1,
         ${ledgerEffect.category},
         'practice_bot_game',
-        ${args.gameId}
+        ${args.gameId},
+        ${JSON.stringify({
+          result: args.result,
+          result_reason: args.resultReason,
+        })}::jsonb
+      )
+    `;
+
+    await tx`
+      INSERT INTO audit_logs (actor_type, actor_id, action, target_type, target_id, after)
+      VALUES (
+        'system',
+        ${args.profileId}::uuid,
+        'practice_bot.settle',
+        'practice_bot_game',
+        ${args.gameId},
+        ${JSON.stringify({
+          result: args.result,
+          result_reason: args.resultReason,
+          credit_delta: ledgerEffect.delta,
+        })}::jsonb
       )
     `;
     return { creditDelta: ledgerEffect.delta };
