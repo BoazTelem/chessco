@@ -124,6 +124,14 @@ const FEATURE_ROWS: FeatureRow[] = [
     gm: true,
     sgm: true,
   },
+  {
+    label: 'Credits per friend you refer',
+    free: '20',
+    club: '20',
+    master: '20',
+    gm: '20',
+    sgm: '20',
+  },
   { label: 'Friends list', free: false, club: true, master: true, gm: true, sgm: true },
   { label: 'Training history', free: false, club: false, master: true, gm: true, sgm: true },
   {
@@ -266,7 +274,8 @@ export default function PricingPage() {
 
         <p className="mt-6 text-center text-[11px] text-muted-foreground">
           Monthly subscription credits expire at the end of each billing cycle. Signup, referral,
-          and practice-reward credits do not expire.
+          and practice-reward credits do not expire. Referral credits are capped at 100 lifetime (5
+          friends) per account.
         </p>
 
         <section className="mt-16">
