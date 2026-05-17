@@ -100,6 +100,7 @@ export default function SandboxClient(): JSX.Element {
   // so the unload handler doesn't capture a stale snapshot.
   const sessionIdRef = useRef<string | null>(null);
   const modeRef = useRef<GameMode>('casual');
+  const settledRef = useRef<boolean>(false);
   useEffect(() => {
     sessionIdRef.current = session?.game_id ?? null;
     modeRef.current = session?.mode ?? 'casual';
@@ -147,6 +148,8 @@ export default function SandboxClient(): JSX.Element {
     async (result: FinishedState['result'], resultReason: string): Promise<void> => {
       const s = session;
       if (!s) return;
+      if (settledRef.current) return;
+      settledRef.current = true;
       setPhase('settling');
       const pgn = chessRef.current.pgn();
       try {
@@ -231,13 +234,19 @@ export default function SandboxClient(): JSX.Element {
       // Only allow user moves when it's user (White) to move.
       if (chess.turn() !== 'w') return false;
 
-      const promotionPiece = piece && piece.length > 1 ? piece[1]!.toLowerCase() : undefined;
-      const move = chess.move({
-        from: sourceSquare,
-        to: targetSquare,
-        promotion: promotionPiece ?? 'q',
-      });
-      if (!move) return false;
+      const promotion =
+        piece.endsWith('Q') || piece.endsWith('R') || piece.endsWith('B') || piece.endsWith('N')
+          ? piece[1]!.toLowerCase()
+          : undefined;
+      try {
+        chess.move({
+          from: sourceSquare,
+          to: targetSquare,
+          promotion: promotion ?? 'q',
+        });
+      } catch {
+        return false;
+      }
 
       setFen(chess.fen());
 
@@ -252,6 +261,7 @@ export default function SandboxClient(): JSX.Element {
       setPhase('thinking');
       void (async () => {
         const bot = await fetchBotMove(chess.fen());
+        if (settledRef.current) return;
         if (!bot) {
           // Move failed — leave the game playable so the user can resign or
           // wait for the inference service to recover. We don't auto-settle
@@ -259,8 +269,9 @@ export default function SandboxClient(): JSX.Element {
           setPhase('playing');
           return;
         }
-        const botMove = chess.move(bot.uci);
-        if (!botMove) {
+        try {
+          chess.move(bot.uci);
+        } catch {
           // Maia returned an illegal move — defensive fallback. Log + revert.
           setErrorMsg(`Bot returned illegal move: ${bot.uci}`);
           setPhase('playing');
@@ -315,6 +326,7 @@ export default function SandboxClient(): JSX.Element {
     setSession(null);
     setFinished(null);
     setErrorMsg(null);
+    settledRef.current = false;
     resetBoard();
     setPhase('setup');
   }, [resetBoard]);
