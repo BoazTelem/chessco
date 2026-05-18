@@ -101,7 +101,7 @@ async function fetchPgnStream(url: string): Promise<Readable> {
   return Readable.fromWeb(res.body as unknown as Parameters<typeof Readable.fromWeb>[0]);
 }
 
-interface IngestResult {
+export interface BroadcastIngestResult {
   url: string;
   gamesSeen: number;
   inserted: number;
@@ -109,12 +109,54 @@ interface IngestResult {
   durationMs: number;
 }
 
+export interface BroadcastIngestOpts {
+  maxGames?: number | null;
+  dryRun?: boolean;
+}
+
+/**
+ * Ingest a single Lichess broadcast tournament's PGN feed into the
+ * external_pgn_sources staging table. Reusable from the CLI main() and
+ * from Inngest cron functions (apps/workers/src/inngest/external-pgn-broadcasts.ts).
+ *
+ * Idempotent via ON CONFLICT (source, source_url) DO NOTHING in
+ * batchInsertExternalPgn — re-running an active tournament during play
+ * surfaces only the new games as `inserted`, with already-staged games
+ * reported as `conflicts` (no error).
+ */
+export async function ingestBroadcastByTour(
+  sql: ReturnType<typeof getGamesDb>['client'],
+  tour: string,
+  opts: BroadcastIngestOpts = {},
+): Promise<BroadcastIngestResult> {
+  return ingestPgnUrl(
+    sql,
+    { tour, round: null, maxGames: opts.maxGames ?? null, dryRun: opts.dryRun ?? false },
+    LICHESS_BROADCAST_TOUR_PGN(tour),
+    `tour:${tour}`,
+  );
+}
+
+/** Same as ingestBroadcastByTour but scoped to one round. */
+export async function ingestBroadcastByRound(
+  sql: ReturnType<typeof getGamesDb>['client'],
+  round: string,
+  opts: BroadcastIngestOpts = {},
+): Promise<BroadcastIngestResult> {
+  return ingestPgnUrl(
+    sql,
+    { tour: null, round, maxGames: opts.maxGames ?? null, dryRun: opts.dryRun ?? false },
+    LICHESS_BROADCAST_ROUND_PGN(round),
+    `round:${round}`,
+  );
+}
+
 async function ingestPgnUrl(
   sql: ReturnType<typeof getGamesDb>['client'],
   args: CliArgs,
   pgnUrl: string,
   sourceIssue: string,
-): Promise<IngestResult> {
+): Promise<BroadcastIngestResult> {
   const t0 = Date.now();
   console.log(`[broadcasts:ingest] fetching ${pgnUrl}`);
   const pgnStream = await fetchPgnStream(pgnUrl);
@@ -184,7 +226,13 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error('[broadcasts:ingest] failed:', err);
-  process.exit(1);
-});
+// Run main() only when this file is invoked directly as a CLI. When
+// imported (e.g. by Inngest crons), the exported functions are used
+// without firing the CLI entry point.
+const isCli = import.meta.url === `file://${process.argv[1]?.replace(/\\/g, '/')}`;
+if (isCli) {
+  main().catch((err) => {
+    console.error('[broadcasts:ingest] failed:', err);
+    process.exit(1);
+  });
+}

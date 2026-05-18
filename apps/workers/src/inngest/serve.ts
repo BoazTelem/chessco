@@ -19,6 +19,7 @@ import { accountImportPoll } from './account-import-poll.js';
 import { corpusCountsHourly } from './corpus-counts.js';
 import { crawlRefreshFunctions } from './crawl-refresh.js';
 import { crawlerWatchdog } from './crawler-watchdog.js';
+import { broadcastsRefresh } from './external-pgn-broadcasts.js';
 import { federationFunctions } from './federations.js';
 import { prepareReportsPoll } from './prepare-reports.js';
 import { promoteAdHocNightly } from './promote-ad-hoc.js';
@@ -36,6 +37,7 @@ const handler = serve({
     crawlerWatchdog,
     prepareReportsPoll,
     promoteAdHocNightly,
+    broadcastsRefresh,
   ],
 });
 
@@ -65,6 +67,7 @@ server.listen(PORT, () => {
     crawlerWatchdog,
     prepareReportsPoll,
     promoteAdHocNightly,
+    broadcastsRefresh,
   ]) {
     console.log(`  - ${fn.id()}`);
   }
