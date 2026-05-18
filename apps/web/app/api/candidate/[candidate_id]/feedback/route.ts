@@ -24,6 +24,18 @@ interface ReqBody {
   confirmed?: boolean | null;
 }
 
+interface CandidateLookupRow {
+  id: number;
+  query_id: string;
+  ad_hoc_player_id: string | null;
+  platform: 'lichess' | 'chess.com';
+  handle: string;
+}
+
+interface QueryLookupRow {
+  requested_by: string | null;
+}
+
 const FEEDBACK_VALUES = new Set<CandidateFeedback>([
   'correct',
   'probably_correct',
@@ -86,6 +98,32 @@ export async function POST(
   }
 
   const admin = createAdminClient();
+  const { data: candidate, error: candidateErr } = await admin
+    .from('identification_candidates')
+    .select('id, query_id, ad_hoc_player_id, platform, handle')
+    .eq('id', candidateId)
+    .maybeSingle();
+  if (candidateErr) {
+    return NextResponse.json({ error: candidateErr.message }, { status: 500 });
+  }
+  if (!candidate) {
+    return NextResponse.json({ error: 'candidate not found' }, { status: 404 });
+  }
+
+  const candLookup = candidate as CandidateLookupRow;
+  const { data: query, error: queryErr } = await admin
+    .from('identification_queries')
+    .select('requested_by')
+    .eq('id', candLookup.query_id)
+    .maybeSingle();
+  if (queryErr) {
+    return NextResponse.json({ error: queryErr.message }, { status: 500 });
+  }
+  const requestedBy = (query as QueryLookupRow | null)?.requested_by ?? null;
+  if (requestedBy !== user.id) {
+    return NextResponse.json({ error: 'not allowed to update this candidate' }, { status: 403 });
+  }
+
   if (feedback === null) {
     await admin
       .from('identification_candidate_feedback')
@@ -116,7 +154,7 @@ export async function POST(
       user_confirmed: publicConfirmed(feedback),
     })
     .eq('id', candidateId)
-    .select('id, user_confirmed, user_feedback, ad_hoc_player_id, platform, handle')
+    .select('id, user_confirmed, user_feedback')
     .single();
   if (error || !data) {
     return NextResponse.json(
@@ -135,16 +173,13 @@ export async function POST(
     id: number;
     user_confirmed: boolean | null;
     user_feedback: CandidateFeedback | null;
-    ad_hoc_player_id: string | null;
-    platform: 'lichess' | 'chess.com';
-    handle: string;
   };
-  if (feedback === 'correct' && candRow.ad_hoc_player_id) {
+  if (feedback === 'correct' && candLookup.ad_hoc_player_id) {
     await recordAdHocConfirmation(
       admin,
-      candRow.ad_hoc_player_id,
-      candRow.platform,
-      candRow.handle,
+      candLookup.ad_hoc_player_id,
+      candLookup.platform,
+      candLookup.handle,
       user.id,
       candidateId,
     );
