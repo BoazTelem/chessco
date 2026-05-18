@@ -31,26 +31,35 @@ case into a full preparation report without the user lifting a finger.
 
 ## Source inventory
 
-| Source                       | Coverage                                                                  | Access                                                                       | ToS posture                                                           | Effort                                         |
-| ---------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------------- |
-| **TWIC (The Week in Chess)** | Weekly tournament dumps, covers all elite + most titled events            | Free zip downloads of `.pgn` files per issue (1,000+ weekly issues archived) | Open re-use with attribution per Mark Crowther's standing policy      | Low (HTTP fetch, no auth, no anti-bot)         |
-| **chessgames.com**           | Historical games of ~280k players (legends + active masters)              | HTML player pages, `/perl/chessgame?gid=...` per-game with download button   | Free use with attribution per their site; no API; rate-limit politely | Medium (HTML scrape, has anti-bot if hammered) |
-| **365chess.com**             | ~9M games, player pages                                                   | HTML player pages, per-game PGN export                                       | No formal policy; respect robots.txt                                  | Medium (HTML scrape)                           |
-| **ChessTempo**               | Player game database with PGN download                                    | Requires login for bulk; per-game PGN is free                                | Free for personal use; bulk requires paid tier                        | Medium-high (auth flow)                        |
-| **ChessBase Online**         | Live broadcasts + player profiles via `live.chessbase.com/profile?id=...` | Anti-bot (Cloudflare); Playwright needed                                     | Restrictive ToS — scraping prohibited; need explicit BD conversation  | High (Playwright + cookies)                    |
-| **chess-results.com**        | Tournament pairings + games                                               | Per-tournament HTML; anti-bot                                                | Tournament organizer permission expected per ToS                      | High (Playwright)                              |
-| **ChessBase MegaBase**       | ~10M curated games                                                        | One-off paid download (~€200)                                                | License permits internal use; redistribution prohibited               | Low ingest, high cost                          |
+> **Reality check (2026-05-18):** When we actually probed each source we
+> found that several "Medium effort" rows in the original plan are actually
+> blocked at the policy or anti-bot level. Source ordering revised; the two
+> viable Phase-1 sources are TWIC and Lichess broadcasts.
 
-**Recommended start order (yield per effort):**
+| Source                       | Coverage                                                                  | Access status (probed 2026-05-18)                                                                                                 | Effort        |
+| ---------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| **TWIC (The Week in Chess)** | Weekly tournament dumps, covers all elite + most titled events            | ✅ Open. Free zip downloads of `.pgn` per issue. Pipeline shipped Phase 1 steps 1–5.                                              | Low           |
+| **Lichess broadcasts**       | Live + archived elite tournament broadcasts on lichess.org                | ✅ Open. `/api/broadcast` + per-round PGN. Worker landed 2026-05-18 (`598d36b`).                                                  | Low           |
+| **chessgames.com**           | Historical games of ~280k players (legends + active masters)              | ❌ **robots.txt disallows** `/perl/pgndownload`, `/perl/printgame`, `/pgn/`. Player pages allowed but PGN paths off-limits.       | Skip          |
+| **365chess.com**             | ~9M games, player pages                                                   | ❌ Cloudflare-protected. Even `/robots.txt` returns a managed-challenge page. Playwright + interactive JS required.               | Defer         |
+| **ChessTempo**               | Player game database with PGN download                                    | ⚠️ Requires login for bulk; per-game free. Paid tier for API.                                                                     | Defer         |
+| **ChessBase Online**         | Live broadcasts + player profiles via `live.chessbase.com/profile?id=...` | ❌ Anti-bot (Cloudflare). ToS prohibits scraping.                                                                                 | BD only       |
+| **chess-results.com**        | Tournament pairings + games                                               | ❌ Anti-bot. Organiser permission expected per ToS.                                                                               | BD only       |
+| **ChessBase MegaBase**       | ~10M curated games                                                        | 💰 One-off paid download (~€200). License permits internal use; redistribution prohibited. Best candidate for historical breadth. | Paid one-shot |
 
-1. **TWIC** — open, easy, covers ~95% of elite tournament play. One scraper
-   handles 30+ years of weekly issues. Build first.
-2. **chessgames.com** — covers historical breadth and ratings 2400+ well.
-   Single-source for hard-to-find legacy games.
-3. **ChessBase MegaBase** — one-off €200 spend, ~10M games imported in one
-   batch. Decide once TWIC + chessgames numbers are in.
-4. Defer ChessBase Online + chess-results.com to Phase 2; both need
-   Playwright + BD-style negotiation.
+**Revised start order (post-probe):**
+
+1. **TWIC** — Phase 1 shipped end-to-end (`6746e69`). Backfill issues
+   1500–1521 in flight; full archive ~520 issues × ~10k games each available.
+2. **Lichess broadcasts** — Worker shipped by parallel commit `598d36b`.
+   Same `external_pgn_sources` staging table; same downstream resolver +
+   fingerprint pipeline picks it up automatically.
+3. **ChessBase MegaBase one-shot** — Decision gate after the TWIC backfill
+   completes and we measure the FIDE-player coverage delta. €200 worth it
+   only if historical breadth (pre-2014 games TWIC missed) is the gap.
+4. **chess-results.com / chessbase.com / 365chess.com** — Playwright + BD
+   pushes. Hold until the open-source pipeline (TWIC + broadcasts) hits
+   its natural ceiling.
 
 ## Architecture
 
@@ -146,24 +155,42 @@ delivers a _usable_ result (vs. just an identified handle).
 get auto-loaded fingerprints, regardless of whether they have a
 chess.com/lichess account.
 
-### Phase 2 — chessgames.com (2 weeks after Phase 1 lands)
+### Phase 2 — Lichess broadcasts (parallel-landed)
 
-1. Worker: `external-pgn:chessgames` — paginate player pages, throttled
-   (3s gap, no concurrency to be polite). Cache resolved FIDE links.
-2. Backfill: top 2,000 FIDE-2400+ players by rating.
-3. Coverage delta on /benchmarks.
+Replaces the originally-planned chessgames.com phase (blocked by their
+robots.txt — see Source inventory). Lichess broadcasts cover the same
+elite-tournament audience as TWIC but with a different cadence: live
+events appear on lichess.org as broadcasts before TWIC publishes its
+weekly digest, giving us up-to-the-hour coverage of major events.
 
-### Phase 3 — ChessBase MegaBase (one-shot, 1 week)
+Status: worker shipped as `external:broadcasts:list` +
+`external:broadcasts:ingest` in commit `598d36b` (2026-05-18). Uses the
+same `external_pgn_sources` staging table, so the downstream resolver +
+games-table ingester + FIDE-fingerprint builder all pick it up
+automatically.
 
-1. €200 license. Decision gate after Phase 1+2 — only spend if the
-   yield curve looks worth it.
+Next steps:
+
+1. Backfill: list all archived broadcasts, ingest each round.
+2. Coverage delta on /benchmarks once paired with TWIC.
+
+### Phase 3 — ChessBase MegaBase (one-shot)
+
+1. €200 license. Decision gate after Phase 1+2 — only spend if historical
+   breadth (pre-2014 games TWIC missed) is the gap.
 2. One-shot import script: parse the SCID/PGN export, dedupe against
-   what TWIC + chessgames already gave us.
+   what TWIC + Lichess broadcasts already gave us.
 
-### Phase 4+ — ChessBase Online, chess-results.com
+### Phase 4+ — Blocked sources (Playwright + BD)
 
-Playwright workstream. Hold until BD conversations open or we accept
-the legal posture.
+Sources marked ❌ in the inventory (chess-results.com, ChessBase Online,
+365chess.com, chessgames.com PGN paths) require either:
+
+- Playwright + cookie-handling + JS-challenge solver, OR
+- Business-development conversations with each site's operator.
+
+Hold until the open-source pipeline (TWIC + broadcasts + Megabase)
+reaches its natural ceiling, then re-evaluate cost vs. yield.
 
 ## UI copy / attribution discipline
 
