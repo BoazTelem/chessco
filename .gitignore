@@ -56,5 +56,7 @@ apps/workers/vendor/
 
 .vercel
 
-# Claude Code agent worktrees (transient isolated checkouts)
+# Claude Code local agent state (transient, per-machine)
 .claude/worktrees/
+.claude/*.lock
+.claude/settings.local.json
