@@ -266,23 +266,11 @@ function latestRefresh(
   return best;
 }
 
-function CoverageBar({ current, target, max }: { current: number; target: number; max: number }) {
-  const denom = Math.max(max, target, current, 1);
-  const fillPct = Math.min(100, (current / denom) * 100);
-  const targetPct = Math.min(100, (target / denom) * 100);
-  const reached = current >= target;
+function CoverageBar({ current }: { current: number }) {
+  const fillPct = Math.min(100, Math.max(0, current));
   return (
     <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
-      <div
-        className={`h-full ${reached ? 'bg-emerald-500/70' : 'bg-amber-500/70'}`}
-        style={{ width: `${fillPct}%` }}
-      />
-      <div
-        className="absolute top-0 h-full w-px bg-foreground/60"
-        style={{ left: `${targetPct}%` }}
-        title={`v1 target ${target}%`}
-        aria-label={`v1 target ${target}%`}
-      />
+      <div className="h-full bg-emerald-500/70" style={{ width: `${fillPct}%` }} />
     </div>
   );
 }
@@ -350,9 +338,8 @@ function HeroSection({
             <>
               <p className="mt-2 text-3xl font-semibold">{pct(tenGameRow.metrics.top1)}</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                If you can&apos;t find them by name, paste {tenGameRow.sample_size} of their games
-                and we name them on the first try this often ({pct(tenGameRow.metrics.top10)} in the
-                top 10).
+                Or paste {tenGameRow.sample_size} of their games — we name them on the first try
+                this often ({pct(tenGameRow.metrics.top10)} in the top 10).
               </p>
             </>
           ) : (
@@ -463,12 +450,6 @@ function FindStage({ indexStats }: { indexStats: Awaited<ReturnType<typeof getIn
             their games are already in the corpus the moment you search them. No PGN upload needed
             for those games.
           </p>
-          <p className="mt-3 text-xs text-muted-foreground">
-            Ingest worker:{' '}
-            <code className="rounded bg-muted px-1 py-0.5">
-              apps/workers/src/inngest/external-pgn-broadcasts.ts
-            </code>
-          </p>
         </div>
       </div>
     </section>
@@ -563,9 +544,7 @@ function CoverageBlock({ stats }: { stats: CoverageStats }) {
               <th className="px-4 py-3 font-medium">FIDE pool</th>
               <th className="px-4 py-3 font-medium">Claimed</th>
               <th className="px-4 py-3 font-medium">Coverage</th>
-              <th className="px-4 py-3 font-medium">v1 target</th>
-              <th className="px-4 py-3 font-medium">Max</th>
-              <th className="w-1/4 px-4 py-3 font-medium">Progress</th>
+              <th className="w-1/3 px-4 py-3 font-medium">Progress</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -580,14 +559,8 @@ function CoverageBlock({ stats }: { stats: CoverageStats }) {
                   </span>
                 </td>
                 <td className="px-4 py-3 font-medium">{tier.coverage_pct.toFixed(2)}%</td>
-                <td className="px-4 py-3 text-muted-foreground">{tier.v1_target_pct}%</td>
-                <td className="px-4 py-3 text-muted-foreground">{tier.realistic_max_pct}%</td>
                 <td className="px-4 py-3">
-                  <CoverageBar
-                    current={tier.coverage_pct}
-                    target={tier.v1_target_pct}
-                    max={tier.realistic_max_pct}
-                  />
+                  <CoverageBar current={tier.coverage_pct} />
                 </td>
               </tr>
             ))}
@@ -611,9 +584,9 @@ function CascadeBlock({ benchmark }: { benchmark: SparseBenchmark }) {
         <div>
           <h3 className="font-display text-lg font-semibold">PGN-search accuracy by sample size</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            For {num(benchmark.total_targets)} random fingerprinted handles we sample N games and
-            ask the cascade to identify the target. {num(corpusTotal)} handles fingerprinted across
-            chess.com + Lichess.
+            For {num(benchmark.total_targets)} random players we hand the matcher N of their games
+            and check whether it names them. {num(corpusTotal)} players indexed across chess.com +
+            Lichess.
           </p>
         </div>
         <UpdatedBadge iso={benchmark.finished_at ?? benchmark.ts} />
@@ -704,10 +677,8 @@ function CascadeBlock({ benchmark }: { benchmark: SparseBenchmark }) {
       ) : null}
 
       <p className="border-t border-border bg-card px-4 py-3 text-xs text-muted-foreground">
-        Methodology: Stage A SQL prefilter → Stage B term retrieval over{' '}
-        <code className="rounded bg-muted px-1 py-0.5">fingerprint_terms</code> → Stage C
-        combined-score re-rank. Last full run took {Math.round(benchmark.duration_seconds / 60)} min
-        on {num(benchmark.total_trials)} trials.
+        Last full run took {Math.round(benchmark.duration_seconds / 60)} min on{' '}
+        {num(benchmark.total_trials)} trials.
         {latest
           ? ` Current read at ${latest.sample_size} games: ${pct(latest.metrics.top1)} top-1, ${pct(
               latest.metrics.top10,
@@ -741,20 +712,16 @@ function TreeStage() {
 
       <div className="mt-6 grid gap-3 md:grid-cols-3">
         <Stat
-          label="Matcher depth"
-          value="12 plies"
-          detail="fast enough to fingerprint every handle in the corpus"
+          label="Matcher"
+          value="Shallow"
+          detail="Quick enough to fingerprint every player in the corpus (12 plies)."
         />
         <Stat
-          label="Prep UI depth"
-          value="30 plies"
-          detail="deep enough to play out a real opening line"
+          label="Prep view"
+          value="Deep"
+          detail="Deep enough to play out a real opening line (30 plies)."
         />
-        <Stat
-          label="Stored as"
-          value="JSONB"
-          detail="player_repertoires table; rebuilt on new games"
-        />
+        <Stat label="Refresh" value="Auto" detail="Rebuilds whenever new games come in." />
       </div>
 
       <p className="mt-6 text-sm text-muted-foreground">
@@ -763,10 +730,6 @@ function TreeStage() {
         <Link href="/prepare" className="text-accent hover:underline">
           See it on /prepare →
         </Link>
-      </p>
-      <p className="mt-2 text-xs text-muted-foreground">
-        Builder:{' '}
-        <code className="rounded bg-muted px-1 py-0.5">apps/workers/src/repertoires/build.ts</code>
       </p>
     </section>
   );
@@ -827,10 +790,6 @@ function LeaksStage() {
         <Link href="/prepare" className="text-accent hover:underline">
           See it on /prepare →
         </Link>
-      </p>
-      <p className="mt-2 text-xs text-muted-foreground">
-        Scoring engine:{' '}
-        <code className="rounded bg-muted px-1 py-0.5">apps/web/lib/leaks/score.ts</code>
       </p>
     </section>
   );
@@ -1150,7 +1109,7 @@ export default async function BenchmarksPage() {
       <TreeStage />
       <LeaksStage />
       <PracticeStage />
-      <EngineeringFooter legacy={legacy} />
+      {process.env.SHOW_DEV_BENCHMARKS === '1' ? <EngineeringFooter legacy={legacy} /> : null}
     </main>
   );
 }
