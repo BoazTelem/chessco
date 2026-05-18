@@ -33,7 +33,21 @@ import { getProseProvider } from './llm-providers';
 export interface ProseSubject {
   name: string;
   country?: string | null;
+  /** Hard FIDE rating from a federation_players row. Use this for
+   *  federation-anchored queries; leave null for ad-hoc anchors and use
+   *  `rating_estimate` instead. The LLM treats fide_rating as authoritative
+   *  ("FIDE 2150") and rating_estimate as user-supplied ("you said ~2150"). */
   fide_rating?: number | null;
+  /** Structured user-supplied rating estimate from an ad-hoc anchor. When
+   *  set, the prompt renders this with the explicit band + provenance so
+   *  the LLM can cite "you said 1900 ±100" instead of treating the
+   *  midpoint as a hard FIDE number. Workstream D differentiation pillar:
+   *  the LLM-narrated path explicitly references the user's input. */
+  rating_estimate?: {
+    value: number;
+    band_half_width: number | null;
+    source: 'user_estimate' | 'national_federation' | 'club' | 'self_reported';
+  } | null;
   title?: string | null;
   via: 'name' | 'sample_game';
 }
@@ -99,11 +113,18 @@ export async function generateRerankProse(
   const provider = getProseProvider();
   if (!provider) return emptyResult();
 
+  // Render the rating signal carefully — FIDE-anchored vs ad-hoc estimate
+  // have very different epistemic weight, and the LLM should cite each
+  // honestly. FIDE: "FIDE 2150". user_estimate with band: "user estimate
+  // ~1900 (±100)". user_estimate without band: "user estimate ~1900".
+  // Federation/club/self_reported sources get their own label so the LLM
+  // doesn't conflate them with hand-typed values.
+  const ratingLabel = renderRatingLabel(subject);
   const subjectLine = [
     subject.title,
     subject.name,
     subject.country ? `(${subject.country})` : null,
-    subject.fide_rating ? `FIDE ${subject.fide_rating}` : null,
+    ratingLabel,
   ]
     .filter(Boolean)
     .join(' ');
@@ -135,6 +156,20 @@ export async function generateRerankProse(
       ? 'from sample-game stylometric matching (opening repertoire + play quality)'
       : 'from name + country + rating fuzzy search';
 
+  const ratingGuidance = subject.rating_estimate
+    ? `- The subject's rating is a USER-SUPPLIED ESTIMATE${
+        subject.rating_estimate.band_half_width != null
+          ? ` with explicit band ±${subject.rating_estimate.band_half_width}`
+          : ''
+      }, not an authoritative FIDE rating. When citing it in prose, reference it as "you said ~${subject.rating_estimate.value}${
+        subject.rating_estimate.band_half_width != null
+          ? ` ±${subject.rating_estimate.band_half_width}`
+          : ''
+      }" — never as "FIDE ${subject.rating_estimate.value}". An online rating inside the band is a positive signal but softer than a FIDE match would be.`
+    : '';
+
+  const transliterationGuidance = `- Names may have script variations the algorithm couldn't match. Consider whether the subject's name could appear differently across scripts/languages (e.g. "Andrejkin / Андрейкин / Andreikin" Cyrillic↔Latin transliteration; "Wang Hao / 王浩" Chinese pinyin; "Hod / חוד" Hebrew). If a candidate's claimed_name looks like a plausible transliteration of the subject's name, treat it as a strong name-match signal even when trigram similarity is moderate.`;
+
   const prompt = `You're judging which online chess account belongs to a known player. The algorithm has already produced ranked candidates with per-signal scores. Your job is to (a) synthesize the evidence holistically and decide the best match, (b) re-rank the candidates by your judgment, and (c) write one short English sentence per candidate explaining the verdict.
 
 SUBJECT: ${subjectLine || subject.name}
@@ -148,6 +183,8 @@ Reasoning guidelines:
 - The candidates are pre-sorted by algorithmic_confidence (highest first). Default to that ordering and only override it when you have a SPECIFIC structured-signal reason — a unique strong signal one candidate has that another lacks (e.g., "rank #2 has seq-W=80% while rank #1 has 0%"). Do NOT swap candidates whose algorithmic scores are within 0.05 of each other unless you can point to a concrete signal that justifies it.
 - A higher percentage is always better than a lower one. Higher algorithmic_confidence means a better algorithmic match. When in doubt, trust the higher number.
 - Be honest about weak matches. If nothing looks right, set verdict.confidence = "low" and explain why.
+${ratingGuidance ? ratingGuidance + '\n' : ''}${transliterationGuidance}
+- Per-candidate prose: for the top match, explain why it IS them. For other candidates, write "why this isn't them" — the specific disqualifying signal (rating gap too large, country mismatch, claimed_name resolves to a different FIDE player, etc.). One sentence each, ≤25 words.
 
 Return STRICT JSON in this exact shape — no prose outside the JSON, no markdown:
 
@@ -155,7 +192,7 @@ Return STRICT JSON in this exact shape — no prose outside the JSON, no markdow
   "verdict": {
     "best_match": "<platform>/<handle>",
     "confidence": "high" | "medium" | "low",
-    "reasoning": "One paragraph synthesizing why this is the best match (or why no match is confident)."
+    "reasoning": "One paragraph synthesizing why this is the best match (or why no match is confident). When the subject has a user-supplied estimate, cite it as 'you said' rather than 'FIDE'."
   },
   "order": ["<platform>/<handle>", "<platform>/<handle>", ...],
   "prose": {
@@ -220,6 +257,35 @@ export async function generateEvidenceProse(
 ): Promise<Map<string, string>> {
   const result = await generateRerankProse(subject, candidates);
   return result.prose;
+}
+
+/**
+ * Render the rating signal for the subject line. FIDE-anchored queries get
+ * "FIDE 2150" (authoritative). Ad-hoc queries with rating_estimate get a
+ * provenance-aware label so the LLM can cite the user's input honestly
+ * rather than treating it as if it were a FIDE rating.
+ *
+ * Precedence: fide_rating wins when set (federation_players row exists);
+ * rating_estimate is the fallback for ad-hoc and any future federation/
+ * club/self-reported import paths.
+ */
+function renderRatingLabel(subject: ProseSubject): string | null {
+  if (subject.fide_rating) {
+    return `FIDE ${subject.fide_rating}`;
+  }
+  const re = subject.rating_estimate;
+  if (!re) return null;
+  const bandSuffix = re.band_half_width != null ? ` ±${re.band_half_width}` : '';
+  switch (re.source) {
+    case 'user_estimate':
+      return `user-supplied estimate ~${re.value}${bandSuffix}`;
+    case 'national_federation':
+      return `national-federation rating ${re.value}${bandSuffix}`;
+    case 'club':
+      return `club rating ${re.value}${bandSuffix}`;
+    case 'self_reported':
+      return `self-reported rating ${re.value}${bandSuffix}`;
+  }
 }
 
 /** Find the first `{ ... }` block in the text and JSON.parse it.

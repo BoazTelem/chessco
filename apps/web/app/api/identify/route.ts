@@ -373,15 +373,27 @@ async function handleAdHocStage2(
   }
 
   const persistedAlgo = candidates.slice(0, MAX_CANDIDATES_PERSISTED);
-  // Surface the user's rating estimate to the LLM rerank as `fide_rating` —
-  // ProseSubject doesn't model an explicit estimated-band yet (Workstream D
-  // will), but the rating midpoint is still a useful signal for the prose
-  // and the LLM's confidence assessment.
+  // Pass the structured rating_estimate (Workstream D): the LLM gets
+  // explicit user-supplied-band provenance and cites "you said ~1900 ±100"
+  // rather than "FIDE 1900". band_half_width is derived from the persisted
+  // band columns; we fall back to null when only the band was supplied
+  // without an estimate (unusual but defended for completeness).
+  const bandHalfWidth =
+    adHoc.rating_estimate != null && adHoc.rating_band_low != null && adHoc.rating_band_high != null
+      ? Math.round((adHoc.rating_band_high - adHoc.rating_band_low) / 2)
+      : null;
   const rerank = await generateRerankSafe(
     {
       name: adHoc.name,
       country: adHoc.country,
-      fide_rating: adHoc.rating_estimate,
+      rating_estimate:
+        adHoc.rating_estimate != null
+          ? {
+              value: adHoc.rating_estimate,
+              band_half_width: bandHalfWidth,
+              source: adHoc.rating_source ?? 'user_estimate',
+            }
+          : null,
       title: adHoc.title,
       via: 'name',
     },
@@ -527,10 +539,27 @@ async function handleSamplePgn(
     );
   }
 
+  // Federation anchor → fide_rating wins. Ad-hoc anchor → rating_estimate
+  // with structured band provenance so the LLM's prose cites "you said
+  // ~X" rather than fudging it into a FIDE number.
+  const sampleBandHalfWidth =
+    adHocAnchor?.rating_estimate != null &&
+    adHocAnchor.rating_band_low != null &&
+    adHocAnchor.rating_band_high != null
+      ? Math.round((adHocAnchor.rating_band_high - adHocAnchor.rating_band_low) / 2)
+      : null;
   const proseSubject: ProseSubject = {
     name: anchorPlayer?.name ?? adHocAnchor?.name ?? 'unknown subject',
     country: anchorPlayer?.country ?? adHocAnchor?.country ?? null,
-    fide_rating: anchorPlayer?.rating_standard ?? adHocAnchor?.rating_estimate ?? null,
+    fide_rating: anchorPlayer?.rating_standard ?? null,
+    rating_estimate:
+      anchorPlayer == null && adHocAnchor?.rating_estimate != null
+        ? {
+            value: adHocAnchor.rating_estimate,
+            band_half_width: sampleBandHalfWidth,
+            source: adHocAnchor.rating_source ?? 'user_estimate',
+          }
+        : null,
     title: anchorPlayer?.title ?? adHocAnchor?.title ?? null,
     via: 'sample_game',
   };
