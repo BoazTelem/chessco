@@ -7,6 +7,44 @@ on:
     branches: [main]
 
 jobs:
+  policy:
+    # Enforces docs/INCIDENT-2026-05-18-lichess-ip-block.md — bulk scrapers
+    # run from Cloud Run only. Cheap grep checks; runs in parallel with build.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Crawl runbooks keep their Cloud-Run-only banner
+        run: |
+          set -e
+          for f in docs/LICHESS-CRAWL-RUNBOOK.md docs/CHESSCOM-CRAWL-RUNBOOK.md; do
+            if ! grep -q "Production runs ONLY from Cloud Run" "$f"; then
+              echo "::error file=$f::Cloud-Run-only banner missing. See docs/INCIDENT-2026-05-18-lichess-ip-block.md."
+              exit 1
+            fi
+          done
+
+      - name: No local crawl-loop wrappers
+        run: |
+          set -e
+          matches=$(find apps/workers/scripts -maxdepth 1 -type f -iname '*crawl-loop*' 2>/dev/null || true)
+          if [ -n "$matches" ]; then
+            echo "::error::Local crawl-loop wrappers are forbidden (see docs/INCIDENT-2026-05-18-lichess-ip-block.md):"
+            echo "$matches"
+            exit 1
+          fi
+
+      - name: Crawl runbooks don't reintroduce "Local-first" tagline
+        run: |
+          set -e
+          matches=$(grep -nE '^[^>]*[Ll]ocal-first' docs/LICHESS-CRAWL-RUNBOOK.md docs/CHESSCOM-CRAWL-RUNBOOK.md || true)
+          if [ -n "$matches" ]; then
+            echo "::error::Crawl runbooks must not describe themselves as 'Local-first' (lines outside blockquotes):"
+            echo "$matches"
+            exit 1
+          fi
+
   build:
     runs-on: ubuntu-latest
     steps:
