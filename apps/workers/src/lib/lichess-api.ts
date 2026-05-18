@@ -16,7 +16,7 @@
 import { Readable } from 'node:stream';
 
 export const LICHESS_API_BASE = 'https://lichess.org/api';
-const USER_AGENT = 'chessco-worker/0.1 (+https://chessco.org)';
+const USER_AGENT = 'chessco-worker/0.1 (+https://chessco.org; contact: btelem@gmail.com)';
 
 /** Optional Lichess personal API token (created at
  *  lichess.org/account/oauth/token/create). When set, we send it as a
