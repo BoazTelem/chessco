@@ -44,7 +44,8 @@ function parseArgs(argv: string[]): CliArgs {
   const out: CliArgs = { source: null, issue: null, maxRows: null, dryRun: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--source' && argv[i + 1]) out.source = argv[++i]!;
+    if (a === '--') continue;
+    else if (a === '--source' && argv[i + 1]) out.source = argv[++i]!;
     else if (a === '--issue' && argv[i + 1]) out.issue = argv[++i]!;
     else if (a === '--max-rows' && argv[i + 1]) out.maxRows = Number.parseInt(argv[++i]!, 10);
     else if (a === '--dry-run') out.dryRun = true;
@@ -57,9 +58,11 @@ function fmt(n: number): string {
   return n.toLocaleString();
 }
 
+type ExternalSource = 'twic' | 'lichess_broadcast';
+
 interface PendingRow {
   id: string;
-  source: 'twic'; // tighten as new sources land
+  source: ExternalSource;
   source_url: string;
   raw_pgn: string;
 }
@@ -149,18 +152,19 @@ async function backLinkGameIds(
  *  source_game_id → game_id map in its return value). */
 async function lookupGameIds(
   sql: postgres.Sql,
-  source: string,
-  sourceGameIds: string[],
+  pairs: Array<{ source: ExternalSource; source_game_id: string }>,
 ): Promise<Map<string, string>> {
-  if (sourceGameIds.length === 0) return new Map();
-  const rows = await sql<{ id: string; source_game_id: string }[]>`
-    SELECT id::text, source_game_id
-    FROM games
-    WHERE source = ${source}
-      AND source_game_id = ANY(${sourceGameIds}::text[])
+  if (pairs.length === 0) return new Map();
+  const rows = await sql<{ id: string; source: ExternalSource; source_game_id: string }[]>`
+    SELECT g.id::text, g.source, g.source_game_id
+    FROM games g
+    JOIN jsonb_to_recordset(${JSON.stringify(pairs)}::jsonb)
+      AS r(source text, source_game_id text)
+      ON g.source = r.source
+     AND g.source_game_id = r.source_game_id
   `;
   const map = new Map<string, string>();
-  for (const r of rows) map.set(r.source_game_id, r.id);
+  for (const r of rows) map.set(`${r.source}:${r.source_game_id}`, r.id);
   return map;
 }
 
@@ -210,16 +214,14 @@ async function main(): Promise<void> {
       const batch = valid.map((v) => v.processed);
       const stats = await ingestBatch(games.client, batch);
 
-      const sourceGameIds = valid.map((v) => v.row.source_url);
       const gameIdMap = await lookupGameIds(
         games.client,
-        valid[0]?.row.source ?? 'twic',
-        sourceGameIds,
+        valid.map((v) => ({ source: v.row.source, source_game_id: v.row.source_url })),
       );
 
       const backLinks = valid
         .map((v) => {
-          const gameId = gameIdMap.get(v.row.source_url);
+          const gameId = gameIdMap.get(`${v.row.source}:${v.row.source_url}`);
           if (!gameId) return null;
           return { external_id: v.row.id, game_id: gameId };
         })

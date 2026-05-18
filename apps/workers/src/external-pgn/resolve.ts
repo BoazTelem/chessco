@@ -55,7 +55,8 @@ function parseArgs(argv: string[]): CliArgs {
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--source' && argv[i + 1]) out.source = argv[++i]!;
+    if (a === '--') continue;
+    else if (a === '--source' && argv[i + 1]) out.source = argv[++i]!;
     else if (a === '--issue' && argv[i + 1]) out.issue = argv[++i]!;
     else if (a === '--max-names' && argv[i + 1]) out.maxNames = Number.parseInt(argv[++i]!, 10);
     else if (a === '--min-similarity' && argv[i + 1])
@@ -282,8 +283,14 @@ async function main(): Promise<void> {
         `black_fide_id: ${fmt(blackTouched)}`,
     );
 
-    const marked = await markResolvedAt(games.client, args);
-    console.log(`[resolve-fide] marked fide_resolved_at on ${fmt(marked)} rows`);
+    const marked = args.maxNames === null ? await markResolvedAt(games.client, args) : 0;
+    if (args.maxNames === null) {
+      console.log(`[resolve-fide] marked fide_resolved_at on ${fmt(marked)} rows`);
+    } else {
+      console.log(
+        '[resolve-fide] skipped fide_resolved_at marking because --max-names is a partial pass',
+      );
+    }
 
     const totalDt = ((Date.now() - t0) / 1000).toFixed(1);
     console.log(`\n[resolve-fide] DONE in ${totalDt}s`);

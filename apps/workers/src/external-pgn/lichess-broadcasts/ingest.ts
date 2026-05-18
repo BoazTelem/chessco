@@ -66,7 +66,9 @@ function parseArgs(argv: string[]): CliArgs {
   const out: CliArgs = { tour: null, round: null, maxGames: null, dryRun: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--tour' && argv[i + 1]) {
+    if (a === '--') {
+      continue;
+    } else if (a === '--tour' && argv[i + 1]) {
       out.tour = argv[++i]!;
     } else if (a === '--round' && argv[i + 1]) {
       out.round = argv[++i]!;

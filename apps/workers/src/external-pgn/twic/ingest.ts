@@ -46,7 +46,9 @@ function parseArgs(argv: string[]): CliArgs {
   const out: CliArgs = { issues: [], maxGames: null, dryRun: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--issue' && argv[i + 1]) {
+    if (a === '--') {
+      continue;
+    } else if (a === '--issue' && argv[i + 1]) {
       out.issues.push(Number.parseInt(argv[++i]!, 10));
     } else if (a === '--issues' && argv[i + 1]) {
       out.issues.push(

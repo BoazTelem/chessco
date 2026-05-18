@@ -54,7 +54,9 @@ function parseArgs(argv: string[]): CliArgs {
   const out: CliArgs = { nb: 20, top: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--nb' && argv[i + 1]) {
+    if (a === '--') {
+      continue;
+    } else if (a === '--nb' && argv[i + 1]) {
       out.nb = Number.parseInt(argv[++i]!, 10);
     } else if (a === '--top') {
       out.top = true;

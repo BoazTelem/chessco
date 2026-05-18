@@ -62,7 +62,8 @@ function parseArgs(argv: string[]): CliArgs {
   const out: CliArgs = { minGames: DEFAULT_MIN_GAMES, source: null, fideId: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--min-games' && argv[i + 1]) out.minGames = Number.parseInt(argv[++i]!, 10);
+    if (a === '--') continue;
+    else if (a === '--min-games' && argv[i + 1]) out.minGames = Number.parseInt(argv[++i]!, 10);
     else if (a === '--source' && argv[i + 1]) out.source = argv[++i]!;
     else if (a === '--fide-id' && argv[i + 1]) out.fideId = argv[++i]!;
     else throw new Error(`Unknown arg: ${a}`);
