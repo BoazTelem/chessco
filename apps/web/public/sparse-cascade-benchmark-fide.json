@@ -1,0 +1,267 @@
+{
+  "version": "v1",
+  "ts": "2026-05-18T14:42:29.023Z",
+  "finished_at": "2026-05-18T15:01:56.230Z",
+  "duration_seconds": 1166,
+  "config": {
+    "platform": "fide",
+    "limit": 100,
+    "sample_sizes": [3, 5, 10, 20],
+    "seeds": [1, 2],
+    "top_k": 50
+  },
+  "corpus_size": {
+    "chess.com": 14884,
+    "fide": 6091,
+    "lichess": 32885
+  },
+  "total_targets": 100,
+  "total_trials": 800,
+  "metrics_by_sample_size": [
+    {
+      "sample_size": 3,
+      "metrics": {
+        "trials": 200,
+        "top1": 0.36,
+        "top3": 0.48,
+        "top10": 0.645,
+        "median_rank": 4.5,
+        "mrr": 0.4437318409019968
+      }
+    },
+    {
+      "sample_size": 5,
+      "metrics": {
+        "trials": 200,
+        "top1": 0.685,
+        "top3": 0.78,
+        "top10": 0.885,
+        "median_rank": 1,
+        "mrr": 0.7488558395308396
+      }
+    },
+    {
+      "sample_size": 10,
+      "metrics": {
+        "trials": 200,
+        "top1": 0.97,
+        "top3": 0.985,
+        "top10": 0.985,
+        "median_rank": 1,
+        "mrr": 0.9775
+      }
+    },
+    {
+      "sample_size": 20,
+      "metrics": {
+        "trials": 200,
+        "top1": 1,
+        "top3": 1,
+        "top10": 1,
+        "median_rank": 1,
+        "mrr": 1
+      }
+    }
+  ],
+  "metrics_by_tier": {
+    "premium": [
+      {
+        "sample_size": 3,
+        "metrics": {
+          "trials": 30,
+          "top1": 0.26666666666666666,
+          "top3": 0.3333333333333333,
+          "top10": 0.5666666666666667,
+          "median_rank": 7.5,
+          "mrr": 0.3431464477607129
+        }
+      },
+      {
+        "sample_size": 5,
+        "metrics": {
+          "trials": 30,
+          "top1": 0.7,
+          "top3": 0.8666666666666667,
+          "top10": 0.9333333333333333,
+          "median_rank": 1,
+          "mrr": 0.7879409171075837
+        }
+      },
+      {
+        "sample_size": 10,
+        "metrics": {
+          "trials": 30,
+          "top1": 1,
+          "top3": 1,
+          "top10": 1,
+          "median_rank": 1,
+          "mrr": 1
+        }
+      },
+      {
+        "sample_size": 20,
+        "metrics": {
+          "trials": 30,
+          "top1": 1,
+          "top3": 1,
+          "top10": 1,
+          "median_rank": 1,
+          "mrr": 1
+        }
+      }
+    ],
+    "main": [
+      {
+        "sample_size": 3,
+        "metrics": {
+          "trials": 140,
+          "top1": 0.37142857142857144,
+          "top3": 0.4928571428571429,
+          "top10": 0.65,
+          "median_rank": 4,
+          "mrr": 0.45457682436684754
+        }
+      },
+      {
+        "sample_size": 5,
+        "metrics": {
+          "trials": 140,
+          "top1": 0.6571428571428571,
+          "top3": 0.75,
+          "top10": 0.8714285714285714,
+          "median_rank": 1,
+          "mrr": 0.7245776921491207
+        }
+      },
+      {
+        "sample_size": 10,
+        "metrics": {
+          "trials": 140,
+          "top1": 0.9714285714285714,
+          "top3": 0.9857142857142858,
+          "top10": 0.9857142857142858,
+          "median_rank": 1,
+          "mrr": 0.9785714285714285
+        }
+      },
+      {
+        "sample_size": 20,
+        "metrics": {
+          "trials": 140,
+          "top1": 1,
+          "top3": 1,
+          "top10": 1,
+          "median_rank": 1,
+          "mrr": 1
+        }
+      }
+    ],
+    "open": [
+      {
+        "sample_size": 3,
+        "metrics": {
+          "trials": 30,
+          "top1": 0.4,
+          "top3": 0.5666666666666667,
+          "top10": 0.7,
+          "median_rank": 2.5,
+          "mrr": 0.4937073112073112
+        }
+      },
+      {
+        "sample_size": 5,
+        "metrics": {
+          "trials": 30,
+          "top1": 0.8,
+          "top3": 0.8333333333333334,
+          "top10": 0.9,
+          "median_rank": 1,
+          "mrr": 0.8230687830687831
+        }
+      },
+      {
+        "sample_size": 10,
+        "metrics": {
+          "trials": 30,
+          "top1": 0.9333333333333333,
+          "top3": 0.9666666666666667,
+          "top10": 0.9666666666666667,
+          "median_rank": 1,
+          "mrr": 0.95
+        }
+      },
+      {
+        "sample_size": 20,
+        "metrics": {
+          "trials": 30,
+          "top1": 1,
+          "top3": 1,
+          "top10": 1,
+          "median_rank": 1,
+          "mrr": 1
+        }
+      }
+    ],
+    "unknown": [
+      {
+        "sample_size": 3,
+        "metrics": {
+          "trials": 0,
+          "top1": 0,
+          "top3": 0,
+          "top10": 0,
+          "median_rank": null,
+          "mrr": 0
+        }
+      },
+      {
+        "sample_size": 5,
+        "metrics": {
+          "trials": 0,
+          "top1": 0,
+          "top3": 0,
+          "top10": 0,
+          "median_rank": null,
+          "mrr": 0
+        }
+      },
+      {
+        "sample_size": 10,
+        "metrics": {
+          "trials": 0,
+          "top1": 0,
+          "top3": 0,
+          "top10": 0,
+          "median_rank": null,
+          "mrr": 0
+        }
+      },
+      {
+        "sample_size": 20,
+        "metrics": {
+          "trials": 0,
+          "top1": 0,
+          "top3": 0,
+          "top10": 0,
+          "median_rank": null,
+          "mrr": 0
+        }
+      }
+    ]
+  },
+  "tier_counts": {
+    "premium": 120,
+    "open": 120,
+    "main": 560
+  },
+  "guidance": {
+    "quick_scan": 3,
+    "recommended": 5,
+    "high_confidence": 10,
+    "rules": {
+      "quick_scan": "smallest sample size with top-10 accuracy >= 50%",
+      "recommended": "smallest sample size with top-3 accuracy >= 70%",
+      "high_confidence": "smallest sample size with top-1 accuracy >= 75%"
+    }
+  }
+}
