@@ -55,3 +55,6 @@ Thumbs.db
 apps/workers/vendor/
 
 .vercel
+
+# Claude Code agent worktrees (transient isolated checkouts)
+.claude/worktrees/
