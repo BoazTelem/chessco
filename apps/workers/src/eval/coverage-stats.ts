@@ -205,6 +205,28 @@ async function main(): Promise<void> {
     `;
     const titledTotal = Number.parseInt(titledTotalRow[0]?.n ?? '0', 10);
 
+    // Prep audience = FIDE-rated 1400+ ∪ chess.com 1500+ ∪ Lichess 1800+
+    // (see memory: prep-audience-naming). v1 pool = FIDE-rated 1400+ only;
+    // chess.com/Lichess online-native pools land once their leaderboard probes
+    // are wired. Audience claimed = distinct federation_players ≥1400 with ≥1
+    // platform claim — i.e. cross-tier roll-up so the headline doesn't cherry-
+    // pick the titled band like the 52.7% number did.
+    const audienceClaimedRow = await sql<{ n: string }[]>`
+      SELECT COUNT(DISTINCT pp.claimed_federation_player_id)::text AS n
+      FROM platform_players pp
+      WHERE pp.claimed_federation_player_id IN (
+        SELECT id FROM federation_players WHERE rating_standard >= 1400
+      )
+    `;
+    const audienceClaimed = Number.parseInt(audienceClaimedRow[0]?.n ?? '0', 10);
+    const audienceCoverage = fideTotal > 0 ? (audienceClaimed / fideTotal) * 100 : 0;
+    console.log(
+      `  · ${'Prep audience (FIDE-rated 1400+)'.padEnd(38)} ` +
+        `pool=${fmt(fideTotal).padStart(7)} ` +
+        `claimed=${fmt(audienceClaimed).padStart(6)} ` +
+        `cov=${audienceCoverage.toFixed(2)}%`,
+    );
+
     const artifact = {
       as_of: new Date().toISOString(),
       methodology:
@@ -215,6 +237,12 @@ async function main(): Promise<void> {
         fide_pool_1400_plus: fideTotal,
         titled_pool: titledTotal,
         platforms,
+      },
+      audience: {
+        label: 'Prep audience (v1: FIDE-rated 1400+)',
+        pool: fideTotal,
+        claimed: audienceClaimed,
+        coverage_pct: Number(audienceCoverage.toFixed(2)),
       },
       tiers: tierResults,
     };

@@ -71,8 +71,41 @@ type CoverageStats = {
     titled_pool: number;
     platforms: Record<string, { matchable: number; claimed: number }>;
   };
+  /** Prep audience aggregate. Optional for backward-compat with artifacts written
+   *  before the audience block was added (computed from tiers below if absent). */
+  audience?: {
+    label: string;
+    pool: number;
+    claimed: number;
+    coverage_pct: number;
+  };
   tiers: CoverageTier[];
 };
+
+/** Sum of distinct claimed across non-overlapping FIDE rating bands ÷ 1400+ pool.
+ *  Used when the artifact predates the `audience` block. The four FIDE bands
+ *  (2200+ / 2000-2199 / 1800-1999 / 1400-1799) are mutually exclusive, so
+ *  summing claimed_total counts distinct FIDE players. The Titled axis is
+ *  intentionally excluded (it overlaps with 2200+). */
+function deriveAudience(coverage: CoverageStats): {
+  pool: number;
+  claimed: number;
+  coverage_pct: number;
+} {
+  if (coverage.audience) {
+    return {
+      pool: coverage.audience.pool,
+      claimed: coverage.audience.claimed,
+      coverage_pct: coverage.audience.coverage_pct,
+    };
+  }
+  const pool = coverage.totals.fide_pool_1400_plus;
+  const claimed = coverage.tiers
+    .filter((t) => !t.label.toLowerCase().startsWith('titled'))
+    .reduce((acc, t) => acc + t.claimed_total, 0);
+  const coverage_pct = pool > 0 ? Number(((claimed / pool) * 100).toFixed(2)) : 0;
+  return { pool, claimed, coverage_pct };
+}
 
 type SparseMetrics = {
   trials: number;
@@ -268,6 +301,7 @@ function HeroSection({
   refresh: string | null;
 }) {
   const titledTier = coverage?.tiers.find((t) => t.label.toLowerCase().startsWith('titled'));
+  const audience = coverage ? deriveAudience(coverage) : null;
   const tenGameRow =
     sparse?.metrics_by_sample_size.find((r) => r.sample_size === 10) ??
     sparse?.metrics_by_sample_size.at(-1) ??
@@ -294,19 +328,35 @@ function HeroSection({
         <StagePill n={4} title="Prepare" href="#stage-practice" />
       </div>
 
-      <div className="mt-8 grid gap-3 md:grid-cols-3">
+      <div className="mt-8 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-md border border-accent/40 bg-accent/5 p-4">
-          <p className="text-xs uppercase tracking-wide text-accent">Name search coverage</p>
-          {titledTier ? (
+          <p className="text-xs uppercase tracking-wide text-accent">Prep audience coverage</p>
+          {audience ? (
             <>
-              <p className="mt-2 text-3xl font-semibold">{titledTier.coverage_pct.toFixed(1)}%</p>
+              <p className="mt-2 text-3xl font-semibold">{audience.coverage_pct.toFixed(1)}%</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                of titled FIDE players mapped to an online account · we track every rating band, not
-                just titles. See the full tier table below.
+                of ~{num(audience.pool)} FIDE-rated 1400+ players bridged to an online account · the
+                Prep audience also includes chess.com 1500+ and Lichess 1800+ once those pools wire
+                in. See the full tier table below.
               </p>
             </>
           ) : (
             <p className="mt-2 text-sm text-muted-foreground">Coverage benchmark pending.</p>
+          )}
+        </div>
+
+        <div className="rounded-md border border-border bg-card p-4">
+          <p className="text-xs uppercase tracking-wide text-foreground">Titled coverage</p>
+          {titledTier ? (
+            <>
+              <p className="mt-2 text-3xl font-semibold">{titledTier.coverage_pct.toFixed(1)}%</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                of {num(titledTier.fide_pool)} titled FIDE players (GM/IM/FM/CM/W—) — a subset of
+                the Prep audience where pipelines started; v1 target {titledTier.v1_target_pct}%.
+              </p>
+            </>
+          ) : (
+            <p className="mt-2 text-sm text-muted-foreground">Titled benchmark pending.</p>
           )}
         </div>
 

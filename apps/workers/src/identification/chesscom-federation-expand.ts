@@ -52,6 +52,17 @@ import {
 import { hypothesizeHandles } from './hypothesize';
 
 const DEFAULT_TOP_N = 10;
+/**
+ * Default rating floor for hypothesis generation. Kept at 2000 for operational
+ * sanity — at chess.com's ~200 ms-per-unknown-handle rate, a full FIDE 2000+
+ * pass is ~5–7 hours. The full **Prep audience** floor is 1500 (memory:
+ * prep-audience-naming = FIDE-rated 1400+ ∪ chess.com 1500+ ∪ Lichess 1800+);
+ * lowering the default would silently turn this into a multi-day job for any
+ * future operator who doesn't pass `--min-rating`.
+ *
+ * To cover the full Prep audience: pass `--min-rating 1500` and chunk with
+ * `--country US` (etc.) so the run is resumable and observable.
+ */
 const DEFAULT_MIN_RATING = 2000;
 
 interface CliArgs {
