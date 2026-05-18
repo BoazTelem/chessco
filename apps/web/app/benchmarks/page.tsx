@@ -300,7 +300,6 @@ function HeroSection({
   sparse: SparseBenchmark | null;
   refresh: string | null;
 }) {
-  const titledTier = coverage?.tiers.find((t) => t.label.toLowerCase().startsWith('titled'));
   const audience = coverage ? deriveAudience(coverage) : null;
   const tenGameRow =
     sparse?.metrics_by_sample_size.find((r) => r.sample_size === 10) ??
@@ -328,16 +327,15 @@ function HeroSection({
         <StagePill n={4} title="Prepare" href="#stage-practice" />
       </div>
 
-      <div className="mt-8 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-8 grid gap-3 md:grid-cols-3">
         <div className="rounded-md border border-accent/40 bg-accent/5 p-4">
-          <p className="text-xs uppercase tracking-wide text-accent">Prep audience coverage</p>
+          <p className="text-xs uppercase tracking-wide text-accent">Coverage</p>
           {audience ? (
             <>
               <p className="mt-2 text-3xl font-semibold">{audience.coverage_pct.toFixed(1)}%</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                of ~{num(audience.pool)} FIDE-rated 1400+ players bridged to an online account · the
-                Prep audience also includes chess.com 1500+ and Lichess 1800+ once those pools wire
-                in. See the full tier table below.
+                of ~{num(audience.pool)} tournament players matched to a chess.com or Lichess
+                account. Search by name and you&apos;ll usually find them.
               </p>
             </>
           ) : (
@@ -346,28 +344,14 @@ function HeroSection({
         </div>
 
         <div className="rounded-md border border-border bg-card p-4">
-          <p className="text-xs uppercase tracking-wide text-foreground">Titled coverage</p>
-          {titledTier ? (
-            <>
-              <p className="mt-2 text-3xl font-semibold">{titledTier.coverage_pct.toFixed(1)}%</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                of {num(titledTier.fide_pool)} titled FIDE players (GM/IM/FM/CM/W—) — a subset of
-                the Prep audience where pipelines started; v1 target {titledTier.v1_target_pct}%.
-              </p>
-            </>
-          ) : (
-            <p className="mt-2 text-sm text-muted-foreground">Titled benchmark pending.</p>
-          )}
-        </div>
-
-        <div className="rounded-md border border-border bg-card p-4">
-          <p className="text-xs uppercase tracking-wide text-foreground">PGN benchmark accuracy</p>
+          <p className="text-xs uppercase tracking-wide text-foreground">Identified from PGN</p>
           {tenGameRow ? (
             <>
               <p className="mt-2 text-3xl font-semibold">{pct(tenGameRow.metrics.top1)}</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                top-1 account identified from {tenGameRow.sample_size} sampled games ·{' '}
-                {pct(tenGameRow.metrics.top10)} top-10.
+                of the time we name your opponent on the first try from just{' '}
+                {tenGameRow.sample_size} of their games — {pct(tenGameRow.metrics.top10)} land in
+                the top 10.
               </p>
             </>
           ) : (
@@ -376,7 +360,7 @@ function HeroSection({
         </div>
 
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-4">
-          <p className="text-xs uppercase tracking-wide text-emerald-300">Daily refresh</p>
+          <p className="text-xs uppercase tracking-wide text-emerald-300">Last refresh</p>
           {refresh ? (
             <>
               <p className="mt-2 text-2xl font-semibold">
@@ -387,16 +371,13 @@ function HeroSection({
                 })}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Coverage and PGN accuracy re-run nightly (
-                <code className="rounded bg-muted px-1 py-0.5 text-[10px]">eval:coverage</code>
-                {' + '}
-                <code className="rounded bg-muted px-1 py-0.5 text-[10px]">eval:cascade</code>) and
-                committed to this page.
+                These numbers re-measure every night, so what you see here is yesterday&apos;s
+                truth, not a marketing screenshot from last quarter.
               </p>
             </>
           ) : (
             <p className="mt-2 text-sm text-muted-foreground">
-              Nightly refresh wires through .github/workflows/daily-benchmarks.yml.
+              Numbers re-measure nightly so this page stays honest.
             </p>
           )}
         </div>
@@ -733,7 +714,14 @@ function TreeStage() {
         />
       </div>
 
-      <p className="mt-6 text-xs text-muted-foreground">
+      <p className="mt-6 text-sm text-muted-foreground">
+        The 30-ply tree, split by color and recency-weighted, is what you walk through in the prep
+        UI.{' '}
+        <Link href="/prepare" className="text-accent hover:underline">
+          See it on /prepare →
+        </Link>
+      </p>
+      <p className="mt-2 text-xs text-muted-foreground">
         Builder:{' '}
         <code className="rounded bg-muted px-1 py-0.5">apps/workers/src/repertoires/build.ts</code>
       </p>
