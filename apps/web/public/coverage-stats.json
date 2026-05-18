@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-05-18T00:53:15.462Z",
+  "as_of": "2026-05-18T13:50:20.955Z",
   "methodology": "Feature 1 coverage = distinct federation_players.id with ≥1 platform_players row where claimed_federation_player_id is set. Counts the unique-FIDE-player axis, not handles. A player claimed on both lichess + chess.com counts once in the total.",
   "totals": {
     "fide_pool_1400_plus": 553023,
@@ -14,6 +14,12 @@
         "claimed": 8204
       }
     }
+  },
+  "audience": {
+    "label": "Prep audience (v1: FIDE-rated 1400+)",
+    "pool": 553023,
+    "claimed": 19035,
+    "coverage_pct": 3.44
   },
   "tiers": [
     {
