@@ -329,7 +329,7 @@ function HeroSection({
 
       <div className="mt-8 grid gap-3 md:grid-cols-3">
         <div className="rounded-md border border-accent/40 bg-accent/5 p-4">
-          <p className="text-xs uppercase tracking-wide text-accent">Coverage</p>
+          <p className="text-xs uppercase tracking-wide text-accent">Name coverage</p>
           {audience ? (
             <>
               <p className="mt-2 text-3xl font-semibold">{audience.coverage_pct.toFixed(1)}%</p>
@@ -344,14 +344,14 @@ function HeroSection({
         </div>
 
         <div className="rounded-md border border-border bg-card p-4">
-          <p className="text-xs uppercase tracking-wide text-foreground">Identified from PGN</p>
+          <p className="text-xs uppercase tracking-wide text-foreground">Games coverage</p>
           {tenGameRow ? (
             <>
               <p className="mt-2 text-3xl font-semibold">{pct(tenGameRow.metrics.top1)}</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                of the time we name your opponent on the first try from just{' '}
-                {tenGameRow.sample_size} of their games — {pct(tenGameRow.metrics.top10)} land in
-                the top 10.
+                If you can&apos;t find them by name, paste {tenGameRow.sample_size} of their games
+                and we name them on the first try this often ({pct(tenGameRow.metrics.top10)} in the
+                top 10).
               </p>
             </>
           ) : (
