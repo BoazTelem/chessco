@@ -21,7 +21,13 @@ import { z } from 'zod';
 import { getGamesDb } from '@/lib/games-db';
 import type { GameResult, Platform, TimeClass } from '@/lib/prepare/types';
 
-const DEFAULT_LIMIT = 1000;
+// 200 fits Vercel's 60s function ceiling for prolific chess.com handles:
+// the games query is fast (~3s) but the moves+positions JOIN scales ~3ms
+// per move via Nested Loop on positions_pkey, so 1000 games × ~80 moves
+// chunked at 500 was hitting 30s+ on the JOIN alone. The client's
+// live-fetch loop backfills any older games beyond this cap from the
+// platform API, so prolific handles still get full data after hydration.
+const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 2000;
 const DEFAULT_WINDOW_DAYS = 365;
 const MOVES_CHUNK = 500;
