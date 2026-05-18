@@ -1,5 +1,5 @@
 /**
- * POST /api/waitlist/live-chess — capture interest in Live Chess, the
+ * POST /api/waitlist/live-chess: capture interest in Live Chess, the
  * mutual-webcam-required matchmaking surface (and the webcam companion for
  * chess.com games). Engineering ships later; the /benchmarks "How it works"
  * page introduces the feature with this waitlist as the only CTA today.
@@ -51,7 +51,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   });
 
   if (error && error.code !== UNIQUE_VIOLATION) {
-    return NextResponse.json({ error: 'failed to join waitlist — try again' }, { status: 500 });
+    return NextResponse.json({ error: 'failed to join waitlist, try again' }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });

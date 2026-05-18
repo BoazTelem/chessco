@@ -52,6 +52,7 @@ import type postgres from 'postgres';
 import { getGamesDb } from '../db';
 import { extractFeaturesV0, type GameRow } from '../features/extract';
 import { rankFingerprints, type Stage3Match } from '../stage3/match';
+import { publishBenchmarkArtifact } from './publish';
 
 // process.cwd() under `pnpm --filter` is apps/workers/, not the repo root,
 // which made the default --out resolve to apps/workers/apps/web/public/...
@@ -556,6 +557,10 @@ async function main(): Promise<void> {
     await mkdir(path.dirname(args.out), { recursive: true });
     await writeFile(args.out, JSON.stringify(artifact, null, 2), 'utf8');
     console.log(`\n[cascade-bench] artifact written to ${args.out}`);
+
+    // Publish to Supabase (separate connection from the games-corpus client
+    // above). The /benchmarks page reads the latest snapshot from there.
+    await publishBenchmarkArtifact('sparse_cascade', artifact);
   } finally {
     await sql.end({ timeout: 5 });
   }

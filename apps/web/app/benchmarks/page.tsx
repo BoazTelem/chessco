@@ -3,17 +3,19 @@ import { join } from 'node:path';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getIndexStats } from '@/lib/index-stats';
-import { LiveChessWaitlistForm } from '@/components/benchmarks/LiveChessWaitlistForm';
+import { getCoverageArtifact, getSparseCascadeArtifact, getLegacyArtifact } from '@/lib/benchmarks';
 
 export const metadata: Metadata = {
   title: 'How chessco works',
   description:
-    'Scout an opponent, build their opening tree, find their leaks, prepare with bots / positions / coaches, and play Live Chess with mutual webcams. Coverage and accuracy benchmarks updated daily.',
+    'Scout an opponent, build their opening tree, find their leaks, and prepare with bots, positions, or coaches. Coverage and accuracy benchmarks updated daily.',
 };
 
 // ============================================================================
-// Loaders — JSON artifacts written by apps/workers eval scripts. Daily refresh
-// is wired through .github/workflows/daily-benchmarks.yml.
+// File-based loaders: bundled JSON in apps/web/public/. Used as fallback when
+// Supabase has no row for an artifact kind yet (pre-first-run) and for build
+// verdicts that aren't kept in the DB. Live coverage + cascade are read via
+// the Supabase-backed loaders in @/lib/benchmarks.
 // ============================================================================
 
 type VerdictStatus = 'pass' | 'fail' | 'pending' | 'error';
@@ -198,6 +200,20 @@ function UpdatedBadge({ iso, label = 'Updated daily' }: { iso: string | null; la
   );
 }
 
+function pickLatest(candidates: Array<string | undefined | null>): string | null {
+  let best: string | null = null;
+  let bestT = -Infinity;
+  for (const d of candidates) {
+    if (!d) continue;
+    const t = new Date(d).getTime();
+    if (Number.isFinite(t) && t > bestT) {
+      best = d;
+      bestT = t;
+    }
+  }
+  return best;
+}
+
 function latestRefresh(
   coverage: CoverageStats | null,
   sparse: SparseBenchmark | null,
@@ -239,7 +255,7 @@ function CoverageBar({ current, target, max }: { current: number; target: number
 }
 
 // ============================================================================
-// Hero — product story in 30 seconds + summary proof tiles
+// Hero: product story in 30 seconds + summary proof tiles
 // ============================================================================
 
 function HeroSection({
@@ -262,14 +278,12 @@ function HeroSection({
       <header className="max-w-3xl">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">How it works</p>
         <h1 className="mt-2 font-display text-4xl font-semibold md:text-5xl">
-          From a name to a prepared game — in five steps.
+          From a name to a prepared game, in five steps.
         </h1>
         <p className="mt-4 text-base leading-7 text-muted-foreground md:text-lg">
           Search any tournament player → find their online account on chess.com or Lichess → build
           their opening tree from real games → compare it to yours and surface their leaks → prepare
-          by playing their imitating bot, drilling positions, or booking a coach. New:{' '}
-          <strong className="text-foreground">Live Chess</strong> — play strangers with webcams on
-          both sides, the closest thing to over-the-board online.
+          by playing their imitating bot, drilling positions, or booking a coach.
         </p>
       </header>
 
@@ -278,7 +292,6 @@ function HeroSection({
         <StagePill n={2} title="Build their tree" href="#stage-tree" />
         <StagePill n={3} title="Find the leaks" href="#stage-leaks" />
         <StagePill n={4} title="Prepare" href="#stage-practice" />
-        <StagePill n={5} title="Live Chess" href="#stage-live-chess" />
       </div>
 
       <div className="mt-8 grid gap-3 md:grid-cols-3">
@@ -289,7 +302,7 @@ function HeroSection({
               <p className="mt-2 text-3xl font-semibold">{titledTier.coverage_pct.toFixed(1)}%</p>
               <p className="mt-1 text-xs text-muted-foreground">
                 of titled FIDE players mapped to an online account · we track every rating band, not
-                just titles — see the full tier table below.
+                just titles. See the full tier table below.
               </p>
             </>
           ) : (
@@ -343,7 +356,7 @@ function HeroSection({
 }
 
 // ============================================================================
-// Stage 1 — Scout (name search + PGN fallback + coverage + accuracy tables)
+// Stage 1: Scout (name search + PGN fallback + coverage + accuracy tables)
 // ============================================================================
 
 function ScoutStage({
@@ -363,7 +376,7 @@ function ScoutStage({
       <header className="max-w-3xl">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Stage 1</p>
         <h2 className="mt-1 font-display text-2xl font-semibold md:text-3xl">
-          Scout — find your opponent.
+          Scout: find your opponent.
         </h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           Start by name. Filter by federation (FIDE / ICF / USCF), title (GM / IM / FM / …),
@@ -423,7 +436,7 @@ function ScoutStage({
             </li>
             <li>
               <strong className="text-foreground">Paste their PGN.</strong> A few of their games is
-              enough — the sparse cascade matches by opening repertoire and tempo signature,
+              enough. The sparse cascade matches by opening repertoire and tempo signature,
               regardless of how anonymous their handle is. Accuracy table below tells you how many
               games to paste.
             </li>
@@ -433,8 +446,8 @@ function ScoutStage({
           <h3 className="font-display text-lg font-semibold">Tournament games come to you.</h3>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
             We auto-ingest Lichess broadcast tournaments every 30 minutes. If your opponent played a
-            broadcast event — a Grand Prix, a national championship, a weekend open with live relay
-            — their games are already in the corpus the moment you search them. No PGN upload needed
+            broadcast event (a Grand Prix, a national championship, a weekend open with live relay),
+            their games are already in the corpus the moment you search them. No PGN upload needed
             for those games.
           </p>
           <p className="mt-3 text-xs text-muted-foreground">
@@ -462,8 +475,8 @@ function CoverageBlock({ stats }: { stats: CoverageStats }) {
         <div>
           <h3 className="font-display text-lg font-semibold">Name-search coverage by FIDE tier</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Club players matter as much as GMs — we benchmark coverage at every rating band, not
-            just titled players.
+            Club players matter as much as GMs. We benchmark coverage at every rating band, not just
+            titled players.
           </p>
         </div>
         <UpdatedBadge iso={stats.as_of} />
@@ -632,7 +645,7 @@ function CascadeBlock({ benchmark }: { benchmark: SparseBenchmark }) {
 }
 
 // ============================================================================
-// Stage 2 — Build their opening tree
+// Stage 2: Build their opening tree
 // ============================================================================
 
 function TreeStage() {
@@ -645,7 +658,7 @@ function TreeStage() {
         </h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           Once we know which handle is theirs, the worker walks every game we have for them and
-          builds two trees — a shallow depth-12 tree the matcher uses, and a deep depth-30 tree the
+          builds two trees: a shallow depth-12 tree the matcher uses, and a deep depth-30 tree the
           prep UI shows you. Split by color (their white repertoire and their black repertoire are
           separate), recency-weighted so what they played last month counts more than what they
           played three years ago.
@@ -679,7 +692,7 @@ function TreeStage() {
 }
 
 // ============================================================================
-// Stage 3 — Leaks
+// Stage 3: Leaks
 // ============================================================================
 
 function LeaksStage() {
@@ -688,7 +701,7 @@ function LeaksStage() {
       <header className="max-w-3xl">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Stage 3</p>
         <h2 className="mt-1 font-display text-2xl font-semibold md:text-3xl">
-          Find their leaks — by comparing their tree to yours.
+          Find their leaks by comparing their tree to yours.
         </h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           A leak isn&apos;t just a bad move they played once. It&apos;s a position you&apos;ll
@@ -708,20 +721,20 @@ function LeaksStage() {
         </div>
         <ul className="divide-y divide-border text-sm">
           <li className="px-4 py-3">
-            <strong className="text-foreground">Your reach</strong> — how often your repertoire
+            <strong className="text-foreground">Your reach.</strong> How often your repertoire
             actually reaches the position. A leak in a line you never play is noise.
           </li>
           <li className="px-4 py-3">
-            <strong className="text-foreground">Their reach</strong> — how often they let it happen.
+            <strong className="text-foreground">Their reach.</strong> How often they let it happen.
             Once-in-fifty isn&apos;t a leak.
           </li>
           <li className="px-4 py-3">
-            <strong className="text-foreground">Bad-move share</strong> — what fraction of their
+            <strong className="text-foreground">Bad-move share.</strong> What fraction of their
             replies in that position the engine flags as mistakes or blunders (avg CP loss ≥ 100,
             high mistake / blunder rate).
           </li>
           <li className="px-4 py-3">
-            <strong className="text-foreground">Severity</strong> — how badly engines rate the bad
+            <strong className="text-foreground">Severity.</strong> How badly engines rate the bad
             move. Losing a pawn is not losing the game.
           </li>
         </ul>
@@ -743,7 +756,7 @@ function LeaksStage() {
 }
 
 // ============================================================================
-// Stage 4 — Practice
+// Stage 4: Practice
 // ============================================================================
 
 function PracticeStage() {
@@ -752,7 +765,7 @@ function PracticeStage() {
       <header className="max-w-3xl">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Stage 4</p>
         <h2 className="mt-1 font-display text-2xl font-semibold md:text-3xl">
-          Prepare — bots, positions, coaches.
+          Prepare: bots, positions, coaches.
         </h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           Knowing the leaks is half the work. The other half is drilling them in conditions close to
@@ -765,7 +778,7 @@ function PracticeStage() {
           <p className="text-xs font-semibold uppercase tracking-wide text-accent">Imitating bot</p>
           <h3 className="mt-2 font-display text-lg font-semibold">Play vs their style.</h3>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Maia-powered bots that play like a human at a given strength — not a stockfish-with-the-
+            Maia-powered bots that play like a human at a given strength, not a stockfish-with-the-
             knob-turned-down. Casual mode is free;{' '}
             <strong className="text-foreground">credit mode</strong> stakes ±1 credit per game and
             requires the bot rating to be at least your verified rating (so you can&apos;t farm
@@ -793,7 +806,7 @@ function PracticeStage() {
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             Start the bot game from the exact position where the leak appears, so you&apos;re
             practising the move you&apos;ll actually need on the day. Position-vs-human sparring is
-            on the waitlist — join from the home pillar tile.
+            on the waitlist. Join from the home pillar tile.
           </p>
           <div className="mt-auto pt-4">
             <Link
@@ -820,70 +833,6 @@ function PracticeStage() {
               Coach surfaces →
             </Link>
           </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ============================================================================
-// Stage 5 — Live Chess (NEW — explainer + waitlist)
-// ============================================================================
-
-function LiveChessStage() {
-  return (
-    <section
-      id="stage-live-chess"
-      className="mt-16 scroll-mt-16 rounded-lg border border-accent/40 bg-gradient-to-br from-accent/10 to-transparent p-6 md:p-8"
-    >
-      <header className="max-w-3xl">
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">
-            Stage 5 · New
-          </p>
-          <span className="rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-accent">
-            Coming soon
-          </span>
-        </div>
-        <h2 className="mt-2 font-display text-2xl font-semibold md:text-3xl">
-          Live Chess — play with your face on the line.
-        </h2>
-        <p className="mt-3 text-sm leading-6 text-muted-foreground md:text-base">
-          The pairing engine only matches you with players whose browser has granted webcam access
-          and is sending a live video track.{' '}
-          <strong className="text-foreground">No webcam, no match.</strong> The closest thing to
-          over-the-board chess you can get online: you see your opponent, they see you, you
-          can&apos;t silently disengage.
-        </p>
-      </header>
-
-      <div className="mt-6 grid gap-4 md:grid-cols-2">
-        <div className="rounded-md border border-border bg-card p-5">
-          <h3 className="font-display text-base font-semibold">Mutual-webcam matchmaking</h3>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Both browsers must approve the camera permission in real time before the pair is
-            proposed. If either side revokes the camera mid-game, the match ends immediately. Video
-            is peer-to-peer between the two players — chessco never records or stores it.
-          </p>
-        </div>
-        <div className="rounded-md border border-border bg-card p-5">
-          <h3 className="font-display text-base font-semibold">Webcam companion for chess.com</h3>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Playing on chess.com? Open a chessco Live Chess window beside your game — same
-            face-to-face presence, your existing rated chess.com game on the other monitor. We never
-            touch their board.
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-6 rounded-md border border-border bg-card p-5">
-        <h3 className="font-display text-base font-semibold">Join the Live Chess waitlist</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          We&apos;ll email when mutual-webcam matchmaking opens. Pick a preferred time class so we
-          can prioritise pairing pools you actually want.
-        </p>
-        <div className="mt-4">
-          <LiveChessWaitlistForm />
         </div>
       </div>
     </section>
@@ -1084,14 +1033,29 @@ pnpm --filter @chessco/workers eval:cascade`}
 // ============================================================================
 
 export default async function BenchmarksPage() {
-  const sparse = loadJson<SparseBenchmark>(['sparse-cascade-benchmark.json']);
-  const legacy = loadJson<LegacyBenchmark>(['repertoire-benchmark.json']);
-  const coverage = loadJson<CoverageStats>(['coverage-stats.json']);
+  // Supabase-first: eval workers publish into benchmark_artifacts; the page
+  // reads the latest row per kind via the anon client. Fall back to the
+  // bundled JSON in apps/web/public/ so the page still renders if Supabase
+  // is empty (pre-first-run) or unreachable.
+  const [coverageArtifact, sparseArtifact, legacyArtifact, indexStats] = await Promise.all([
+    getCoverageArtifact<CoverageStats>(),
+    getSparseCascadeArtifact<SparseBenchmark>(),
+    getLegacyArtifact<LegacyBenchmark>(),
+    getIndexStats(),
+  ]);
+
+  const coverage = coverageArtifact?.data ?? loadJson<CoverageStats>(['coverage-stats.json']);
+  const sparse =
+    sparseArtifact?.data ?? loadJson<SparseBenchmark>(['sparse-cascade-benchmark.json']);
+  const legacy = legacyArtifact?.data ?? loadJson<LegacyBenchmark>(['repertoire-benchmark.json']);
   const anyVerdict = ['b1', 'b3', 'b6', 'b7', 'b8', 'b11'].some((id) => loadVerdict(id) !== null);
   if (!sparse && !legacy && !coverage && !anyVerdict) return <MissingBenchmark />;
 
-  const indexStats = await getIndexStats();
-  const refresh = latestRefresh(coverage, sparse);
+  // Prefer the DB row's refreshed_at over the payload's internal as_of/ts so
+  // the "last refresh" badge reflects when the page actually got new data.
+  const refresh =
+    pickLatest([coverageArtifact?.refreshedAt, sparseArtifact?.refreshedAt]) ??
+    latestRefresh(coverage, sparse);
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-12 md:py-16">
@@ -1104,7 +1068,6 @@ export default async function BenchmarksPage() {
       <TreeStage />
       <LeaksStage />
       <PracticeStage />
-      <LiveChessStage />
       <EngineeringFooter legacy={legacy} />
     </main>
   );

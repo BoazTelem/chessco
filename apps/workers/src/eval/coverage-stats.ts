@@ -36,6 +36,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getDb } from '../db';
+import { publishBenchmarkArtifact } from './publish';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const DEFAULT_OUT = path.resolve(REPO_ROOT, 'apps/web/public/coverage-stats.json');
@@ -221,6 +222,11 @@ async function main(): Promise<void> {
     await mkdir(path.dirname(args.out), { recursive: true });
     await writeFile(args.out, JSON.stringify(artifact, null, 2) + '\n');
     console.log(`\n[coverage-stats] wrote ${args.out}`);
+
+    // Publish to Supabase so the /benchmarks page reads the latest snapshot
+    // at request time. Lets the eval script run anywhere (Cloud Run, local,
+    // Inngest) without committing JSON back to the repo.
+    await publishBenchmarkArtifact('coverage_stats', artifact);
   } finally {
     await sql.end({ timeout: 5 });
   }
