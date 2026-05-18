@@ -1,5 +1,9 @@
 # Lichess Crawl — Operational Runbook
 
+> **Production runs ONLY from Cloud Run. See [CLOUD-RUN-CRAWLERS.md](./CLOUD-RUN-CRAWLERS.md).**
+>
+> Following the 2026-05-18 IP block ([INCIDENT-2026-05-18-lichess-ip-block.md](./INCIDENT-2026-05-18-lichess-ip-block.md)), running this crawler from the office static IP is **forbidden**. Anything beyond a 1–2 item smoke test must dispatch to a Cloud Run job. The "Full backfill" section below documents the local invocation for historical reference only — do not run it. The PowerShell `*-crawl-loop.ps1` wrappers are scheduled for removal.
+
 Per-handle Lichess crawler — sibling of the chess.com crawler. Pulls each
 handle's last 12 months of rated standard games via `GET /api/games/user/`
 into the games-corpus, where `features:run` produces stylometric

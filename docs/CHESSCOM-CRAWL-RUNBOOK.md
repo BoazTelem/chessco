@@ -1,12 +1,16 @@
 # Chess.com Crawl — Operational Runbook
 
-Local-first chess.com PubAPI crawler. Pulls each handle's last 12 months of
+> **Production runs ONLY from Cloud Run. See [CLOUD-RUN-CRAWLERS.md](./CLOUD-RUN-CRAWLERS.md).**
+>
+> Following the 2026-05-18 Lichess IP block ([INCIDENT-2026-05-18-lichess-ip-block.md](./INCIDENT-2026-05-18-lichess-ip-block.md)), bulk scraping from the office static IP is **forbidden** for every platform, not just Lichess — chess.com may block the same way and the office IP is also the user's personal access. Anything beyond a 1–2 item smoke test must dispatch to a Cloud Run job. The "Full backfill" section below documents the local invocation for historical reference only — do not run it. The PowerShell `*-crawl-loop.ps1` wrappers are scheduled for removal.
+
+chess.com PubAPI crawler. Pulls each handle's last 12 months of
 rated-standard archives and ingests them into the games-corpus DB, where
 `features:run` can turn them into stylometric fingerprints.
 
-Estimated end-to-end on the local Windows machine (per scope decisions
-2026-05-12): **~3–7 days** for the current ~50–80k titled+country seed
-pool at the default 2-second pacing.
+Estimated end-to-end on Cloud Run (4 parallel regions per [CLOUD-RUN-CRAWLERS.md](./CLOUD-RUN-CRAWLERS.md)):
+**~12–36 hours** for the current ~50–80k titled+country seed pool at the
+default 2-second pacing per region.
 
 ## Pre-flight checklist
 
