@@ -99,6 +99,78 @@ export interface HandleResult {
   matched_field: 'claimed_name' | 'handle';
 }
 
+/**
+ * "Community-verified" result — an ad_hoc_players row that the
+ * promote-ad-hoc nightly worker has flipped to promotion_status='promoted'.
+ *
+ * Surfaces in /scout when ≥2 distinct signed-in users have confirmed the
+ * same (platform, handle) for the same name. The card links to the
+ * canonical /p/adhoc/{id} profile so future scout queries inherit the
+ * accumulated knowledge — even though FIDE doesn't have the player.
+ */
+export interface AdHocResult {
+  id: string;
+  name: string;
+  country: string | null;
+  rating_estimate: number | null;
+  rating_band_low: number | null;
+  rating_band_high: number | null;
+  title: string | null;
+  confirmed_match_count: number;
+  last_confirmed_at: string | null;
+  sim: number;
+  top_platform: 'lichess' | 'chess.com' | null;
+  top_handle: string | null;
+  top_handle_confirmer_count: number | null;
+}
+
+export function AdHocResultCard({ result }: { result: AdHocResult }) {
+  const ratingLabel =
+    result.rating_estimate != null
+      ? result.rating_band_low != null && result.rating_band_high != null
+        ? `${result.rating_estimate} (±${Math.round((result.rating_band_high - result.rating_band_low) / 2)})`
+        : `${result.rating_estimate}`
+      : null;
+  return (
+    <Link
+      href={`/p/adhoc/${result.id}`}
+      className="block rounded-lg border border-accent/30 bg-accent/5 p-4 transition hover:border-accent/60 hover:bg-accent/10"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-md border border-accent/40 bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
+              Community-verified
+            </span>
+            {result.title && <TitleBadge title={result.title} />}
+            {result.country && <CountryBadge code={result.country} />}
+          </div>
+          <p className="mt-2 truncate text-base font-medium text-foreground">{result.name}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {result.top_platform && result.top_handle ? (
+              <>
+                {result.top_platform} · <span className="font-mono">{result.top_handle}</span> ·{' '}
+                confirmed by {result.confirmed_match_count}{' '}
+                {result.confirmed_match_count === 1 ? 'user' : 'users'}
+              </>
+            ) : (
+              <>tracked by the community · no canonical handle yet</>
+            )}
+          </p>
+        </div>
+        {ratingLabel && (
+          <dl className="flex shrink-0 items-center gap-3 text-right">
+            <div className="min-w-[3rem]">
+              <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">Est.</dt>
+              <dd className="text-base font-semibold tabular-nums">{ratingLabel}</dd>
+            </div>
+          </dl>
+        )}
+      </div>
+    </Link>
+  );
+}
+
 export function HandleResultCard({ result }: { result: HandleResult }) {
   const url =
     result.platform === 'lichess'

@@ -2,7 +2,13 @@ import Link from 'next/link';
 import { getUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { SearchForm } from './search-form';
-import { HandleResultCard, ResultCard, type HandleResult } from './result-card';
+import {
+  AdHocResultCard,
+  HandleResultCard,
+  ResultCard,
+  type AdHocResult,
+  type HandleResult,
+} from './result-card';
 import { TrackPersonCTA } from './track-person-cta';
 import { normalizeCountry } from '@/lib/scout/country-code';
 import { searchLichessHandlesByName } from '@/lib/scout/lichess-handles';
@@ -62,19 +68,24 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
 
   let results: SearchResult[] = [];
   let handleResults: HandleResult[] = [];
+  let adHocResults: AdHocResult[] = [];
   let totalCount = 0;
   let searchError: string | null = null;
 
   if (hasQuery) {
-    // Three parallel searches:
+    // Four parallel searches:
     //   1. FIDE federation rows (Supabase)
     //   2. chess.com handles by claimed_name (Supabase platform_players)
     //   3. Lichess handles by fuzzy handle text (Cloud SQL games-corpus)
-    // All three results render as grouped sections; chess.com + Lichess
+    //   4. Community-verified ad-hoc players (Supabase ad_hoc_players +
+    //      ad_hoc_player_handles; only rows the promote-ad-hoc nightly
+    //      worker has marked promotion_status='promoted'). RPC handles
+    //      the trigram + handle-aggregation that postgrest can't express.
+    // All four results render as grouped sections; chess.com + Lichess
     // share the HandleResultCard component because the result shape is
     // identical (modulo platform-specific URL formatting).
     const handleCountry = country ? normalizeCountry(country) : null;
-    const [fideRes, handleRes, lichessHandles] = await Promise.all([
+    const [fideRes, handleRes, lichessHandles, adHocRes] = await Promise.all([
       supabase.rpc('search_federation_players', {
         q,
         country_filter: country,
@@ -96,6 +107,14 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
       q.length >= 2
         ? searchLichessHandlesByName(q.toLowerCase(), 10, 0.3).catch(() => [])
         : Promise.resolve([] as HandleResult[]),
+      q.length >= 2
+        ? supabase.rpc('search_promoted_ad_hoc', {
+            q,
+            country_filter: country,
+            limit_count: 10,
+            min_similarity: 0.3,
+          })
+        : Promise.resolve({ data: [], error: null }),
     ]);
 
     if (fideRes.error) {
@@ -113,12 +132,19 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
     if (lichessHandles.length > 0) {
       handleResults = [...handleResults, ...lichessHandles];
     }
+    // Community-verified ad-hoc rows. Soft-fail on RPC error so a missing
+    // migration doesn't break the main scout flow — log and continue.
+    if (adHocRes.error) {
+      console.warn(`[scout] search_promoted_ad_hoc failed: ${adHocRes.error.message}`);
+    } else if (adHocRes.data) {
+      adHocResults = adHocRes.data as AdHocResult[];
+    }
 
     void logSearchEvent({
       kind: 'scout_query',
       profileId: user?.id ?? null,
       queryText: q || null,
-      resultCount: results.length + handleResults.length,
+      resultCount: results.length + handleResults.length + adHocResults.length,
       extra: {
         country,
         title,
@@ -127,6 +153,7 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
         federation,
         page,
         fide_total: totalCount,
+        ad_hoc_total: adHocResults.length,
       },
     });
   }
@@ -178,7 +205,7 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
             <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
               Search failed: {searchError}
             </p>
-          ) : results.length === 0 && handleResults.length === 0 ? (
+          ) : results.length === 0 && handleResults.length === 0 && adHocResults.length === 0 ? (
             <TrackPersonCTA name={q} country={country} signedIn={!!user} nextPath={nextPath} />
           ) : (
             <>
@@ -220,8 +247,30 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
                 </>
               )}
 
-              {handleResults.length > 0 && (
+              {adHocResults.length > 0 && (
                 <div className={results.length > 0 ? 'mt-10' : ''}>
+                  <div className="mb-4 flex items-center gap-3 text-sm text-muted-foreground">
+                    <span className="text-foreground">{adHocResults.length}</span>
+                    <span>
+                      community-verified {adHocResults.length === 1 ? 'player' : 'players'}
+                    </span>
+                    <span className="text-xs">
+                      (tracked by signed-in users when FIDE doesn&apos;t have them — links to the
+                      ad-hoc profile)
+                    </span>
+                  </div>
+                  <ul className="grid gap-3">
+                    {adHocResults.map((a) => (
+                      <li key={a.id}>
+                        <AdHocResultCard result={a} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {handleResults.length > 0 && (
+                <div className={results.length > 0 || adHocResults.length > 0 ? 'mt-10' : ''}>
                   <div className="mb-4 flex items-center gap-3 text-sm text-muted-foreground">
                     <span className="text-foreground">{handleResults.length}</span>
                     <span>
@@ -240,7 +289,7 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
                 </div>
               )}
 
-              {results.length === 0 && handleResults.length > 0 && (
+              {results.length === 0 && (handleResults.length > 0 || adHocResults.length > 0) && (
                 <div className="mt-8">
                   <TrackPersonCTA
                     name={q}
