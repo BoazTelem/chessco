@@ -32,13 +32,17 @@ jobs:
     timeout-minutes: 120
     env:
       # Supabase (federation_players, platform_players, account_fingerprints,
-      # fingerprint_terms). The eval scripts call dotenv/config first so
-      # process.env overrides any local .env if checked in.
-      DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
-      DATABASE_PASSWORD: ${{ secrets.SUPABASE_DATABASE_PASSWORD }}
-      # Games corpus on Cloud SQL — only used by eval:cascade when sampling
-      # target games. Safe to leave unset if cascade only reads from Supabase.
+      # fingerprint_terms). Names match apps/workers/.env.example. The eval
+      # scripts call dotenv/config first so process.env overrides .env.
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+      # Games corpus on Cloud SQL — names match apps/web/.env.example.
       GAMES_DATABASE_URL: ${{ secrets.GAMES_DATABASE_URL }}
+      GAMES_DATABASE_HOST: ${{ secrets.GAMES_DATABASE_HOST }}
+      GAMES_DATABASE_PORT: ${{ secrets.GAMES_DATABASE_PORT }}
+      GAMES_DATABASE_USER: ${{ secrets.GAMES_DATABASE_USER }}
+      GAMES_DATABASE_PASSWORD: ${{ secrets.GAMES_DATABASE_PASSWORD }}
+      GAMES_DATABASE_NAME: ${{ secrets.GAMES_DATABASE_NAME }}
       GAMES_DATABASE_SSLMODE: ${{ secrets.GAMES_DATABASE_SSLMODE }}
 
     steps:
