@@ -2,7 +2,7 @@
 
 > **Production runs ONLY from Cloud Run. See [CLOUD-RUN-CRAWLERS.md](./CLOUD-RUN-CRAWLERS.md).**
 >
-> Following the 2026-05-18 Lichess IP block ([INCIDENT-2026-05-18-lichess-ip-block.md](./INCIDENT-2026-05-18-lichess-ip-block.md)), bulk scraping from the office static IP is **forbidden** for every platform, not just Lichess — chess.com may block the same way and the office IP is also the user's personal access. Anything beyond a 1–2 item smoke test must dispatch to a Cloud Run job. The "Full backfill" section below documents the local invocation for historical reference only — do not run it. The PowerShell `*-crawl-loop.ps1` wrappers are scheduled for removal.
+> Following the 2026-05-18 Lichess IP block ([INCIDENT-2026-05-18-lichess-ip-block.md](./INCIDENT-2026-05-18-lichess-ip-block.md)), bulk scraping from the office static IP is **forbidden** for every platform, not just Lichess — chess.com may block the same way and the office IP is also the user's personal access. Anything beyond a 1–2 item smoke test must dispatch to a Cloud Run job. The "Full backfill" section below documents the local invocation for historical reference only — do not run it. The PowerShell `*-crawl-loop.ps1` wrappers have been removed; restore from git history only if you also have written Cloud Run authorisation for the run.
 
 chess.com PubAPI crawler. Pulls each handle's last 12 months of
 rated-standard archives and ingests them into the games-corpus DB, where
