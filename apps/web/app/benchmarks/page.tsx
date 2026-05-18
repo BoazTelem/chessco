@@ -321,10 +321,11 @@ function HeroSection({
       </header>
 
       <div className="mt-6 flex flex-wrap gap-2">
-        <StagePill n={1} title="Scout the opponent" href="#stage-scout" />
-        <StagePill n={2} title="Build their tree" href="#stage-tree" />
-        <StagePill n={3} title="Find the leaks" href="#stage-leaks" />
-        <StagePill n={4} title="Prepare" href="#stage-practice" />
+        <StagePill n={1} title="Find the player" href="#stage-find" />
+        <StagePill n={2} title="Scout their account" href="#stage-scout" />
+        <StagePill n={3} title="Build their tree" href="#stage-tree" />
+        <StagePill n={4} title="Find the leaks" href="#stage-leaks" />
+        <StagePill n={5} title="Prepare" href="#stage-practice" />
       </div>
 
       <div className="mt-8 grid gap-3 md:grid-cols-3">
@@ -387,32 +388,26 @@ function HeroSection({
 }
 
 // ============================================================================
-// Stage 1: Scout (name search + PGN fallback + coverage + accuracy tables)
+// Stage 1: Find (federation lookup; ad-hoc by name + rating when missing)
 // ============================================================================
 
-function ScoutStage({
-  coverage,
-  sparse,
-  indexStats,
-}: {
-  coverage: CoverageStats | null;
-  sparse: SparseBenchmark | null;
-  indexStats: Awaited<ReturnType<typeof getIndexStats>>;
-}) {
+function FindStage({ indexStats }: { indexStats: Awaited<ReturnType<typeof getIndexStats>> }) {
   const platformHandles = indexStats.chesscomHandles + indexStats.lichessHandles;
   const totalGames = indexStats.chesscomGames + indexStats.lichessGames;
 
   return (
-    <section id="stage-scout" className="mt-16 scroll-mt-16 border-t border-border pt-10">
+    <section id="stage-find" className="mt-16 scroll-mt-16 border-t border-border pt-10">
       <header className="max-w-3xl">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Stage 1</p>
         <h2 className="mt-1 font-display text-2xl font-semibold md:text-3xl">
-          Scout: find your opponent.
+          Find: locate them in the tournament pool.
         </h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           Start by name. Filter by federation (FIDE / ICF / USCF), title (GM / IM / FM / …),
-          country, and rating range. Scout returns federation matches, claimed online handles, and
-          community-verified ad-hoc players in one list.
+          country, and rating range. The index is built from official federation rosters, so every
+          tournament-rated player is in scope, not just titled GMs. If they aren&apos;t in any
+          federation roster, type the name and rating to add them as an ad-hoc target;
+          community-verified ad-hoc players then appear for the next searcher.
         </p>
       </header>
 
@@ -423,12 +418,6 @@ function ScoutStage({
         >
           Open Scout →
         </Link>
-        <a
-          href="#stage-scout-coverage"
-          className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm hover:border-accent hover:text-accent"
-        >
-          See coverage by tier ↓
-        </a>
       </div>
 
       <div className="mt-8 grid gap-3 md:grid-cols-4">
@@ -458,20 +447,13 @@ function ScoutStage({
 
       <div className="mt-10 grid gap-4 md:grid-cols-2">
         <div className="rounded-md border border-border bg-card p-5">
-          <h3 className="font-display text-lg font-semibold">Not registered? Two fallbacks.</h3>
-          <ul className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground">
-            <li>
-              <strong className="text-foreground">Add them by name.</strong> Type a player Scout
-              doesn&apos;t know yet and you create an ad-hoc target. Community-verified ad-hoc
-              players show up alongside federation + platform matches for the next searcher.
-            </li>
-            <li>
-              <strong className="text-foreground">Paste their PGN.</strong> A few of their games is
-              enough. The sparse cascade matches by opening repertoire and tempo signature,
-              regardless of how anonymous their handle is. Accuracy table below tells you how many
-              games to paste.
-            </li>
-          </ul>
+          <h3 className="font-display text-lg font-semibold">Not in any federation roster?</h3>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            Type the player&apos;s name and rating to add them as an ad-hoc target. They become
+            searchable for the next person looking, and once another user verifies the entry the
+            target promotes to community-confirmed. Useful for juniors, unrated club players, and
+            players from federations not yet covered.
+          </p>
         </div>
         <div className="rounded-md border border-border bg-card p-5">
           <h3 className="font-display text-lg font-semibold">Tournament games come to you.</h3>
@@ -486,6 +468,67 @@ function ScoutStage({
             <code className="rounded bg-muted px-1 py-0.5">
               apps/workers/src/inngest/external-pgn-broadcasts.ts
             </code>
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ============================================================================
+// Stage 2: Scout (match the tournament player to a chess.com / Lichess account)
+// ============================================================================
+
+function ScoutStage({
+  coverage,
+  sparse,
+}: {
+  coverage: CoverageStats | null;
+  sparse: SparseBenchmark | null;
+}) {
+  return (
+    <section id="stage-scout" className="mt-16 scroll-mt-16 border-t border-border pt-10">
+      <header className="max-w-3xl">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Stage 2</p>
+        <h2 className="mt-1 font-display text-2xl font-semibold md:text-3xl">
+          Scout: match them to an online account.
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          A tournament name alone isn&apos;t enough — we need their chess.com or Lichess account to
+          pull real games for the next stages. Two paths get us there.
+        </p>
+      </header>
+
+      <div className="mt-4 flex flex-wrap gap-3">
+        <a
+          href="#stage-scout-coverage"
+          className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm hover:border-accent hover:text-accent"
+        >
+          See coverage by tier ↓
+        </a>
+      </div>
+
+      <div className="mt-8 grid gap-4 md:grid-cols-2">
+        <div className="rounded-md border border-border bg-card p-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-accent">
+            Path 1 — By name
+          </p>
+          <h3 className="mt-2 font-display text-lg font-semibold">Match a claimed account.</h3>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            If the player has linked a chess.com or Lichess account to their FIDE / ICF / USCF
+            profile, it shows up directly. The coverage table below reports what fraction of the
+            tournament pool is matchable this way, by rating band.
+          </p>
+        </div>
+        <div className="rounded-md border border-border bg-card p-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-accent">
+            Path 2 — By PGN
+          </p>
+          <h3 className="mt-2 font-display text-lg font-semibold">Paste a few of their games.</h3>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            If they haven&apos;t claimed an account, paste a handful of their games. The sparse
+            cascade matches on opening repertoire and tempo signature, regardless of how anonymous
+            the handle is. Accuracy table below shows how many games you need.
           </p>
         </div>
       </div>
@@ -676,14 +719,14 @@ function CascadeBlock({ benchmark }: { benchmark: SparseBenchmark }) {
 }
 
 // ============================================================================
-// Stage 2: Build their opening tree
+// Stage 3: Build their opening tree
 // ============================================================================
 
 function TreeStage() {
   return (
     <section id="stage-tree" className="mt-16 scroll-mt-16 border-t border-border pt-10">
       <header className="max-w-3xl">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Stage 2</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Stage 3</p>
         <h2 className="mt-1 font-display text-2xl font-semibold md:text-3xl">
           Build their opening tree.
         </h2>
@@ -730,14 +773,14 @@ function TreeStage() {
 }
 
 // ============================================================================
-// Stage 3: Leaks
+// Stage 4: Leaks
 // ============================================================================
 
 function LeaksStage() {
   return (
     <section id="stage-leaks" className="mt-16 scroll-mt-16 border-t border-border pt-10">
       <header className="max-w-3xl">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Stage 3</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Stage 4</p>
         <h2 className="mt-1 font-display text-2xl font-semibold md:text-3xl">
           Find their leaks by comparing their tree to yours.
         </h2>
@@ -794,14 +837,14 @@ function LeaksStage() {
 }
 
 // ============================================================================
-// Stage 4: Practice
+// Stage 5: Practice
 // ============================================================================
 
 function PracticeStage() {
   return (
     <section id="stage-practice" className="mt-16 scroll-mt-16 border-t border-border pt-10">
       <header className="max-w-3xl">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Stage 4</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Stage 5</p>
         <h2 className="mt-1 font-display text-2xl font-semibold md:text-3xl">
           Prepare: bots, positions, coaches.
         </h2>
@@ -1102,7 +1145,8 @@ export default async function BenchmarksPage() {
       </Link>
 
       <HeroSection coverage={coverage} sparse={sparse} refresh={refresh} />
-      <ScoutStage coverage={coverage} sparse={sparse} indexStats={indexStats} />
+      <FindStage indexStats={indexStats} />
+      <ScoutStage coverage={coverage} sparse={sparse} />
       <TreeStage />
       <LeaksStage />
       <PracticeStage />
