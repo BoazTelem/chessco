@@ -73,7 +73,14 @@ interface CliArgs {
   sampleSizes: number[];
   seeds: number[];
   topK: number;
-  platform: 'both' | 'chess.com' | 'lichess';
+  /**
+   * 'both' = chess.com + lichess (back-compat default).
+   * 'all'  = chess.com + lichess + fide (the FIDE-platform fingerprints
+   *          we built from external_pgn_sources / TWIC etc.).
+   * 'fide' = FIDE-only audience — Path B accuracy on FIDE-rated players
+   *          whose games came in via the external-PGN pipeline.
+   */
+  platform: 'both' | 'all' | 'chess.com' | 'lichess' | 'fide';
   out: string;
 }
 
@@ -103,8 +110,8 @@ function parseArgs(argv: string[]): CliArgs {
       out.topK = Number.parseInt(argv[++i]!, 10);
     } else if (a === '--platform' && argv[i + 1]) {
       const p = argv[++i]!;
-      if (p !== 'chess.com' && p !== 'lichess' && p !== 'both') {
-        throw new Error(`--platform must be chess.com|lichess|both (got ${p})`);
+      if (p !== 'chess.com' && p !== 'lichess' && p !== 'both' && p !== 'all' && p !== 'fide') {
+        throw new Error(`--platform must be chess.com|lichess|fide|both|all (got ${p})`);
       }
       out.platform = p as CliArgs['platform'];
     } else if (a === '--out' && argv[i + 1]) {
@@ -158,7 +165,7 @@ function pgnToMoveSeqPrefix(pgn: string | null, n = MOVE_SEQ_PLY_COUNT): string 
 
 interface BenchTarget {
   handle_id: string;
-  platform: 'chess.com' | 'lichess';
+  platform: 'chess.com' | 'lichess' | 'fide';
   handle: string;
   games_window: number;
   median_rating: number | null;
@@ -167,9 +174,13 @@ interface BenchTarget {
 type Tier = 'premium' | 'main' | 'open' | 'unknown';
 
 /** Bin a fingerprinted handle by its median_rating (avg_opponent_rating
- *  proxy) into the Premium / Main / Open targeting layers. Lichess cuts
- *  are higher than chess.com to account for rating inflation. */
-function tierFor(platform: 'chess.com' | 'lichess', medianRating: number | null): Tier {
+ *  proxy) into the Premium / Main / Open targeting layers. Cuts differ
+ *  per platform to account for rating inflation:
+ *    chess.com   — popular rating tier
+ *    lichess     — higher cuts (Lichess ratings run ~200 above chess.com)
+ *    fide        — true OTB Elo; tightest cuts (2400/2200/1800).
+ */
+function tierFor(platform: 'chess.com' | 'lichess' | 'fide', medianRating: number | null): Tier {
   if (medianRating === null) return 'unknown';
   if (platform === 'chess.com') {
     if (medianRating >= 1800) return 'premium';
@@ -177,10 +188,16 @@ function tierFor(platform: 'chess.com' | 'lichess', medianRating: number | null)
     if (medianRating >= 1000) return 'open';
     return 'unknown';
   }
-  // lichess
-  if (medianRating >= 2100) return 'premium';
-  if (medianRating >= 1800) return 'main';
-  if (medianRating >= 1400) return 'open';
+  if (platform === 'lichess') {
+    if (medianRating >= 2100) return 'premium';
+    if (medianRating >= 1800) return 'main';
+    if (medianRating >= 1400) return 'open';
+    return 'unknown';
+  }
+  // fide
+  if (medianRating >= 2400) return 'premium';
+  if (medianRating >= 2200) return 'main';
+  if (medianRating >= 1800) return 'open';
   return 'unknown';
 }
 
@@ -197,29 +214,39 @@ async function selectTargets(
   const minGames = maxSampleSize + MIN_TRAIN_GAMES;
   type Row = {
     handle_id: string;
-    platform: 'chess.com' | 'lichess';
+    platform: 'chess.com' | 'lichess' | 'fide';
     handle: string;
     games_window: number;
     median_rating: number | null;
   };
-  const rows =
-    platformFilter === 'both'
-      ? await sql<Row[]>`
-          SELECT handle_id::text, platform, handle, games_window, median_rating
-          FROM account_fingerprints
-          WHERE games_window >= ${minGames}
-          ORDER BY random()
-          LIMIT ${limit}
-        `
-      : await sql<Row[]>`
-          SELECT handle_id::text, platform, handle, games_window, median_rating
-          FROM account_fingerprints
-          WHERE games_window >= ${minGames}
-            AND platform = ${platformFilter}
-          ORDER BY random()
-          LIMIT ${limit}
-        `;
-  return rows;
+  if (platformFilter === 'all') {
+    return sql<Row[]>`
+      SELECT handle_id::text, platform, handle, games_window, median_rating
+      FROM account_fingerprints
+      WHERE games_window >= ${minGames}
+      ORDER BY random()
+      LIMIT ${limit}
+    `;
+  }
+  if (platformFilter === 'both') {
+    return sql<Row[]>`
+      SELECT handle_id::text, platform, handle, games_window, median_rating
+      FROM account_fingerprints
+      WHERE games_window >= ${minGames}
+        AND platform IN ('chess.com', 'lichess')
+      ORDER BY random()
+      LIMIT ${limit}
+    `;
+  }
+  // single platform: chess.com | lichess | fide
+  return sql<Row[]>`
+    SELECT handle_id::text, platform, handle, games_window, median_rating
+    FROM account_fingerprints
+    WHERE games_window >= ${minGames}
+      AND platform = ${platformFilter}
+    ORDER BY random()
+    LIMIT ${limit}
+  `;
 }
 
 interface RawGame {
@@ -237,12 +264,54 @@ interface RawGame {
 }
 
 /** Load all games for a target handle from the games table, in GameRow shape
- *  with move_seq_prefix populated. Mirrors stage3/run.ts loadSelfGames. */
+ *  with move_seq_prefix populated. Mirrors stage3/run.ts loadSelfGames.
+ *
+ *  Three branches depending on platform:
+ *    - chess.com / lichess: handle = the platform username; match on
+ *      LOWER(handle_snapshot).
+ *    - fide: handle = the federation_player_id (uuid string). Games came
+ *      via the external_pgn_sources staging table; we join through it to
+ *      find rows where white_fide_id or black_fide_id matches. Source-side
+ *      column is the FIDE id, not a snapshot.
+ */
 async function loadTargetGames(
   sql: postgres.Sql,
-  platform: 'chess.com' | 'lichess',
+  platform: 'chess.com' | 'lichess' | 'fide',
   handle: string,
 ): Promise<GameRow[]> {
+  if (platform === 'fide') {
+    interface FideRawGame extends RawGame {
+      side: 'white' | 'black';
+    }
+    const rows = await sql<FideRawGame[]>`
+      SELECT
+        g.white_handle_snapshot, g.black_handle_snapshot,
+        g.white_rating, g.black_rating,
+        g.result, g.time_class, g.opening_eco, g.ply_count,
+        g.termination, g.played_at::text AS played_at, g.pgn,
+        CASE WHEN eps.white_fide_id = ${handle}::uuid THEN 'white' ELSE 'black' END AS side
+      FROM external_pgn_sources eps
+      JOIN games g ON g.id = eps.game_id
+      WHERE eps.game_id IS NOT NULL
+        AND (eps.white_fide_id = ${handle}::uuid OR eps.black_fide_id = ${handle}::uuid)
+        AND g.result IN ('1-0', '0-1', '1/2-1/2')
+    `;
+    return rows.map((r) => {
+      const isWhite = r.side === 'white';
+      return {
+        color: isWhite ? ('white' as const) : ('black' as const),
+        result: r.result,
+        time_class: r.time_class,
+        opening_eco: r.opening_eco,
+        ply_count: r.ply_count,
+        termination: r.termination,
+        opponent_rating: isWhite ? r.black_rating : r.white_rating,
+        played_at: new Date(r.played_at),
+        move_seq_prefix: pgnToMoveSeqPrefix(r.pgn),
+      };
+    });
+  }
+
   const lh = handle.toLowerCase();
   const rows = await sql<RawGame[]>`
     SELECT
@@ -270,7 +339,7 @@ async function loadTargetGames(
 
 interface TrialResult {
   handle: string;
-  platform: 'chess.com' | 'lichess';
+  platform: 'chess.com' | 'lichess' | 'fide';
   tier: Tier;
   sample_size: number;
   seed: number;
