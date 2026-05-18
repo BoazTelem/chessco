@@ -466,9 +466,11 @@ function FindStage({ indexStats }: { indexStats: Awaited<ReturnType<typeof getIn
 function ScoutStage({
   coverage,
   sparse,
+  sparseFide,
 }: {
   coverage: CoverageStats | null;
   sparse: SparseBenchmark | null;
+  sparseFide: SparseBenchmark | null;
 }) {
   return (
     <section id="stage-scout" className="mt-16 scroll-mt-16 border-t border-border pt-10">
@@ -519,6 +521,7 @@ function ScoutStage({
 
       {coverage ? <CoverageBlock stats={coverage} /> : null}
       {sparse ? <CascadeBlock benchmark={sparse} /> : null}
+      {sparseFide ? <CascadeBlock benchmark={sparseFide} variant="fide" /> : null}
     </section>
   );
 }
@@ -577,20 +580,39 @@ function CoverageBlock({ stats }: { stats: CoverageStats }) {
   );
 }
 
-function CascadeBlock({ benchmark }: { benchmark: SparseBenchmark }) {
+function CascadeBlock({
+  benchmark,
+  variant = 'online',
+}: {
+  benchmark: SparseBenchmark;
+  variant?: 'online' | 'fide';
+}) {
   const corpusTotal = Object.values(benchmark.corpus_size).reduce((a, b) => a + b, 0);
   const latest = benchmark.metrics_by_sample_size.at(-1);
+
+  const title =
+    variant === 'fide'
+      ? 'PGN-search accuracy on FIDE-rated players (OTB games)'
+      : 'PGN-search accuracy by sample size';
+  const subtitle =
+    variant === 'fide' ? (
+      <>
+        Same matcher, but trained on tournament games we sourced from TWIC for {num(corpusTotal)}{' '}
+        FIDE-rated players who may have no chess.com / Lichess account. Path B works for them too.
+      </>
+    ) : (
+      <>
+        For {num(benchmark.total_targets)} random players we hand the matcher N of their games and
+        check whether it names them. {num(corpusTotal)} players indexed across chess.com + Lichess.
+      </>
+    );
 
   return (
     <div className="mt-8 overflow-hidden rounded-md border border-border">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-card px-4 py-3">
         <div>
-          <h3 className="font-display text-lg font-semibold">PGN-search accuracy by sample size</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            For {num(benchmark.total_targets)} random players we hand the matcher N of their games
-            and check whether it names them. {num(corpusTotal)} players indexed across chess.com +
-            Lichess.
-          </p>
+          <h3 className="font-display text-lg font-semibold">{title}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
         </div>
         <UpdatedBadge iso={benchmark.finished_at ?? benchmark.ts} />
       </div>
@@ -1090,6 +1112,9 @@ export default async function BenchmarksPage() {
   const coverage = coverageArtifact?.data ?? loadJson<CoverageStats>(['coverage-stats.json']);
   const sparse =
     sparseArtifact?.data ?? loadJson<SparseBenchmark>(['sparse-cascade-benchmark.json']);
+  // FIDE-platform variant lives only in /public for now (workers/publish.ts
+  // doesn't have a dedicated artifact kind yet). Bundled JSON fallback.
+  const sparseFide = loadJson<SparseBenchmark>(['sparse-cascade-benchmark-fide.json']);
   const legacy = legacyArtifact?.data ?? loadJson<LegacyBenchmark>(['repertoire-benchmark.json']);
   const anyVerdict = ['b1', 'b3', 'b6', 'b7', 'b8', 'b11'].some((id) => loadVerdict(id) !== null);
   if (!sparse && !legacy && !coverage && !anyVerdict) return <MissingBenchmark />;
@@ -1108,7 +1133,7 @@ export default async function BenchmarksPage() {
 
       <HeroSection coverage={coverage} sparse={sparse} refresh={refresh} />
       <FindStage indexStats={indexStats} />
-      <ScoutStage coverage={coverage} sparse={sparse} />
+      <ScoutStage coverage={coverage} sparse={sparse} sparseFide={sparseFide} />
       <TreeStage />
       <LeaksStage />
       <PracticeStage />
