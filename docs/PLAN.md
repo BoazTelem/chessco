@@ -742,6 +742,13 @@ These three blocks block the next two product milestones (discoverability + paid
    - Required to validate willingness-to-pay before Phase 4 marketplace launch.
    - Ship the subscription gate on full reports (preview free; paid for full report + PDF).
 
+3a. **Inferred account-linking surfaces (Phase 1 QW, depends on Phase 2 item 13a) — 0% shipped, renders nothing until first inferred rows land.** Does not block paid launch; bonus value on top of the three critical blocks above.
+
+- `ResultCard` (`apps/web/app/scout/result-card.tsx`) shows a solid `chess.com · johndoe2024` chip when `player_aliases.confidence >= 0.9` (`source='inferred'`); outlined `Likely chess.com · johndoe2024 (87%)` chip in the 0.7-0.89 band; nothing below 0.7. Reuses `TitleBadge`/`CountryBadge` styling vocabulary. Tooltip: "Inferred from public PGN games — confirm on the player page."
+- `/p/[player_id]` switches primary CTA from "paste a PGN" to **"Prep this player"** → `/prepare/{platform}/{handle}` when a `confidence >= 0.9` inferred alias exists; the existing PGN paste form collapses to "Wrong account? Paste a game to override". Medium band (0.7-0.89) shows Confirm/Reject affordances that bump `source` to `'verified'` on confirm.
+- Threshold gate: Part C (auto-skip on profile) ships only after the Phase 2 scorer hits **precision@1 ≥ 0.95** on a verified-alias holdout — false positives → wrong Prep is worse UX than the current PGN-paste flow. Part B (badge) is safer and can ship first because the user still picks the result card themselves.
+- **QW: ~2 dev-days** for badge + profile branch + the single inferred-alias LEFT JOIN in `app/scout/page.tsx`.
+
 ### Phase 0 cleanup (deferred — not blocking)
 
 4. **Apple OAuth** — pattern already commented in `apps/web/app/(auth)/actions.ts:133`. **QW: ~half a dev-day** once Apple Developer Service ID + .p8 key are in hand.
@@ -765,6 +772,7 @@ These three blocks block the next two product milestones (discoverability + paid
 11. Embedding model training (small transformer encoder, contrastive loss). Offline pipeline + model versioning in `ops/models/` not started.
 12. pgvector HNSW index on `players.embedding` — column not even created.
 13. "Find lookalikes" cross-platform sibling-account check.
+    13a. **Passive account-linking inference job (`apps/workers/src/inference/account-linker/`)** — offline scorer that combines name fuzzy similarity (PG `similarity()`) + title match + country match + rating curve fit (FIDE std → chess.com blitz ≈ +200; FIDE std → Lichess rapid ≈ +400; ±200 tolerance; reject >500 below FIDE anchor — rule already in Stage 2) + `claimed_name` match + activity window. Persists top 1-3 candidates per (player_id, platform) with `confidence >= 0.7` into `player_aliases` (schema already has `confidence numeric` + `source IN ('verified','manual','inferred')` — no migration needed beyond a partial index on `(player_id, source, confidence DESC) WHERE source='inferred'`). Re-runs after each Lichess/chess.com dump pass. Respects `players.delisted_at IS NOT NULL` (privacy). Complements Feature 1 (name search) and Feature 2 (paste-PGN) without replacing either — anonymous handles with no name signal stay Feature 2's domain (see `two_path_account_search` memory). Drives the Phase 1 QW UX in critical-path item 3a. Threshold-tuned against titled-player ground truth (rows where `source='verified'` aliases already exist) before driving the auto-skip-PGN-paste UX on profile pages.
 14. Style fingerprint UX (radar chart on 8 axes + Haiku prose summary).
 15. `/scout/federation/[id]` ranked-list browse mode (also a **QW for SEO** — adds 100s of high-value pages: each federation × top-N).
 16. Right-to-delist endpoint + hide-from-search flag on `federation_players`. **Privacy-critical; ship before any GDPR complaint.**
