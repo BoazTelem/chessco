@@ -324,7 +324,8 @@ function HeroSection({
               <p className="mt-2 text-3xl font-semibold">{audience.coverage_pct.toFixed(1)}%</p>
               <p className="mt-1 text-xs text-muted-foreground">
                 of ~{num(audience.pool)} tournament players matched to a chess.com or Lichess
-                account. Search by name and you&apos;ll usually find them.
+                account. Try a name search first. It&apos;s quick, and if you&apos;re in here
+                you&apos;re done.
               </p>
             </>
           ) : (
@@ -338,8 +339,10 @@ function HeroSection({
             <>
               <p className="mt-2 text-3xl font-semibold">{pct(tenGameRow.metrics.top1)}</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Or paste {tenGameRow.sample_size} of their games — we name them on the first try
-                this often ({pct(tenGameRow.metrics.top10)} in the top 10).
+                Not found by name? Paste their games and we identify them by game fingerprint. With{' '}
+                {tenGameRow.sample_size} games we name them on the first try this often (
+                {pct(tenGameRow.metrics.top10)} in the top 10). The more games you paste, the surer
+                the match.
               </p>
             </>
           ) : (
@@ -475,7 +478,7 @@ function ScoutStage({
           Scout: match them to an online account.
         </h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          A tournament name alone isn&apos;t enough — we need their chess.com or Lichess account to
+          A tournament name alone isn&apos;t enough. We need their chess.com or Lichess account to
           pull real games for the next stages. Two paths get us there.
         </p>
       </header>
@@ -492,7 +495,7 @@ function ScoutStage({
       <div className="mt-8 grid gap-4 md:grid-cols-2">
         <div className="rounded-md border border-border bg-card p-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-accent">
-            Path 1 — By name
+            Path 1: By name
           </p>
           <h3 className="mt-2 font-display text-lg font-semibold">Match a claimed account.</h3>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
@@ -503,7 +506,7 @@ function ScoutStage({
         </div>
         <div className="rounded-md border border-border bg-card p-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-accent">
-            Path 2 — By PGN
+            Path 2: By PGN
           </p>
           <h3 className="mt-2 font-display text-lg font-semibold">Paste a few of their games.</h3>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
