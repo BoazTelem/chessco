@@ -1,5 +1,5 @@
 /**
- * /account/wallet — balance + history shell.
+ * /account/wallet: balance + history shell.
  *
  * Spec §13 provider-agnostic surface. Deposit/withdraw CTAs are intentionally
  * stubbed pending the Stripe-vs-Paddle decision (see the approved plan's
@@ -174,7 +174,7 @@ export default async function WalletPage() {
                       {formatCents(row.amount_cents, row.currency)}
                     </td>
                     <td className="px-3 py-2 text-xs text-muted-foreground">
-                      {row.reference_type ?? '—'}
+                      {row.reference_type ?? '-'}
                       {row.reference_id ? ` ${row.reference_id.slice(0, 8)}…` : ''}
                     </td>
                   </tr>

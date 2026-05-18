@@ -18,7 +18,7 @@ import { logSearchEvent } from '@/lib/search-events/log';
 import type { SearchResult } from './types';
 
 export const metadata = {
-  title: 'Scout — find a player',
+  title: 'Scout: find a player',
   description:
     'Search FIDE, USCF, and Israeli Chess Federation players by name, country, and rating.',
 };
@@ -133,7 +133,7 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
       handleResults = [...handleResults, ...lichessHandles];
     }
     // Community-verified ad-hoc rows. Soft-fail on RPC error so a missing
-    // migration doesn't break the main scout flow — log and continue.
+    // migration doesn't break the main scout flow: log and continue.
     if (adHocRes.error) {
       console.warn(`[scout] search_promoted_ad_hoc failed: ${adHocRes.error.message}`);
     } else if (adHocRes.data) {
@@ -255,7 +255,7 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
                       community-verified {adHocResults.length === 1 ? 'player' : 'players'}
                     </span>
                     <span className="text-xs">
-                      (tracked by signed-in users when FIDE doesn&apos;t have them — links to the
+                      (tracked by signed-in users when FIDE doesn&apos;t have them, links to the
                       ad-hoc profile)
                     </span>
                   </div>
@@ -277,7 +277,7 @@ export default async function ScoutPage({ searchParams }: { searchParams: Promis
                       online{' '}
                       {handleResults.length === 1 ? 'handle also matches' : 'handles also match'}
                     </span>
-                    <span className="text-xs">(chess.com + Lichess — opens external profile)</span>
+                    <span className="text-xs">(chess.com + Lichess, opens external profile)</span>
                   </div>
                   <ul className="grid gap-3">
                     {handleResults.map((h) => (
@@ -322,7 +322,7 @@ function EmptyState() {
       </div>
       <p className="mt-6 text-xs text-muted-foreground">
         No luck by name? Open any candidate and the page exposes a <em>paste their games</em>{' '}
-        refiner —{' '}
+        refiner.{' '}
         <Link href="/benchmarks#path-b" className="underline hover:text-foreground">
           see how accurate that is
         </Link>

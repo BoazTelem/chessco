@@ -53,7 +53,7 @@ export default async function HistoryPage() {
       <Section title="Practice games" count={games.length}>
         {games.length === 0 ? (
           <Empty>
-            No games yet —{' '}
+            No games yet.{' '}
             <Link href="/practice" className="text-accent hover:underline">
               browse the lobby
             </Link>
@@ -76,7 +76,7 @@ export default async function HistoryPage() {
                           }
                           className="hover:text-accent hover:underline"
                         >
-                          {g.result ?? '—'} as {you}
+                          {g.result ?? '-'} as {you}
                         </Link>
                       </p>
                       <p className="text-[11px] text-muted-foreground">
@@ -97,7 +97,7 @@ export default async function HistoryPage() {
       <Section title="Scout searches" count={searches.length}>
         {searches.length === 0 ? (
           <Empty>
-            No searches yet —{' '}
+            No searches yet.{' '}
             <Link href="/scout" className="text-accent hover:underline">
               try Scout
             </Link>
@@ -130,7 +130,7 @@ export default async function HistoryPage() {
       <Section title="Preparation reports" count={preps.length}>
         {preps.length === 0 ? (
           <Empty>
-            No prep reports yet —{' '}
+            No prep reports yet.{' '}
             <Link href="/prepare" className="text-accent hover:underline">
               try Prepare
             </Link>

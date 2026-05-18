@@ -1,13 +1,13 @@
 'use client';
 
 /**
- * MovesPanel — paired white/black columns of SAN moves for the live game
+ * MovesPanel: paired white/black columns of SAN moves for the live game
  * sidebar. Parses the live PGN client-side so we never show chess.js's
  * default seven-tag-roster (`[Date "????.??.??"]` etc.) which makes the
  * sidebar look broken. Auto-scrolls so the latest move is always visible.
  *
  * Piece moves are rendered with a Unicode chess glyph in place of the SAN
- * piece letter (Lichess / chess.com convention) — the file-of-disambiguation
+ * piece letter (Lichess / chess.com convention). The file-of-disambiguation
  * or capture marker stays as text right after the glyph.
  */
 

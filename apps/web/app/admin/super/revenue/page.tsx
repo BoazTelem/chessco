@@ -109,7 +109,7 @@ export default async function RevenuePage({
             <tbody>
               {topSpenders.map((s) => (
                 <tr key={s.profile_id} className="border-b border-border/40">
-                  <td className="px-3 py-2">{s.email ?? '—'}</td>
+                  <td className="px-3 py-2">{s.email ?? '-'}</td>
                   <td className="px-3 py-2 text-right font-mono">{formatNumber(s.count)}</td>
                   <td className="px-3 py-2 text-right font-mono">
                     {formatCents(s.principal_cents)}

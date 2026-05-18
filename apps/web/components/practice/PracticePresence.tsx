@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * PracticePresence — the publisher's lifeline while their challenge sits in
+ * PracticePresence: the publisher's lifeline while their challenge sits in
  * the lobby, plus the always-on bridge for direct invites. Mounted globally
  * so the user can navigate to /prepare or /scout (etc.) while waiting and
  * still:
@@ -44,7 +44,7 @@ export function PracticePresence() {
   const [invite, setInvite] = useState<InviteNotice | null>(null);
   const [accepting, setAccepting] = useState(false);
   // Tracks the most recent matchId we've already routed to, so the heartbeat
-  // fallback doesn't keep re-pushing the same route on every 20 s tick — and
+  // fallback doesn't keep re-pushing the same route on every 20 s tick, and
   // doesn't bounce the user straight back into a game they just left if they
   // reload /practice within the auto-join window. Persisted to sessionStorage
   // so a refresh of the lobby tab honors the "already joined" decision.
@@ -60,7 +60,7 @@ export function PracticePresence() {
     try {
       lastJoinedRef.current = sessionStorage.getItem(LAST_JOINED_KEY);
     } catch {
-      /* sessionStorage unavailable — fall through with null */
+      /* sessionStorage unavailable: fall through with null */
     }
 
     function rememberJoined(matchId: string): void {
@@ -97,7 +97,7 @@ export function PracticePresence() {
         // Fallback: catches anything Realtime missed (max ~20 s lag).
         maybeJoin(json.latestLiveMatchId ?? null);
       } catch {
-        /* ignore network blips — next tick will retry */
+        /* ignore network blips: next tick will retry */
       }
     }
 
@@ -120,7 +120,7 @@ export function PracticePresence() {
 
       // Presence callbacks must be attached BEFORE subscribe(). InvitePicker
       // (and any other consumer) reads the resulting list from presence-store
-      // rather than opening its own channel — supabase.channel(topic) returns
+      // rather than opening its own channel. supabase.channel(topic) returns
       // the existing channel by topic, so a second subscriber on the same
       // topic would hit "cannot add presence callbacks after subscribe()".
       const publishPresence = (): void => {

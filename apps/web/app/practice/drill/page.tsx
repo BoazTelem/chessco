@@ -1,5 +1,5 @@
 /**
- * /practice/drill — drill recommended lines vs. an opponent-style Maia bot.
+ * /practice/drill: drill recommended lines vs. an opponent-style Maia bot.
  * Spec §6 Phase 6.
  *
  * Subscription-gated: free tier sees the upsell; paid tiers see the drill

@@ -1,8 +1,8 @@
 /**
- * GET /reports/[id]?t=<share_token> — interactive prep-report viewer.
+ * GET /reports/[id]?t=<share_token>: interactive prep-report viewer.
  *
  * Spec §7. Owner OR matching share token only. Renders the persisted
- * leaks_json from prep_reports (no on-demand recompute here — that lives
+ * leaks_json from prep_reports (no on-demand recompute here; that lives
  * in GET /api/prepare/reports/[id]; the operator hits that first or via
  * the /prepare/[platform]/[handle] page on creation).
  *

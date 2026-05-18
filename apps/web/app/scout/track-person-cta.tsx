@@ -12,7 +12,7 @@ import { countryFlag, countryName } from '@/lib/scout/countries';
  * when FIDE/ICF/USCF don't have the player, the user supplies an estimated
  * rating (±band) and optional title so Stage 2 candidate scoring still has
  * a rating signal to discriminate online accounts. Rating fields are
- * optional — pure name+country still works for users who don't know.
+ * optional: pure name+country still works for users who don't know.
  *
  * Auth-gated: signed-out users see a sign-in prompt instead of the form.
  */
@@ -92,7 +92,7 @@ export function TrackPersonCTA({
         No exact match for <span className="font-medium">&ldquo;{name}&rdquo;</span> in {where}.
       </p>
       <p className="mt-2 text-center text-xs text-muted-foreground">
-        Track this person anyway — give what you know about their rating and AI will find their
+        Track this person anyway: give what you know about their rating and AI will find their
         online accounts. Identified handles persist for future searches.
       </p>
 
@@ -175,11 +175,11 @@ export function TrackPersonCTA({
             >
               <option value="">(none)</option>
               <optgroup label="Open">
-                <option value="NM">NM — National Master</option>
-                <option value="CM">CM — Candidate Master</option>
-                <option value="FM">FM — FIDE Master</option>
-                <option value="IM">IM — International Master</option>
-                <option value="GM">GM — Grandmaster</option>
+                <option value="NM">NM: National Master</option>
+                <option value="CM">CM: Candidate Master</option>
+                <option value="FM">FM: FIDE Master</option>
+                <option value="IM">IM: International Master</option>
+                <option value="GM">GM: Grandmaster</option>
               </optgroup>
               <optgroup label="Women's">
                 <option value="WCM">WCM</option>

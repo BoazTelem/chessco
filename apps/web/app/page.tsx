@@ -8,7 +8,7 @@ import { JsonLd } from '@/components/seo/JsonLd';
 import { organizationJsonLd, websiteJsonLd } from '@/lib/seo/jsonld';
 
 // The indexed-player count is cached hourly inside getIndexStats()
-// (unstable_cache), so the page can stay fully dynamic per-request —
+// (unstable_cache), so the page can stay fully dynamic per-request:
 // necessary because getUser() reads cookies and mixing that with a
 // page-level `revalidate` made returning logged-in users see the
 // logged-out shell of this page.
@@ -77,7 +77,7 @@ export default async function HomePage() {
             Try the scout, no sign-up needed.
           </div>
           <Link href="/benchmarks" className="text-xs text-muted-foreground hover:text-foreground">
-            Two ways to find your opponent — see how often each works →
+            Two ways to find your opponent: see how often each works →
           </Link>
           {(stats.chesscomHandles > 0 || stats.lichessHandles > 0) && (
             <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-muted-foreground">

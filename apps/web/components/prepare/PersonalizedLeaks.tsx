@@ -44,7 +44,7 @@ function progressMessage(payload: ReportPayload, handle: string): string {
   if (payload.substage === 'awaiting_user_handle') {
     return 'Waiting for your linked account to land in the corpus…';
   }
-  // No substage hint yet — generic.
+  // No substage hint yet: generic.
   return `Indexing ${handle}’s recent games · this can take a minute`;
 }
 
@@ -166,7 +166,7 @@ export function PersonalizedLeaks({ signedIn, platform, handle, loginHref }: Pro
       <section className="mx-auto w-full max-w-3xl rounded-xl border border-border bg-card p-6">
         <h2 className="font-display text-xl font-semibold">Personalized leaks</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Positions where {handle} has played poorly that you can reach from your own repertoire —
+          Positions where {handle} has played poorly that you can reach from your own repertoire,
           plus surprise lines to catch them off-guard, and where you tend to slip up against their
           repertoire.
         </p>
@@ -267,8 +267,8 @@ export function PersonalizedLeaks({ signedIn, platform, handle, loginHref }: Pro
     <section className="mx-auto w-full max-w-3xl rounded-xl border border-border bg-card p-6">
       <h2 className="font-display text-xl font-semibold">Personalized leaks</h2>
       <p className="mt-2 text-sm text-muted-foreground">
-        Positions where {handle} has played poorly that you can reach from your own repertoire —
-        plus surprise lines to catch them off-guard, and where you tend to slip up against their
+        Positions where {handle} has played poorly that you can reach from your own repertoire, plus
+        surprise lines to catch them off-guard, and where you tend to slip up against their
         repertoire.
       </p>
 

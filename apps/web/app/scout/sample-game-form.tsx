@@ -50,10 +50,10 @@ function validateSlot(raw: string): SlotIssue {
   if (!tags.has('Result')) missing.push('[Result]');
 
   // ECO isn't required for parsing to succeed, but the matcher leans on
-  // it heavily — warn so the user knows to grab a full export.
+  // it heavily, so warn so the user knows to grab a full export.
   if (!tags.has('ECO')) missing.push('[ECO] (recommended)');
 
-  // Move text is the cheapest sanity check — at least one "N." move number.
+  // Move text is the cheapest sanity check: at least one "N." move number.
   if (!/\b\d+\.\s*[A-Za-z]/.test(text)) missing.push('move text');
 
   return missing.length === 0 ? { kind: 'ok' } : { kind: 'invalid', missing };
@@ -65,7 +65,7 @@ function validateSlot(raw: string): SlotIssue {
  * we block submit on dups.
  *
  * Strategy: extract a stable subset of headers (players, date, result,
- * round, site URL) — handles same-export-twice and same-game-from-
+ * round, site URL): handles same-export-twice and same-game-from-
  * different-formats. Falls back to a moves-text hash so games without a
  * Site/Link tag still get caught.
  */
@@ -109,7 +109,7 @@ function fingerprintSlot(raw: string): string | null {
  * UX: one labeled textarea per game with an explicit "+ Add another
  * game" button. Users don't intuit the blank-line PGN divider, so the
  * slot model makes "paste 10 games" obvious. On submit we join slots
- * with \n\n — that is exactly what splitGames() expects, so no server
+ * with \n\n, which is exactly what splitGames() expects, so no server
  * change is required. A multi-game paste into a single slot still
  * parses correctly (the server splitter handles either shape).
  */
@@ -378,14 +378,14 @@ export function SampleGameForm({
       </div>
       {invalidCount > 0 && (
         <p className="text-xs text-rose-500">
-          {invalidCount} game{invalidCount === 1 ? '' : 's'} missing required PGN tags — paste the
+          {invalidCount} game{invalidCount === 1 ? '' : 's'} missing required PGN tags. Paste the
           full PGN export (with the bracketed headers on top), not just the moves.
         </p>
       )}
       {dupCount > 0 && (
         <p className="text-xs text-rose-500">
-          {dupCount} slot{dupCount === 1 ? '' : 's'} contain the same game — remove the duplicates
-          so each PGN is counted once in the fingerprint.
+          {dupCount} slot{dupCount === 1 ? '' : 's'} contain the same game. Remove the duplicates so
+          each PGN is counted once in the fingerprint.
         </p>
       )}
       {error && <p className="text-xs text-rose-500">{error}</p>}

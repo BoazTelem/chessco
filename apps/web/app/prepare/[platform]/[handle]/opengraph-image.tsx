@@ -172,7 +172,7 @@ function RatingTile({ label, value }: { label: string; value: number | null }) {
           marginTop: 4,
         }}
       >
-        {value ?? '—'}
+        {value ?? '-'}
       </div>
     </div>
   );

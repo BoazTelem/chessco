@@ -1,5 +1,5 @@
 /**
- * /practice/sandbox — play a full game vs. a Maia bot. Phase 6A entry point.
+ * /practice/sandbox: play a full game vs. a Maia bot. Phase 6A entry point.
  *
  * Server component does auth + env preflight. The actual game state machine
  * lives in SandboxClient (client component) so the chessboard + chess.js
@@ -37,7 +37,7 @@ export default async function SandboxPage() {
         <p className="text-xs uppercase tracking-wide text-muted-foreground">Practice</p>
         <h1 className="mt-1 font-display text-2xl font-semibold md:text-3xl">Sandbox vs. bot</h1>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-          Play a full game against a human-skill bot. Pick a rating bucket and a mode — casual plays
+          Play a full game against a human-skill bot. Pick a rating bucket and a mode. Casual plays
           for fun, credit stakes one credit per game.
         </p>
       </header>

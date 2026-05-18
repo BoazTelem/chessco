@@ -10,7 +10,7 @@ import type { PlayerInfo } from '@/components/practice/PlayerCard';
 import { signTicket } from '@/lib/practice/ws-ticket';
 
 export const metadata = {
-  title: 'Practice — live game',
+  title: 'Practice: live game',
 };
 
 interface RouteProps {
@@ -71,7 +71,7 @@ export default async function PracticeGamePage({ params }: RouteProps) {
   };
 
   // Player cards: name, title, country flag, rating. Anonymity propagates
-  // from the originating challenge — same rule the lobby card already uses.
+  // from the originating challenge: same rule the lobby card already uses.
   // skill_rating is numeric in Postgres; ROUND() it server-side so the
   // JSON driver delivers a clean integer rather than a string.
   const sql = getPracticeDb();
@@ -108,7 +108,7 @@ export default async function PracticeGamePage({ params }: RouteProps) {
 
   return (
     <div className="flex min-h-screen flex-col">
-      {/* Minimal floating brand chip — keeps the board immersive but leaves a
+      {/* Minimal floating brand chip: keeps the board immersive but leaves a
           one-click route home if the player needs to bail. */}
       <Link
         href="/"

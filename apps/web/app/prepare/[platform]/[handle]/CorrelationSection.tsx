@@ -4,7 +4,7 @@
  * Phase 4 UI: renders the two-handle bucketed-repertoire diff returned by
  * GET /api/prepare/correlate. Mounts on /prepare/[platform]/[handle] when
  * `?me=...&mePlatform=...` URL params are present so we know "your"
- * handle. This is the v1 surface for the Prep Plan product — the picker
+ * handle. This is the v1 surface for the Prep Plan product: the picker
  * UX + paywall arrive once user→handle linking lands.
  */
 import { useEffect, useState } from 'react';
@@ -157,7 +157,7 @@ export function CorrelationSection({
         setState({ phase: 'ready', data });
         if (!explainEnabled) return;
 
-        // Kick off the explainer in parallel — fire-and-forget, doesn't
+        // Kick off the explainer in parallel: fire-and-forget, doesn't
         // gate the raw correlation panel. Errors surface as `available: false`
         // so the UI just skips the prose section.
         setExplain({ phase: 'loading' });
@@ -190,7 +190,7 @@ export function CorrelationSection({
         </p>
       </div>
       <p className="mt-2 text-sm text-muted-foreground">
-        Two-handle bucketed-repertoire diff — surfaces lines you reach where they struggle, plus
+        Two-handle bucketed-repertoire diff. Surfaces lines you reach where they struggle, plus
         positions where their recent play differs from their lifetime baseline.
       </p>
 
@@ -215,7 +215,7 @@ function renderState(
             {state.missing.me ? <li>Your repertoire is not yet built.</li> : null}
             {state.missing.opp ? <li>Opponent&apos;s repertoire is not yet built.</li> : null}
             <li>
-              Hit the page again in a few hours — the worker pipeline catches up after enqueue.
+              Hit the page again in a few hours: the worker pipeline catches up after enqueue.
             </li>
           </ul>
         ) : null}
@@ -230,11 +230,11 @@ function renderState(
       <OverlapList title="You as White → them as Black" entries={data.asWhite} />
       <OverlapList title="You as Black → them as White" entries={data.asBlack} />
       <DriftList
-        title="Their recent play vs lifetime — as Black (what you face as White)"
+        title="Their recent play vs lifetime, as Black (what you face as White)"
         entries={data.driftAsWhite}
       />
       <DriftList
-        title="Their recent play vs lifetime — as White (what you face as Black)"
+        title="Their recent play vs lifetime, as White (what you face as Black)"
         entries={data.driftAsBlack}
       />
     </div>
@@ -264,7 +264,7 @@ function ExplainPanel({
         <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm">
           {data.lines.map((l, i) => (
             <li key={i}>
-              <span className="font-semibold">{l.title}</span> —{' '}
+              <span className="font-semibold">{l.title}</span>:{' '}
               <span className="text-accent">{l.yourMove}</span>
               <div className="text-xs text-muted-foreground">{l.why}</div>
             </li>

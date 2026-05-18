@@ -19,7 +19,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: `${brand.name} — ${brand.slogan}`,
+    default: `${brand.name}: ${brand.slogan}`,
     template: `%s | ${brand.name}`,
   },
   description: brand.description,
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   // app/icon1.tsx (sized PNG fallbacks), app/apple-icon.tsx (180px PNG),
   // app/opengraph-image.tsx (1200x630 social card).
   openGraph: {
-    title: `${brand.name} — ${brand.slogan}`,
+    title: `${brand.name}: ${brand.slogan}`,
     description: brand.description,
     url: `https://${brand.domain}`,
     siteName: brand.name,

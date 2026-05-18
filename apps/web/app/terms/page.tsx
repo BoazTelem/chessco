@@ -3,7 +3,7 @@ import { brand } from '@chessco/ui';
 
 export const metadata = {
   title: 'Terms of Use',
-  description: `Terms of Use for ${brand.name}. Draft v0.1 — pre-launch, not yet in force.`,
+  description: `Terms of Use for ${brand.name}. Draft v0.1, pre-launch, not yet in force.`,
 };
 
 const EFFECTIVE_DATE = '2026-05-15';
@@ -36,7 +36,7 @@ export default function TermsPage() {
             Terms of Use
           </h1>
           <p className="mt-3 text-xs text-muted-foreground">
-            Draft v0.1 — published <time dateTime={EFFECTIVE_DATE}>{EFFECTIVE_DATE}</time>. This
+            Draft v0.1, published <time dateTime={EFFECTIVE_DATE}>{EFFECTIVE_DATE}</time>. This
             document is a pre-launch draft made publicly available for review and is not yet binding
             on users. The final version will be re-dated and announced before {brand.name} accepts
             payments or other commercial transactions.
@@ -99,7 +99,7 @@ export default function TermsPage() {
           <p>
             <strong className="text-foreground">Prepare</strong> fetches public games for an account
             you specify and builds an opening tree and per-line statistics. We do not represent that
-            our copy of a player&apos;s games is current to the moment — there is always some lag
+            our copy of a player&apos;s games is current to the moment. There is always some lag
             between the source platform and our index.
           </p>
           <p>
@@ -178,7 +178,7 @@ export default function TermsPage() {
               public endpoints used within reasonable rate limits.
             </li>
             <li>
-              Use Scout output as the basis for any high-stakes decision about a real person —
+              Use Scout output as the basis for any high-stakes decision about a real person,
               including but not limited to employment, contracting, fraud allegations, or
               tournament-integrity rulings. Scout is a probabilistic tool, not an identification
               service.
@@ -225,8 +225,8 @@ export default function TermsPage() {
             our licensors and are protected by intellectual-property law.
           </p>
           <p>
-            Indexed third-party chess data — including games, ratings, titles, and federation
-            information — belongs to its respective sources. Lichess game data is published by
+            Indexed third-party chess data (including games, ratings, titles, and federation
+            information) belongs to its respective sources. Lichess game data is published by
             Lichess under the Creative Commons CC0 1.0 Universal dedication. Other sources rely on
             their own public-availability terms; we operate within those terms and honour removal
             requests as described in the Privacy Policy.

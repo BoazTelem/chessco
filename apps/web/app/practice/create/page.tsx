@@ -6,7 +6,7 @@ import { CreatePositionForm } from '@/components/practice/CreatePositionForm';
 import { InvitePicker } from '@/components/practice/InvitePicker';
 
 export const metadata = {
-  title: 'Practice — create a position',
+  title: 'Practice: create a position',
 };
 
 // No page-level `revalidate`: getUser() reads cookies, mixing them with

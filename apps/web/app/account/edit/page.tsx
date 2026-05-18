@@ -28,7 +28,7 @@ export default async function EditProfilePage() {
     .eq('id', user.id)
     .maybeSingle()) as { data: ProfileRow | null };
 
-  // If onboarding hasn't run yet (no username) push the user there — the edit
+  // If onboarding hasn't run yet (no username) push the user there. The edit
   // form expects a fully-set-up profile to update.
   if (!profile?.username) {
     redirect('/onboarding');

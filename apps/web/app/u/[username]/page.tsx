@@ -137,7 +137,7 @@ export default async function PublicUserProfile({ params }: RouteProps) {
     <Shell>
       {isSelf && !isPublic && (
         <div className="mb-6 rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-xs text-amber-700">
-          Your profile is private — others see only your username.{' '}
+          Your profile is private. Others see only your username.{' '}
           <Link href="/account/privacy" className="underline">
             Change privacy
           </Link>
@@ -243,7 +243,7 @@ export default async function PublicUserProfile({ params }: RouteProps) {
                         href={`/practice/g/${g.match_id}/review`}
                         className="font-medium hover:text-accent hover:underline"
                       >
-                        {g.result ?? '—'} as {youAreWhite ? 'white' : 'black'}
+                        {g.result ?? '-'} as {youAreWhite ? 'white' : 'black'}
                       </Link>
                       <p className="text-[11px] text-muted-foreground">
                         vs{' '}

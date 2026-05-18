@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * GamePlayer — the live game UI. Connects to the realtime server via the
+ * GamePlayer: the live game UI. Connects to the realtime server via the
  * minted WS ticket, renders the board, drives moves, displays clocks with
  * local interpolation between server ticks, plays sounds, and shows the
  * game-end overlay with a link to the review.
@@ -159,7 +159,7 @@ export function GamePlayer({
   }, [matchId]);
 
   // Track the `lg` breakpoint so the player cards can live above/below the
-  // board on mobile but move into the sidebar on desktop — that frees the
+  // board on mobile but move into the sidebar on desktop. That frees the
   // board column to use the full vertical space.
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -245,7 +245,7 @@ export function GamePlayer({
       try {
         const res = await fetch(`/api/practice/matches/${matchId}/ticket`, { method: 'POST' });
         if (!res.ok) {
-          setError('Lost connection — the game may be over.');
+          setError('Lost connection. The game may be over.');
           return;
         }
         const { url } = (await res.json()) as { url: string };
@@ -307,11 +307,11 @@ export function GamePlayer({
                   fen: msg.fen,
                   whiteMs: msg.whiteTimeMs,
                   blackMs: msg.blackTimeMs,
-                  // Derive from FEN — otherwise an own optimistic flip + this
+                  // Derive from FEN: otherwise an own optimistic flip + this
                   // unconditional flip would cancel out and stick on our color.
                   sideToMove: sideToMoveFromFen(msg.fen),
                   lastMove: { uci: msg.uci, san: msg.san },
-                  // First move just landed (or any move) — the clock is running.
+                  // First move just landed (or any move). The clock is running.
                   paused: false,
                 }
               : s,
@@ -601,7 +601,7 @@ export function GamePlayer({
           <div className="rounded-lg border border-accent/40 bg-accent/5 p-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-accent">Game over</p>
             <p className="mt-1 text-base">
-              {state.result} — {state.termination}
+              {state.result}: {state.termination}
             </p>
             <button
               type="button"
@@ -644,8 +644,8 @@ function PresenceBanner({
   const seconds = useCountdown(deadlineMs);
   const text =
     reason === 'waiting'
-      ? `Waiting for opponent — ${seconds}s to abort`
-      : `Opponent disconnected — ${seconds}s to return`;
+      ? `Waiting for opponent, ${seconds}s to abort`
+      : `Opponent disconnected, ${seconds}s to return`;
   return (
     <div className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-center text-xs font-medium text-amber-700 dark:text-amber-300">
       {text}

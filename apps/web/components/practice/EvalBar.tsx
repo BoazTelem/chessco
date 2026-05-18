@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * EvalBar — vertical advantage indicator for the review board.
+ * EvalBar: vertical advantage indicator for the review board.
  * White's share grows from the bottom (mate-for-white = full white),
  * Black's share fills from the top. Clamped to ±8 pawns so single-move
  * spikes don't dwarf normal eval swings.
@@ -60,7 +60,7 @@ export function EvalBar({ cp, mate, heightPx }: Props) {
 
 function formatEval(cp: number | null | undefined, mate: number | null | undefined): string {
   if (typeof mate === 'number' && mate !== 0) return `M${Math.abs(mate)}`;
-  if (typeof cp !== 'number') return '—';
+  if (typeof cp !== 'number') return '-';
   const pawns = cp / 100;
   if (Math.abs(pawns) < 0.05) return '0.0';
   return pawns >= 0 ? `+${pawns.toFixed(1)}` : pawns.toFixed(1);

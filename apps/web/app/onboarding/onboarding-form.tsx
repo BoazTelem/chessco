@@ -30,7 +30,7 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
       <Field
         label="Username"
         id="username"
-        hint="3–30 characters. Lowercase letters, numbers, underscore, dash. Public — visible on your profile."
+        hint="3–30 characters. Lowercase letters, numbers, underscore, dash. Public: visible on your profile."
       >
         <input
           id="username"

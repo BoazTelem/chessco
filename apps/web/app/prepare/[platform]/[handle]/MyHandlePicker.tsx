@@ -5,7 +5,7 @@
  * localStorage so the user only enters it once per browser. Drives the
  * CorrelationSection when no `?me=&mePlatform=` URL params are present.
  *
- * Deliberately NOT in the auth/profile layer — that's a larger schema
+ * Deliberately NOT in the auth/profile layer: that's a larger schema
  * + UX project. This is the wedge that makes Phase 4-5 reachable for a
  * real user today; the formal user→handle linking work supersedes it
  * later (e.g. captured at signup, stored on the profile).
@@ -38,7 +38,7 @@ function storeHandle(handle: string, platform: Platform): void {
     window.localStorage.setItem(STORAGE_KEY_HANDLE, handle);
     window.localStorage.setItem(STORAGE_KEY_PLATFORM, platform);
   } catch {
-    // Private browsing or quota — silently degrade; the form just won't
+    // Private browsing or quota: silently degrade; the form just won't
     // remember next visit.
   }
 }
@@ -111,7 +111,7 @@ export function MyHandlePicker({ initial, onChange }: Props) {
       </p>
       <p className="mt-1 text-sm text-muted-foreground">
         We compare your bucketed repertoire against theirs to surface the lines you should study
-        first. Stored in your browser only — not sent to us until you submit.
+        first. Stored in your browser only, not sent to us until you submit.
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <select

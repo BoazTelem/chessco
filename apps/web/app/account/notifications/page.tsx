@@ -43,8 +43,8 @@ export default async function NotificationPreferencesPage() {
         <p className="text-xs font-semibold uppercase tracking-[0.3em] text-accent">Account</p>
         <h1 className="font-display text-3xl font-bold tracking-tight">Notifications</h1>
         <p className="text-sm text-muted-foreground">
-          Pick which categories of events email you. In-app notifications (the bell) are always on —
-          you can&apos;t opt out of being told you were banned.
+          Pick which categories of events email you. In-app notifications (the bell) are always on.
+          You can&apos;t opt out of being told you were banned.
         </p>
         <p className="text-xs text-muted-foreground">
           <Link href="/account" className="hover:underline">

@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * LowCreditsDialog — shown when a Practice action is blocked by HTTP 402
+ * LowCreditsDialog: shown when a Practice action is blocked by HTTP 402
  * insufficient-credits. Offers two recovery paths: invite friends (20 credits
  * per verified signup, capped at 100) and earn by playing other players'
  * paid practice in the lobby. Subscription upgrade is a Phase 1 follow-up.

@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * SessionGuard — enforces single-active-session per user.
+ * SessionGuard: enforces single-active-session per user.
  *
  * /auth/callback writes the new login's `session_id` (from the Supabase JWT)
  * into `user_active_session` and revokes every other refresh token for the
@@ -42,7 +42,7 @@ export function SessionGuard() {
       try {
         await supabase.auth.signOut({ scope: 'local' });
       } catch {
-        /* ignore — we redirect either way */
+        /* ignore: we redirect either way */
       }
       router.replace('/login?error=session_replaced');
       router.refresh();

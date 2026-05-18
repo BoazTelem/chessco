@@ -1,15 +1,15 @@
 'use client';
 
 /**
- * Sandbox client — runs the bot game state machine entirely in the browser.
+ * Sandbox client: runs the bot game state machine entirely in the browser.
  *
  * State machine (`Phase`):
- *   setup   — show pickers (time class / control / bot rating / mode), Start button
- *   loading — POST /start in flight
- *   playing — board active, user to move
- *   thinking — bot move fetch in flight
- *   settling — POST /end in flight after a terminal result
- *   done    — show outcome + credit delta + "play again"
+ *   setup: show pickers (time class / control / bot rating / mode), Start button
+ *   loading: POST /start in flight
+ *   playing: board active, user to move
+ *   thinking: bot move fetch in flight
+ *   settling: POST /end in flight after a terminal result
+ *   done: show outcome + credit delta + "play again"
  *
  * Trust model (v0): the client is the source of truth for game state. The
  * server is stateless between moves; it relays FENs to the Maia inference
@@ -19,7 +19,7 @@
  * Resign / unload behavior: the resign button POSTs result='user_loss',
  * result_reason='resign'. Window-unload (close tab, navigate away) sends a
  * sendBeacon to /end with result='abandoned' so a closed tab doesn't leave
- * a credit-mode game un-settled forever. The end route is idempotent — if
+ * a credit-mode game un-settled forever. The end route is idempotent: if
  * the user resigned cleanly and then closes the tab, the second POST returns
  * 409 and is ignored.
  */
@@ -92,7 +92,7 @@ export default function SandboxClient(): JSX.Element {
 
   // chess.js holds the authoritative game state. We keep a ref so the
   // onPieceDrop handler doesn't depend on a stale closure of an immutable
-  // chess instance — chess.js mutates in place.
+  // chess instance: chess.js mutates in place.
   const chessRef = useRef<Chess>(new Chess());
   const [fen, setFen] = useState<string>(chessRef.current.fen());
 
@@ -166,7 +166,7 @@ export default function SandboxClient(): JSX.Element {
         const data = (await resp.json()) as EndResponse | ApiError;
         if (!resp.ok) {
           setErrorMsg(formatEndError(data as ApiError));
-          // Still mark done — the game is over either way; just no credit delta.
+          // Still mark done: the game is over either way; just no credit delta.
           setFinished({ result, resultReason, pgn });
           setPhase('done');
           return;
@@ -263,7 +263,7 @@ export default function SandboxClient(): JSX.Element {
         const bot = await fetchBotMove(chess.fen());
         if (settledRef.current) return;
         if (!bot) {
-          // Move failed — leave the game playable so the user can resign or
+          // Move failed: leave the game playable so the user can resign or
           // wait for the inference service to recover. We don't auto-settle
           // because that would unfairly cost a credit in credit mode.
           setPhase('playing');
@@ -272,7 +272,7 @@ export default function SandboxClient(): JSX.Element {
         try {
           chess.move(bot.uci);
         } catch {
-          // Maia returned an illegal move — defensive fallback. Log + revert.
+          // Maia returned an illegal move: defensive fallback. Log + revert.
           setErrorMsg(`Bot returned illegal move: ${bot.uci}`);
           setPhase('playing');
           return;
@@ -590,7 +590,7 @@ function formatStartError(err: ApiError): string {
     return 'Daily credit-mode cap reached (20 games / 24h). Switch to casual or come back tomorrow.';
   }
   if (err.error === 'ladder_not_seeded') {
-    return err.message ?? 'The Maia ladder rows are not seeded yet — operator action needed.';
+    return err.message ?? 'The Maia ladder rows are not seeded yet. Operator action needed.';
   }
   return err.message ?? err.error ?? 'Failed to start game.';
 }
@@ -612,7 +612,7 @@ function formatMoveError(err: ApiError): string {
 
 function formatEndError(err: ApiError): string {
   if (err.error === 'insufficient_credits') {
-    return 'Could not settle the loss — your credit balance is too low. The game is over locally but the credit delta did not apply.';
+    return 'Could not settle the loss: your credit balance is too low. The game is over locally but the credit delta did not apply.';
   }
   if (err.error === 'game_not_found_or_already_ended') {
     return 'This game has already been settled.';

@@ -6,7 +6,7 @@ const HIDE_PREFIXES = ['/admin/super', '/login', '/signup'];
 
 /**
  * Hide the global header on routes that own their chrome (admin, auth),
- * intentionally render fullscreen (live Practice games — the /review subroute
+ * intentionally render fullscreen (live Practice games; the /review subroute
  * keeps chrome), or are designed as a logo-led landing surface (home).
  * Mirrors ConditionalFooter's route-based opt-out.
  */

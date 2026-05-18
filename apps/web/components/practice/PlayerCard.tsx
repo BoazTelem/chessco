@@ -1,13 +1,13 @@
 'use client';
 
 /**
- * PlayerCard — one row above and one below the board, showing the player's
+ * PlayerCard: one row above and one below the board, showing the player's
  * name, title, country flag, rating, and clock. Mirrors the Lichess layout
  * (cards stacked vertically around the board) and reuses the same
  * Title/Country chips as the public profile + scout result.
  *
  * Anonymity + profile-link rules are resolved server-side and baked into
- * `PlayerInfo` — this component just renders whatever the parent passes.
+ * `PlayerInfo`. This component just renders whatever the parent passes.
  */
 
 import Link from 'next/link';

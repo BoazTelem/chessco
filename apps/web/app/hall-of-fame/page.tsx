@@ -10,7 +10,7 @@ export const metadata = {
 };
 
 // Rendered on demand so the build doesn't need DB access. The leaderboard
-// query itself is cached at the data layer (5-minute TTL) — credits earned
+// query itself is cached at the data layer (5-minute TTL); credits earned
 // shifts slowly relative to that window, which keeps this cheap.
 export const dynamic = 'force-dynamic';
 

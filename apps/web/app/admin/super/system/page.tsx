@@ -44,7 +44,7 @@ export default async function SystemPage() {
         />
         <KpiTile
           label="Oldest backlog"
-          value={oldestStripeAgeMin === null ? '—' : `${oldestStripeAgeMin} min`}
+          value={oldestStripeAgeMin === null ? '-' : `${oldestStripeAgeMin} min`}
           tone={oldestStripeAgeMin && oldestStripeAgeMin > 30 ? 'warning' : 'default'}
         />
         <KpiTile

@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * PositionEditor — board editor used in /practice/create.
+ * PositionEditor: board editor used in /practice/create.
  *
  * Drag-and-drop UX (Lichess-style):
  * - Drag a piece from the palette onto a board square to place it.
@@ -21,7 +21,7 @@ import type { Piece, Square } from 'react-chessboard/dist/chessboard/types';
 // Note on drag UX: we deliberately do NOT mutate `boardMap` in onPieceDragBegin.
 // Doing so re-renders the Chessboard with the source square empty, which
 // unmounts the source <Piece/> mid-drag and takes react-dnd's drag preview
-// with it — the piece appears to vanish while the user is still dragging
+// with it. The piece appears to vanish while the user is still dragging
 // (Lichess-style snap-free remove is implemented via onPieceDropOffBoard
 // instead, which fires only after the user releases off the board).
 import { validateFen, STANDARD_START_FEN } from '@/lib/practice/fen';

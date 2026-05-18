@@ -18,11 +18,11 @@ import type { Platform } from '@/lib/prepare/types';
 interface Props {
   oppPlatform: Platform;
   oppHandle: string;
-  /** From URL `?me=` — overrides localStorage when present. */
+  /** From URL `?me=`: overrides localStorage when present. */
   urlMeHandle: string | null;
-  /** From URL `?mePlatform=` — overrides localStorage when present. */
+  /** From URL `?mePlatform=`: overrides localStorage when present. */
   urlMePlatform: Platform | null;
-  /** Drives the "sign in to see AI brief" hint — /explain requires auth. */
+  /** Drives the "sign in to see AI brief" hint: /explain requires auth. */
   signedIn: boolean;
 }
 
@@ -33,7 +33,7 @@ export function PrepPlanShell({
   urlMePlatform,
   signedIn,
 }: Props) {
-  // Memoize so the useEffect dep below doesn't tick on every render — the
+  // Memoize so the useEffect dep below doesn't tick on every render: the
   // object identity would otherwise re-trigger localStorage hydration.
   const urlHandle = useMemo<MyHandle | null>(
     () => (urlMeHandle && urlMePlatform ? { handle: urlMeHandle, platform: urlMePlatform } : null),

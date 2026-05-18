@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * InvitePicker — lists currently-online Practice users and lets the viewer
+ * InvitePicker: lists currently-online Practice users and lets the viewer
  * send a credit-funded direct invite from the standard starting position with
  * the chosen time control. Reads from the shared presence store fed by
  * PracticePresence (mounted globally). Never opens its own Realtime channel

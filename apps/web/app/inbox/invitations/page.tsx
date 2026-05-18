@@ -1,5 +1,5 @@
 /**
- * /inbox/invitations — pending challenge invitations addressed to the
+ * /inbox/invitations: pending challenge invitations addressed to the
  * logged-in user.
  *
  * Spec §8. Renders pending + recently-resolved (so the user has context

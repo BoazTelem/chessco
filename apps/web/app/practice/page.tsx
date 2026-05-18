@@ -6,7 +6,7 @@ import { LobbyLiveUpdates } from '@/components/practice/LobbyLiveUpdates';
 import { SegmentedLinks } from '@/components/ui/SegmentedControl';
 
 export const metadata = {
-  title: 'Practice — play any position',
+  title: 'Practice: play any position',
   description:
     'Browse positions chess players want to drill. Accept a challenge for free practice or to earn a credit per game.',
 };
@@ -124,7 +124,7 @@ export default async function PracticeLobbyPage({
           </p>
         </div>
 
-        {/* Always-visible Create CTA — coaches and serial publishers should be
+        {/* Always-visible Create CTA: coaches and serial publishers should be
             one click away from publishing another position regardless of how
             many already-open challenges they have in the lobby. */}
         {user && (

@@ -83,7 +83,7 @@ export function LeakCard({ leak, onUnlock, isUnlocking }: Props) {
           <>
             <p>
               You played <span className="font-semibold text-destructive">{leak.userMoveSan}</span>{' '}
-              here — avg cp-loss {Math.round(leak.stats.avgCpLoss)}, blunder rate{' '}
+              here. Avg cp-loss {Math.round(leak.stats.avgCpLoss)}, blunder rate{' '}
               {formatPct(leak.stats.blunderRate)}
             </p>
             <p>

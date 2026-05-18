@@ -34,7 +34,7 @@ export function ResultCard({ result }: { result: SearchResult }) {
               <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">
                 {label}
               </dt>
-              <dd className="text-base font-semibold tabular-nums">{r ?? '—'}</dd>
+              <dd className="text-base font-semibold tabular-nums">{r ?? '-'}</dd>
             </div>
           ))}
         </dl>
@@ -81,7 +81,7 @@ export function CountryBadge({ code }: { code: string }) {
 /**
  * Result row for an online-platform handle hit (chess.com today, Lichess
  * later). External link: clicking the handle opens the player's profile
- * on the platform — that's where users will recognize whether it's their
+ * on the platform: that's where users will recognize whether it's their
  * target. Internal "Track this person" CTA wraps the row for those who
  * want to record the find back into Scout.
  */
@@ -100,13 +100,13 @@ export interface HandleResult {
 }
 
 /**
- * "Community-verified" result — an ad_hoc_players row that the
+ * "Community-verified" result: an ad_hoc_players row that the
  * promote-ad-hoc nightly worker has flipped to promotion_status='promoted'.
  *
  * Surfaces in /scout when ≥2 distinct signed-in users have confirmed the
  * same (platform, handle) for the same name. The card links to the
  * canonical /p/adhoc/{id} profile so future scout queries inherit the
- * accumulated knowledge — even though FIDE doesn't have the player.
+ * accumulated knowledge, even though FIDE doesn't have the player.
  */
 export interface AdHocResult {
   id: string;
@@ -201,7 +201,7 @@ export function HandleResultCard({ result }: { result: HandleResult }) {
             {result.handle}
             {result.claimed_name && (
               <span className="ml-2 text-xs font-normal text-muted-foreground">
-                — {result.claimed_name}
+                - {result.claimed_name}
               </span>
             )}
           </p>
@@ -217,7 +217,7 @@ export function HandleResultCard({ result }: { result: HandleResult }) {
               <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">
                 {label}
               </dt>
-              <dd className="text-base font-semibold tabular-nums">{r ?? '—'}</dd>
+              <dd className="text-base font-semibold tabular-nums">{r ?? '-'}</dd>
             </div>
           ))}
         </dl>

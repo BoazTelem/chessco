@@ -2,7 +2,7 @@ import type { FetchProgress } from '@/lib/prepare/types';
 
 interface Props {
   progress: FetchProgress;
-  /** Games matching current filters — shown as the headline number when fetch is done. */
+  /** Games matching current filters; shown as the headline number when fetch is done. */
   filteredGameCount: number;
 }
 
@@ -17,7 +17,7 @@ export function FetchProgressBar({ progress, filteredGameCount }: Props) {
   const isDone = progress.phase === 'done';
 
   // While fetching: "fetched / ~estimated games" reflects the raw pull rate.
-  // When done: switch to the filtered count — that's the real corpus the tree
+  // When done: switch to the filtered count, that's the real corpus the tree
   // is built from. Total fetched moves to a small subtext for context.
   const headline = isHydrating
     ? 'Loading cached games…'

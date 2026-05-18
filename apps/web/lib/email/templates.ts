@@ -6,7 +6,7 @@
  * picks the template by id and routes through the configured provider
  * (Resend by default; swappable).
  *
- * Templates ARE NOT internationalized yet — Phase 7+. Strings are EN-US.
+ * Templates ARE NOT internationalized yet (Phase 7+). Strings are EN-US.
  */
 
 export type EmailTemplateId =

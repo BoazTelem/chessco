@@ -4,7 +4,7 @@ import { ChesscoMark } from '@/lib/logo';
 import { PrepareEntryForm } from './entry-form';
 
 export const metadata = {
-  title: 'Prepare — opening tree and leaks for any opponent',
+  title: 'Prepare: opening tree and leaks for any opponent',
   description:
     "Enter your opponent's chess.com or Lichess username to see their opening tree. Sign in to correlate their leaks against your repertoire.",
 };

@@ -58,7 +58,7 @@ export default async function AdHocPlayerPage({
             )}
           </p>
           <p className="text-xs text-muted-foreground">
-            No FIDE / ICF / USCF entry yet — use AI matching below to find their accounts. Confirmed
+            No FIDE / ICF / USCF entry yet. Use AI matching below to find their accounts. Confirmed
             handles persist for future searches.
           </p>
         </section>

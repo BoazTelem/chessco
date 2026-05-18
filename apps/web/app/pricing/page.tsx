@@ -165,7 +165,7 @@ function CheckMark() {
 function CrossMark() {
   return (
     <span aria-label="not included" className="text-muted-foreground/40">
-      —
+      -
     </span>
   );
 }
@@ -201,7 +201,7 @@ function TierCard({ tier }: { tier: Tier }) {
             {tier.priceUsd === 0 ? 'forever' : '/ month'}
           </span>
         </p>
-        {/* Same idea — fixes the start of the dl block across cards. */}
+        {/* Same idea: fixes the start of the dl block across cards. */}
         <p className="min-h-[3rem] pt-1 text-xs leading-relaxed text-muted-foreground">
           {tier.tagline}
         </p>
@@ -256,7 +256,7 @@ export default function PricingPage() {
           </h1>
           <p className="mt-4 text-sm leading-relaxed text-muted-foreground md:text-base">
             Every plan comes with credits. Spend them on prep reveals and paid practice. Earn more
-            by helping others practice. Credits never become cash — they keep you on the platform.
+            by helping others practice. Credits never become cash; they keep you on the platform.
           </p>
         </header>
 
@@ -341,7 +341,7 @@ export default function PricingPage() {
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
               Free practice is on every tier. You only spend credits when you publish a
               <em> paid </em>
-              challenge — 1 credit per game requested, and the player who accepts earns 1 credit per
+              challenge: 1 credit per game requested, and the player who accepts earns 1 credit per
               game they finish.
             </p>
           </div>

@@ -46,7 +46,7 @@ export function PrepareEntryForm() {
       const platformSlug = platform === 'chess.com' ? 'chesscom' : 'lichess';
       router.push(`/prepare/${platformSlug}/${encodeURIComponent(data.handle)}`);
     } catch {
-      setErrorMsg('Network error — try again.');
+      setErrorMsg('Network error. Try again.');
       setStatus('error');
     }
   }
@@ -78,7 +78,7 @@ export function PrepareEntryForm() {
           spellCheck={false}
           value={handle}
           onChange={(e) => setHandle(e.target.value)}
-          placeholder="Username — e.g. magnuscarlsen"
+          placeholder="Username, e.g. magnuscarlsen"
           className="block w-full rounded-md border border-border bg-background px-3 py-2 text-base placeholder:text-muted-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
         />
 

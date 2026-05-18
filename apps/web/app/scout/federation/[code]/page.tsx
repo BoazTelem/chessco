@@ -8,12 +8,12 @@ import { findFederation, getFederations } from '@/lib/scout/federations';
 const PAGE_SIZE = 50;
 
 /**
- * Federation roster page — `/scout/federation/[code]`.
+ * Federation roster page: `/scout/federation/[code]`.
  *
  * Shipped 2026-05-14 as part of the Phase 0 W7 expansion. Renders one of:
  *   - Live native roster (federation has its own scraper, e.g. FIDE, ICF)
  *   - FIDE-slice fallback (federation has no scraper yet but FIDE rates its
- *     players — most of the 199; e.g. /scout/federation/GER shows FIDE rows
+ *     players (most of the 199; e.g. /scout/federation/GER shows FIDE rows
  *     filtered by country_iso2(country)='DE')
  *   - "No data yet" placeholder (tiny federations with no FIDE coverage)
  *
@@ -37,15 +37,15 @@ export async function generateMetadata({ params }: { params: Promise<Params> }) 
   const { code } = await params;
   const feds = await getFederations();
   const found = findFederation(feds, code);
-  if (!found) return { title: 'Federation not found — Chessco' };
+  if (!found) return { title: 'Federation not found | Chessco' };
   const { row } = found;
   return {
-    title: `${row.name} — chess ratings | Chessco`,
+    title: `${row.name}: chess ratings | Chessco`,
     description: row.active
-      ? `${row.name} (${row.code}) — official federation rating list, ${row.estPlayerCount?.toLocaleString() ?? '—'} players. Search by name, identify online accounts.`
-      : `${row.name} (${row.code}) — chess players FIDE attributes to this federation. ${row.name}'s own list not yet integrated; shown via FIDE.`,
+      ? `${row.name} (${row.code}): official federation rating list, ${row.estPlayerCount?.toLocaleString() ?? '-'} players. Search by name, identify online accounts.`
+      : `${row.name} (${row.code}): chess players FIDE attributes to this federation. ${row.name}'s own list not yet integrated; shown via FIDE.`,
     openGraph: {
-      title: `${row.name} — chess ratings`,
+      title: `${row.name}: chess ratings`,
       type: 'website',
     },
   };
@@ -87,7 +87,7 @@ export default async function FederationRosterPage({
   let searchError: string | null = null;
 
   // When FIDE-slice and federation has no iso2 (sub-countries with iso2='GB'),
-  // we still query — multiple sub-federations share GB but the page header
+  // we still query: multiple sub-federations share GB but the page header
   // makes it clear which one this is.
   if (useNative || countryFilter) {
     const res = await supabase.rpc('search_federation_players', {
@@ -240,7 +240,7 @@ export default async function FederationRosterPage({
                     href={`/scout/federation/${p.code}`}
                     className="rounded-md border border-border/60 bg-card/40 px-3 py-1.5 text-sm hover:border-accent/40 hover:bg-card/80"
                   >
-                    {p.code} — {p.name}
+                    {p.code}: {p.name}
                   </Link>
                 </li>
               ))}
@@ -264,7 +264,7 @@ function DataSourceBanner({
   if (useNative) {
     return (
       <p className="mt-4 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
-        <strong>Live data</strong> — {fed.name} official rating list
+        <strong>Live data</strong>: {fed.name} official rating list
         {fed.lastSyncedAt ? `, synced ${new Date(fed.lastSyncedAt).toLocaleDateString()}` : ''}.
       </p>
     );
@@ -272,7 +272,7 @@ function DataSourceBanner({
   if (hasResults) {
     return (
       <p className="mt-4 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-        <strong>FIDE slice</strong> — players FIDE attributes to {fed.name}. {fed.name}&apos;s own
+        <strong>FIDE slice</strong>: players FIDE attributes to {fed.name}. {fed.name}&apos;s own
         rating list isn&apos;t integrated yet; we&apos;ll switch this page to native data when the
         parser ships.
       </p>

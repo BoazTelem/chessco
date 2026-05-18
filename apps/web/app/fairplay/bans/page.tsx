@@ -1,11 +1,11 @@
 /**
- * /fairplay/bans — public ban list (opt-in transparency). Spec §12.
+ * /fairplay/bans: public ban list (opt-in transparency). Spec §12.
  *
  * Shows confirmed severity-5 and severity-6 ban_actions for users who
  * opted into public listing. Severity 1-4 stays private (warnings and
  * paid-play-only suspensions don't get a permanent public mark).
  *
- * Opt-in flag lives on profiles (profile_visibility = 'public') — we
+ * Opt-in flag lives on profiles (profile_visibility = 'public'); we
  * reuse the existing visibility field rather than adding a new column.
  * Players whose profile is 'private' or 'coach_public_player_private'
  * are NOT shown.

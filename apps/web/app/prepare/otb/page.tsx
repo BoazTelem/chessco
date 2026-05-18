@@ -1,5 +1,5 @@
 /**
- * /prepare/otb — over-the-board tournament prep mode. Spec §6 Phase 6.
+ * /prepare/otb: over-the-board tournament prep mode. Spec §6 Phase 6.
  *
  * Entry shell: user enters their FIDE ID + the tournament URL (typically
  * chess-results.com). The backend resolves the pairing for the next round
@@ -40,7 +40,7 @@ export default async function OtbPrepPage() {
       </header>
 
       <section className="mt-6 rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
-        OTB prep is currently in private beta — the pairing-resolution worker is operator-gated and
+        OTB prep is currently in private beta. The pairing-resolution worker is operator-gated and
         requires explicit chess-results permission. Email{' '}
         <a href="mailto:beta@chessco.org" className="underline">
           beta@chessco.org
@@ -84,7 +84,7 @@ export default async function OtbPrepPage() {
           disabled
           className="cursor-not-allowed rounded-md border border-border bg-card px-4 py-2 text-sm opacity-50"
         >
-          Bundle prep (paused — private beta)
+          Bundle prep (paused: private beta)
         </button>
       </form>
     </main>

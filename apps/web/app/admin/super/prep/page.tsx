@@ -65,9 +65,9 @@ export default async function PrepPage({
             <tbody>
               {heavy.map((u) => (
                 <tr key={u.profile_id} className="border-b border-border/40">
-                  <td className="px-3 py-2">{u.email ?? '—'}</td>
+                  <td className="px-3 py-2">{u.email ?? '-'}</td>
                   <td className="px-3 py-2 text-muted-foreground">
-                    {u.username ? `@${u.username}` : '—'}
+                    {u.username ? `@${u.username}` : '-'}
                   </td>
                   <td className="px-3 py-2 text-right font-mono">{formatNumber(u.count)}</td>
                   <td className="px-3 py-2 text-right font-mono text-muted-foreground">
@@ -109,7 +109,7 @@ export default async function PrepPage({
                 className="flex items-center justify-between border-b border-border/40 px-1 py-2"
               >
                 <span className="truncate">
-                  {r.email ?? '—'} → {r.target_name ?? r.target_player_id}
+                  {r.email ?? '-'} → {r.target_name ?? r.target_player_id}
                 </span>
                 <span className="flex items-center gap-3">
                   <span

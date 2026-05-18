@@ -2,7 +2,7 @@
  * Provider-agnostic transactional email send. Spec §21.
  *
  * Default provider is Resend (REST API). The transport is replaceable via
- * setEmailTransport() — useful for tests + future provider swaps. Without
+ * setEmailTransport(): useful for tests + future provider swaps. Without
  * a configured transport (no RESEND_API_KEY), sendEmail() resolves with
  * { delivered: false, reason: 'transport_unconfigured' } so callers don't
  * crash; the route logs and continues.

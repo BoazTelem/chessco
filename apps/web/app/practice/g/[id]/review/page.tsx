@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { ReviewBoard } from '@/components/practice/ReviewBoard';
 
 export const metadata = {
-  title: 'Practice — review with Stockfish',
+  title: 'Practice: review with Stockfish',
 };
 
 interface RouteProps {
@@ -50,7 +50,7 @@ export default async function PracticeReviewPage({ params }: RouteProps) {
             <span>Review</span>
           </div>
           <span className="text-muted-foreground">
-            {lg.result ?? '—'} {lg.termination ? `· ${lg.termination}` : ''}
+            {lg.result ?? '-'} {lg.termination ? `· ${lg.termination}` : ''}
           </span>
         </div>
         <ReviewBoard

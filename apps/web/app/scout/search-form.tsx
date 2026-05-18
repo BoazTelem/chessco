@@ -80,7 +80,7 @@ export function SearchForm({
           type="search"
           autoFocus
           defaultValue={initial.q}
-          placeholder="Name — e.g. carlsen, gelfand, your friend's name"
+          placeholder="Name, e.g. carlsen, gelfand, your friend's name"
           className="block w-full rounded-md border border-border bg-background px-3 py-2 text-base placeholder:text-muted-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
         />
 
@@ -125,7 +125,7 @@ export function SearchForm({
                 <optgroup key={group.continent} label={group.label}>
                   {group.items.map((f) => (
                     <option key={f.code} value={f.code}>
-                      {f.code} — {f.name}
+                      {f.code}: {f.name}
                       {f.active ? '' : ' · FIDE-only'}
                     </option>
                   ))}

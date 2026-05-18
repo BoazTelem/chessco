@@ -1,5 +1,5 @@
 /**
- * /admin/fairplay — the fairplay review queue. Spec §12.
+ * /admin/fairplay: the fairplay review queue. Spec §12.
  *
  * Renders pending fairplay_flags sorted by severity desc, with a one-line
  * summary per row and a link to the per-flag decision page (lands when

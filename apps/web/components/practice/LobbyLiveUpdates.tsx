@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * LobbyLiveUpdates — listens for changes on `challenges` and asks Next to
+ * LobbyLiveUpdates: listens for changes on `challenges` and asks Next to
  * re-render the lobby so cards appear/disappear without a manual refresh.
  * Using router.refresh() reuses the server query (RLS, joins on profiles,
  * time-class/opening filters, heartbeat freshness cutoff) so the client
@@ -11,7 +11,7 @@
  * challenges, UPDATEs cover status flips (open → matched) and heartbeat
  * pings, and DELETEs cover creator cancellations. Note that Realtime
  * applies RLS against the new row state, so when a row leaves status='open'
- * non-creator subscribers may not receive the UPDATE — the per-card 409
+ * non-creator subscribers may not receive the UPDATE: the per-card 409
  * fallback in LobbyCard handles that path.
  *
  * Debounced because a single publish can deliver in <50 ms; if multiple

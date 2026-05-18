@@ -166,7 +166,7 @@ export function MoveListPanel({
                       : undefined
                   }
                 >
-                  {wp === null ? '—' : `${wp}%`}
+                  {wp === null ? '-' : `${wp}%`}
                 </span>
                 <button
                   type="button"

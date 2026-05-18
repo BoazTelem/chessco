@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * NotificationBell — header bell + unread badge + dropdown panel.
+ * NotificationBell: header bell + unread badge + dropdown panel.
  *
  * Server-renders the initial unread count via `initialUnreadCount` to avoid a
  * 0 → real-count flash. Subscribes to Supabase realtime on the `notifications`

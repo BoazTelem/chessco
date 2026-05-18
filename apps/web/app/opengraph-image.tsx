@@ -18,7 +18,7 @@ const GRID: ReadonlyArray<ReadonlyArray<number>> = [
   [0, 1, 2, 3, 2, 3, 2, 1],
 ];
 
-export const alt = 'Chessco — Scout. Prepare. Win.';
+export const alt = 'Chessco. Scout. Prepare. Win.';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 

@@ -188,7 +188,7 @@ export function OpeningTreeSection({ platform, handle, signedIn }: Props) {
         if (!haveCache) {
           ranges.push({ since: bounds.since, until: bounds.until, label: null });
         } else {
-          // Forward gap — pull only games newer than the cache.
+          // Forward gap: pull only games newer than the cache.
           if (cachedLatest < bounds.until) {
             ranges.push({
               since: new Date(cachedLatest.getTime() + 1),
@@ -196,7 +196,7 @@ export function OpeningTreeSection({ platform, handle, signedIn }: Props) {
               label: `Fetching new games since ${formatShortDate(cachedLatest)}…`,
             });
           }
-          // Back gap — filter window now reaches earlier than what we have.
+          // Back gap: filter window now reaches earlier than what we have.
           if (cachedEarliest && bounds.since < cachedEarliest) {
             ranges.push({
               since: bounds.since,
@@ -215,7 +215,7 @@ export function OpeningTreeSection({ platform, handle, signedIn }: Props) {
           currentLabel: 'Already up to date',
           errorMessage: null,
         });
-        // Already up to date — still attempt a corpus sync so a reload of
+        // Already up to date, but still attempt a corpus sync so a reload of
         // a stuck/old report can wake the poller via /api/prepare/games/bulk-ingest.
         if (signedIn) {
           void uploadGamesToCorpus(platform, handle, setCorpusSync, ac.signal);
@@ -330,8 +330,8 @@ export function OpeningTreeSection({ platform, handle, signedIn }: Props) {
   }, [startFetch]);
 
   // Hydrate from BOTH sources in parallel on (re-)mount:
-  //   1. IndexedDB — fast, per-browser, has whatever this user fetched before
-  //   2. Games corpus via /api/prepare/games — covers cold visitors and fills
+  //   1. IndexedDB: fast, per-browser, has whatever this user fetched before
+  //   2. Games corpus via /api/prepare/games: covers cold visitors and fills
   //      in everything the worker pipeline has already crawled
   // After both settle, the live-fetch loop pulls only the delta (forward gap
   // from the latest cached game). We also fire /api/prepare/enqueue to bump
@@ -362,7 +362,7 @@ export function OpeningTreeSection({ platform, handle, signedIn }: Props) {
       triggerRebuild(true);
       const total = idbResult.loaded + corpusResult.loaded;
       if (total > 0) {
-        // Cached games exist (from IDB or corpus) — auto-refresh to pull the
+        // Cached games exist (from IDB or corpus): auto-refresh to pull the
         // delta of anything posted to the platform since our latest cached game.
         void startFetchRef.current('fresh');
       } else {
@@ -381,7 +381,7 @@ export function OpeningTreeSection({ platform, handle, signedIn }: Props) {
       abortRef.current?.abort();
     };
     // triggerRebuild is stable (no deps); startFetchRef is a ref so we
-    // intentionally don't list either as a dep — we only want this to
+    // intentionally don't list either as a dep: we only want this to
     // run on (platform, handle) changes, not on every filter tweak.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [platform, handle]);
@@ -428,7 +428,7 @@ export function OpeningTreeSection({ platform, handle, signedIn }: Props) {
       if (!moveObj) return false;
       const san = moveObj.san;
       // If we're partway through the line and the picked move matches what
-      // comes next, just step forward — preserves the rest of the history so
+      // comes next, just step forward: preserves the rest of the history so
       // the user can keep walking past the cursor.
       if (cursor < sanPath.length && sanPath[cursor] === san) {
         setCursor(cursor + 1);
@@ -529,7 +529,7 @@ export function OpeningTreeSection({ platform, handle, signedIn }: Props) {
       </div>
       <p className="mt-2 text-sm text-muted-foreground">
         Pulls {handle}&rsquo;s games from {platformLabel} on demand. Move strength weights recent
-        games higher (1.5y half-life), so the tree reflects their current repertoire — not their
+        games higher (1.5y half-life), so the tree reflects their current repertoire, not their
         all-time average. Average centipawn loss per node arrives with the W6 corpus.
       </p>
 
@@ -576,7 +576,7 @@ export function OpeningTreeSection({ platform, handle, signedIn }: Props) {
           <p className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground">
             {corpusSync === 'uploading' ? 'Syncing recent games to corpus…' : null}
             {corpusSync === 'ready' ? 'Games synced to corpus' : null}
-            {corpusSync === 'failed' ? 'Sync to corpus failed — leaks may be slower' : null}
+            {corpusSync === 'failed' ? 'Sync to corpus failed; leaks may be slower' : null}
           </p>
         ) : null}
 
@@ -618,7 +618,7 @@ export function OpeningTreeSection({ platform, handle, signedIn }: Props) {
 }
 
 /**
- * Ship the browser's cached games to the games corpus. Fire-and-forget —
+ * Ship the browser's cached games to the games corpus. Fire-and-forget;
  * called after the OpeningTree fetch loop completes. Skipping the upload
  * is safe; PersonalizedLeaks will fall back to the existing crawler queue
  * (which can take much longer).

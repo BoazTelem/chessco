@@ -1,11 +1,11 @@
 /**
- * /sparring — public directory of players who opted into being challenged.
+ * /sparring: public directory of players who opted into being challenged.
  *
  * Spec §8. Reads from player_sparring_profiles + player_sparring_fees;
  * filters out `opted_in = false` and players whose away_until is in the
  * future. Sort order: recently-online first, then most completed matches.
  *
- * No write surface here — opt-in/edits happen at /account/practice (or a
+ * No write surface here: opt-in/edits happen at /account/practice (or a
  * sparring profile page lands in a follow-up). Anonymous users can browse
  * but the "invite" CTA is gated on login.
  */
@@ -122,7 +122,7 @@ export default async function SparringDirectoryPage() {
         <section className="mt-8 rounded-md border border-dashed border-border bg-card p-6">
           <h2 className="font-display text-lg font-semibold">No players opted in yet</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Be the first — visit your{' '}
+            Be the first. Visit your{' '}
             <Link href="/account/practice" className="underline">
               practice preferences
             </Link>{' '}

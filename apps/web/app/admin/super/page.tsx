@@ -123,7 +123,7 @@ export default async function OverviewPage({
                 <span className="flex-1 text-sm">{stage.label}</span>
                 <span className="font-mono text-sm">{formatNumber(stage.count)}</span>
                 <span className="w-16 text-right text-xs text-muted-foreground">
-                  {i === 0 ? '—' : `${pct.toFixed(0)}% step`}
+                  {i === 0 ? '-' : `${pct.toFixed(0)}% step`}
                 </span>
                 <span className="w-20 text-right text-xs text-muted-foreground">
                   {totalPct.toFixed(0)}% overall
@@ -147,7 +147,7 @@ export default async function OverviewPage({
         />
         <KpiTile
           label="Fee take rate"
-          value={grossRevenue ? `${((feeRevenue / grossRevenue) * 100).toFixed(1)}%` : '—'}
+          value={grossRevenue ? `${((feeRevenue / grossRevenue) * 100).toFixed(1)}%` : '-'}
           sublabel="fee / principal"
         />
       </div>

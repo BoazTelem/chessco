@@ -76,7 +76,7 @@ async function resolveOpponent(
   try {
     await upsertProbeHits(supabase, [live]);
   } catch {
-    // intentionally swallowed — render shouldn't fail on a cache write
+    // intentionally swallowed: render shouldn't fail on a cache write
   }
   return live;
 }

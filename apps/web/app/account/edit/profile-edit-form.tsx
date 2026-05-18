@@ -271,7 +271,7 @@ export function ProfileEditForm({
             >
               {CHESS_TITLES.map((t) => (
                 <option key={t} value={t}>
-                  {t === '' ? '— None —' : t}
+                  {t === '' ? 'None' : t}
                 </option>
               ))}
             </select>

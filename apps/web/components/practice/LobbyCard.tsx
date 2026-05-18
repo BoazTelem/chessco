@@ -83,7 +83,7 @@ export function LobbyCard({
         setError(j.error ?? 'Failed to accept.');
         setAccepting(false);
         // 409 = stale state (status no longer 'open', creator went offline,
-        // direct-invite mismatch). The card we just clicked is out of date —
+        // direct-invite mismatch). The card we just clicked is out of date,
         // refresh the lobby so it disappears immediately instead of sitting
         // there with an error label.
         if (res.status === 409) router.refresh();

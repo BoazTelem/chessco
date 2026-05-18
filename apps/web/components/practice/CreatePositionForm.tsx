@@ -53,7 +53,7 @@ interface Props {
   referralCreditsCap: number;
 }
 
-const DEFAULT_TC_INDEX = 4; // 10+0 rapid — most common online time class
+const DEFAULT_TC_INDEX = 4; // 10+0 rapid: most common online time class
 const RATING_BAND_ABOVE = 200; // default opponent ceiling = user rating + 200
 
 export function CreatePositionForm({

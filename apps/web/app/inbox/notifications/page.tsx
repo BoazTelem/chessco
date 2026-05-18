@@ -1,9 +1,9 @@
 /**
- * /inbox/notifications — full list of in-app notifications for the logged-in
+ * /inbox/notifications: full list of in-app notifications for the logged-in
  * user. Marks all unread rows as read on view (server-side, idempotent).
  *
  * Pagination is keyset-by-created_at via the `before` search param. Page size
- * is 50 — enough to cover a couple of days of activity without bloating the
+ * is 50, enough to cover a couple of days of activity without bloating the
  * server render.
  */
 import type { Metadata } from 'next';

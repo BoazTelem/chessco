@@ -132,8 +132,8 @@ export default async function SearchesPage({
         <div>
           <h1 className="font-display text-3xl font-bold tracking-tight">Searches</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {formatNumber(count ?? 0)} matching events — anon visitors shown by salted IP + Vercel
-            geo
+            {formatNumber(count ?? 0)} matching events. Anon visitors shown by salted IP + Vercel
+            geo.
           </p>
         </div>
       </header>
@@ -234,7 +234,7 @@ function renderEmpty(
       <header>
         <h1 className="font-display text-3xl font-bold tracking-tight">Searches</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          0 matching events — email filter narrowed results to none.
+          0 matching events. Email filter narrowed results to none.
         </p>
       </header>
       <FiltersBar
@@ -307,7 +307,7 @@ function renderIdentity(r: Row): React.ReactNode {
 
 function renderQueryTarget(r: Row): React.ReactNode {
   if (r.kind === 'scout_query' || r.kind === 'prepare_verify') {
-    return r.query_text ? <code className="text-xs">{r.query_text}</code> : <span>—</span>;
+    return r.query_text ? <code className="text-xs">{r.query_text}</code> : <span>-</span>;
   }
   if (r.target_handle) {
     const platform = r.target_platform ?? '?';
@@ -320,7 +320,7 @@ function renderQueryTarget(r: Row): React.ReactNode {
       </Link>
     );
   }
-  return <span>—</span>;
+  return <span>-</span>;
 }
 
 function renderResult(r: Row): React.ReactNode {
@@ -334,12 +334,12 @@ function renderResult(r: Row): React.ReactNode {
     }
     return <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px]">paid</span>;
   }
-  if (r.result_count === null) return <span>—</span>;
+  if (r.result_count === null) return <span>-</span>;
   return formatNumber(r.result_count);
 }
 
 function renderSession(r: Row): React.ReactNode {
-  if (!r.search_session_id) return <span>—</span>;
+  if (!r.search_session_id) return <span>-</span>;
   const short = r.search_session_id.slice(0, 6);
   return (
     <Link

@@ -1,22 +1,22 @@
 /**
- * Notification helpers — used by every trigger site (admin moderation actions,
+ * Notification helpers: used by every trigger site (admin moderation actions,
  * fairplay decide route, credit grant helpers, sparring invitation routes).
  *
  * Two entry points, kept separate by design:
  *
- *   createNotification(args, tx?) — inserts the row (RLS-protected on read;
+ *   createNotification(args, tx?): inserts the row (RLS-protected on read;
  *     clients never insert). Accepts an optional postgres.js transaction so
  *     callers like grantReferralCredits can fold the insert into the same
  *     transaction as the wallet/ledger writes.
  *
- *   sendNotificationEmail(profileId, category, email) — best-effort email
+ *   sendNotificationEmail(profileId, category, email): best-effort email
  *     dispatch, gated by notification_email_preferences. Always called
  *     OUTSIDE any transaction (i.e. after sql.begin(...) returns) so a
  *     failed Resend call cannot roll back a credit grant.
  *
  * If you need both for an event, call createNotification inside the tx and
  * sendNotificationEmail after the tx returns. For events outside any tx, the
- * order is irrelevant — call them back-to-back.
+ * order is irrelevant. Call them back-to-back.
  */
 import type { Sql, TransactionSql } from 'postgres';
 import { getPracticeDb } from '@/lib/practice/db';
@@ -121,7 +121,7 @@ export interface NotificationEmail<K extends EmailTemplateId = EmailTemplateId> 
 }
 
 /**
- * Send a notification email respecting per-category opt-out. Best-effort —
+ * Send a notification email respecting per-category opt-out. Best-effort,
  * never throws. Callers should invoke this AFTER any wrapping transaction
  * has committed.
  */

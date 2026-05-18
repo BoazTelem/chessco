@@ -93,7 +93,7 @@ export default async function MatchPage({ params }: { params: Promise<{ query_id
 
   // Stage 3 (sample-game) candidates land with all-null ratings + null
   // country; country-seeded chess.com handles likewise have no ratings.
-  // Backfill on first render — bounded fetch against chess.com /pub and
+  // Backfill on first render: bounded fetch against chess.com /pub and
   // lichess /api/user, persisted to platform_players + this candidate row.
   if (candidates && candidates.length > 0) {
     await enrichCandidateProfiles(candidates);
@@ -103,7 +103,7 @@ export default async function MatchPage({ params }: { params: Promise<{ query_id
   const signedIn = !!user;
 
   // When the query has a FIDE anchor, show their name. Otherwise (pure
-  // sample-game paste with no anchor — common for amateurs), show a
+  // sample-game paste with no anchor, common for amateurs), show a
   // descriptive label about the input instead of "(unknown subject)".
   const subjectName =
     query.query_payload.name ??
@@ -164,14 +164,14 @@ export default async function MatchPage({ params }: { params: Promise<{ query_id
 
         {query.status === 'pending' && (
           <section className="mt-8 rounded-lg border border-border bg-card p-5">
-            <p className="text-sm">Working on it — refresh in a few seconds.</p>
+            <p className="text-sm">Working on it. Refresh in a few seconds.</p>
           </section>
         )}
 
         {query.status === 'ready' && (!candidates || candidates.length === 0) && (
           <section className="mt-8 rounded-lg border border-border bg-card p-5">
             <p className="text-sm">
-              No confident matches in our cached online corpus yet. We&apos;ll keep crawling — try
+              No confident matches in our cached online corpus yet. We&apos;ll keep crawling. Try
               again in a few weeks.
             </p>
           </section>
@@ -248,11 +248,11 @@ function getSampleGameFallbackInsertionIndex(candidates: Candidate[]): number {
  * name + country can't pick a winner. Tell the user the limit was reached
  * and point them to sample-game matching (Phase 1 W5).
  *
- * Also surfaces when nothing reaches the "medium" confidence floor — the
+ * Also surfaces when nothing reaches the "medium" confidence floor: the
  * search is grasping; honest about it.
  */
 /**
- * AI verdict banner — renders the LLM rerank's overall judgment above the
+ * AI verdict banner: renders the LLM rerank's overall judgment above the
  * candidate cards. Only shown when /api/identify wrote one to
  * query_payload.ai_verdict (i.e., the LLM had a usable response).
  *
@@ -324,11 +324,11 @@ function DiscriminationNote({
       </p>
       <p className="mt-1 text-sm">
         {tied
-          ? `Name + country matched ${candidates.length} handles with nearly identical confidence — we can't pick a winner from this signal alone.`
+          ? `Name + country matched ${candidates.length} handles with nearly identical confidence. We can't pick a winner from this signal alone.`
           : `No candidate reached a confident match. The strongest signal we have is fuzzy name match plus country.`}{' '}
         {sampleGameAvailable ? (
           <>
-            Paste a few of the target&apos;s games and AI finds them by play style —{' '}
+            Paste a few of the target&apos;s games and AI finds them by play style.{' '}
             <a href="#sample-game-fallback" className="font-semibold text-accent hover:underline">
               jump to PGN importer ↓
             </a>
@@ -433,7 +433,7 @@ function CandidateCard({
           {ratings.map(([label, r]) => (
             <div key={label}>
               <p className="text-[10px] uppercase text-muted-foreground">{label}</p>
-              <p className="tabular-nums">{r ?? '—'}</p>
+              <p className="tabular-nums">{r ?? '-'}</p>
             </div>
           ))}
         </div>

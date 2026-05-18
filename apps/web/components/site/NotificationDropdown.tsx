@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * NotificationDropdown — bell popover. Lists the last ~10 notifications,
+ * NotificationDropdown: bell popover. Lists the last ~10 notifications,
  * "Mark all read" action, and a "See all" link to /inbox/notifications.
  *
  * Visual style matches LowCreditsDialog.tsx: Tailwind-only, --popover /

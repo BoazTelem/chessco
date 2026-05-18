@@ -1,9 +1,9 @@
 /**
- * /coach/students — coach dashboard listing active student relationships.
+ * /coach/students: coach dashboard listing active student relationships.
  * Spec §6 Phase 6.
  *
  * Reads from the `coach_students` table (added in WS-10). Coach role is
- * implicit — anyone can list students they invited. Future work: dedicated
+ * implicit: anyone can list students they invited. Future work: dedicated
  * coach signup flow with verification.
  */
 import type { Metadata } from 'next';
@@ -84,7 +84,7 @@ export default async function CoachStudentsPage() {
                   </Link>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Active since {s.accepted_at ? s.accepted_at.slice(0, 10) : '—'}
+                  Active since {s.accepted_at ? s.accepted_at.slice(0, 10) : '-'}
                 </p>
               </li>
             ))}
@@ -100,7 +100,8 @@ export default async function CoachStudentsPage() {
           <ul className="mt-3 grid gap-2 text-sm">
             {pending.map((s) => (
               <li key={s.id} className="rounded-md border border-border bg-card px-4 py-2">
-                {s.student_name ?? 'Unnamed'} —{' '}
+                {s.student_name ?? 'Unnamed'}
+                {' · '}
                 <span className="text-xs text-muted-foreground">
                   invited {s.invited_at.slice(0, 10)}
                 </span>

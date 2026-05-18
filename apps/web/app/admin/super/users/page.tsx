@@ -136,11 +136,11 @@ export default async function UsersPage({
                 <tr key={r.id} className="border-b border-border/40">
                   <Td>
                     <div className="space-y-0.5">
-                      <p className="font-medium">{r.email ?? '—'}</p>
+                      <p className="font-medium">{r.email ?? '-'}</p>
                       {r.username && <p className="text-xs text-muted-foreground">@{r.username}</p>}
                     </div>
                   </Td>
-                  <Td>{r.country ?? '—'}</Td>
+                  <Td>{r.country ?? '-'}</Td>
                   <Td>{formatDate(r.created_at)}</Td>
                   <Td>
                     <span title={r.last_seen_at ?? ''}>{daysAgo(r.last_seen_at)}</span>

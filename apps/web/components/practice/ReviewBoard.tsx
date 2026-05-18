@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * ReviewBoard — post-game analysis. Loads the final PGN from the parent
+ * ReviewBoard: post-game analysis. Loads the final PGN from the parent
  * (server-fetched live_games.pgn), steps through every ply, and runs each
  * resulting position through a client-side Stockfish web worker. Annotates
  * moves with inaccuracy/mistake/blunder based on centipawn loss vs the
@@ -283,7 +283,7 @@ export function ReviewBoard({ pgn, initialFen, whiteName, blackName }: Props) {
             <p className="mt-1 text-sm">
               Eval after:{' '}
               <span className="font-mono">
-                {current.evalAfter ? formatEval(current.evalAfter) : '—'}
+                {current.evalAfter ? formatEval(current.evalAfter) : '-'}
               </span>
               {current.annotation &&
                 current.annotation !== 'best' &&
@@ -395,7 +395,7 @@ function annotationColor(a: Annotation): string {
 }
 function formatEval(e: EvalResult): string {
   if (e.mate !== null) return `M${e.mate}`;
-  if (e.cp === null) return '—';
+  if (e.cp === null) return '-';
   const pawns = (e.cp / 100).toFixed(2);
   return e.cp >= 0 ? `+${pawns}` : pawns;
 }

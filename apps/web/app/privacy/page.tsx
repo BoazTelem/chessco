@@ -3,7 +3,7 @@ import { brand } from '@chessco/ui';
 
 export const metadata = {
   title: 'Privacy Policy',
-  description: `Privacy Policy for ${brand.name}. Draft v0.1 — pre-launch, not yet in force.`,
+  description: `Privacy Policy for ${brand.name}. Draft v0.1, pre-launch, not yet in force.`,
 };
 
 const EFFECTIVE_DATE = '2026-05-15';
@@ -36,7 +36,7 @@ export default function PrivacyPage() {
             Privacy Policy
           </h1>
           <p className="mt-3 text-xs text-muted-foreground">
-            Draft v0.1 — published <time dateTime={EFFECTIVE_DATE}>{EFFECTIVE_DATE}</time>. This
+            Draft v0.1, published <time dateTime={EFFECTIVE_DATE}>{EFFECTIVE_DATE}</time>. This
             document is a pre-launch draft made publicly available for review. The data-handling
             practices described here reflect what {brand.name} does today; the formal effective date
             will be re-stated before {brand.name} begins charging users.
@@ -62,19 +62,18 @@ export default function PrivacyPage() {
 
         <Section id="what-we-collect" title="2. What we collect">
           <p>
-            <strong className="text-foreground">Account data</strong> — when you create an account
-            we collect your email address (or the email associated with your Google sign-in), a
-            chosen username, an optional display name, and your country. If you sign in via Google
-            OAuth we receive the standard OAuth profile claims (subject id, name, email, picture
-            URL).
+            <strong className="text-foreground">Account data</strong>: when you create an account we
+            collect your email address (or the email associated with your Google sign-in), a chosen
+            username, an optional display name, and your country. If you sign in via Google OAuth we
+            receive the standard OAuth profile claims (subject id, name, email, picture URL).
           </p>
           <p>
-            <strong className="text-foreground">Linked external accounts</strong> — when you link a
+            <strong className="text-foreground">Linked external accounts</strong>: when you link a
             chess.com or Lichess account, we store the platform name, the external account
             identifier, and the verification status of the link.
           </p>
           <p>
-            <strong className="text-foreground">Public chess data we index</strong> — independently
+            <strong className="text-foreground">Public chess data we index</strong>: independently
             of any user account, we maintain an index of publicly available chess data: player
             handles, games (PGNs), ratings, titles, and federation information sourced from
             chess.com, Lichess, FIDE, USCF, and the Israeli Chess Federation. This data describes
@@ -82,17 +81,17 @@ export default function PrivacyPage() {
             index.
           </p>
           <p>
-            <strong className="text-foreground">Derived data</strong> — from indexed games we
-            compute style fingerprints, opening repertoires, and per-position statistics used to
-            generate prep reports and Scout matches.
+            <strong className="text-foreground">Derived data</strong>: from indexed games we compute
+            style fingerprints, opening repertoires, and per-position statistics used to generate
+            prep reports and Scout matches.
           </p>
           <p>
-            <strong className="text-foreground">Billing and transaction data</strong> — subscription
+            <strong className="text-foreground">Billing and transaction data</strong>: subscription
             status, invoices, tax data, and payment confirmations provided by Paddle or other
             billing processors we use. We do not receive or store full card numbers.
           </p>
           <p>
-            <strong className="text-foreground">Server logs</strong> — IP address, user agent,
+            <strong className="text-foreground">Server logs</strong>: IP address, user agent,
             timestamps, requested URLs, and response codes. We retain these for security and
             reliability investigation.
           </p>
@@ -105,29 +104,29 @@ export default function PrivacyPage() {
           </p>
           <ul className="ml-5 list-disc space-y-1">
             <li>
-              <strong className="text-foreground">Performance of a contract</strong> — to provide
-              the account, prep, and (in future) paid services you sign up for.
+              <strong className="text-foreground">Performance of a contract</strong>: to provide the
+              account, prep, and (in future) paid services you sign up for.
             </li>
             <li>
-              <strong className="text-foreground">Legitimate interest</strong> — to index publicly
+              <strong className="text-foreground">Legitimate interest</strong>: to index publicly
               available chess data for the purpose of providing scouting and preparation tools to
               the chess community, and to investigate abuse and secure the Service. We have weighed
               this interest against the privacy impact on data subjects and provide an opt-out
               mechanism described below.
             </li>
             <li>
-              <strong className="text-foreground">Consent</strong> — if and when we introduce
+              <strong className="text-foreground">Consent</strong>: if and when we introduce
               analytics or marketing cookies, we will request consent before any such cookie is set.
               We do not currently use any such cookies (see §5).
             </li>
             <li>
-              <strong className="text-foreground">Legal obligation</strong> — where retention or
+              <strong className="text-foreground">Legal obligation</strong>: where retention or
               disclosure is required by applicable law.
             </li>
           </ul>
         </Section>
 
-        <Section id="indexing" title="4. The public-data index — your rights">
+        <Section id="indexing" title="4. The public-data index: your rights">
           <p>
             {brand.name} indexes publicly available chess data from chess.com, Lichess, FIDE, USCF,
             and the Israeli Chess Federation. Lichess publishes its monthly game dumps under the
@@ -189,26 +188,26 @@ export default function PrivacyPage() {
           </p>
           <ul className="ml-5 list-disc space-y-1">
             <li>
-              <strong className="text-foreground">Supabase</strong> — managed PostgreSQL and
+              <strong className="text-foreground">Supabase</strong>: managed PostgreSQL and
               authentication. Hosts account, profile, link, and prep data.
             </li>
             <li>
-              <strong className="text-foreground">Vercel</strong> — hosting and edge delivery of the
+              <strong className="text-foreground">Vercel</strong>: hosting and edge delivery of the
               web application.
             </li>
             <li>
-              <strong className="text-foreground">Google</strong> — if you sign in with Google,
+              <strong className="text-foreground">Google</strong>: if you sign in with Google,
               receives the standard OAuth request from your browser. Google&apos;s own privacy
               policy governs that interaction.
             </li>
             <li>
-              <strong className="text-foreground">Paddle</strong> — billing, payments, and tax
+              <strong className="text-foreground">Paddle</strong>: billing, payments, and tax
               (merchant of record). UK / Global. Receives billing and transaction data described in
               §2 when you subscribe to a paid plan.
             </li>
             <li>
               <strong className="text-foreground">Source platforms</strong> (chess.com, Lichess,
-              FIDE, USCF, ICF) — we fetch public data from their public endpoints; they receive only
+              FIDE, USCF, ICF): we fetch public data from their public endpoints; they receive only
               what their endpoints would normally receive (request metadata) and not your{' '}
               {brand.name} account data.
             </li>

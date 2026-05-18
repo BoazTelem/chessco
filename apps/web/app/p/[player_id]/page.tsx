@@ -70,7 +70,7 @@ export default async function PlayerProfilePage({
   const history = (snapshots ?? []).slice().reverse(); // chronological for the chart
 
   // Confirmed online accounts for this FIDE player (user_confirmed = true).
-  // Multiple queries may have produced the same (platform, handle) — dedupe
+  // Multiple queries may have produced the same (platform, handle); dedupe
   // client-side, keeping the highest-scoring instance per handle.
   const { data: rawConfirmed } = (await supabase
     .from('identification_candidates')
@@ -123,7 +123,7 @@ export default async function PlayerProfilePage({
           {ratings.map(([label, r]) => (
             <div key={label} className="rounded-lg border border-border bg-card p-5">
               <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</p>
-              <p className="mt-1 font-display text-3xl font-bold tabular-nums">{r ?? '—'}</p>
+              <p className="mt-1 font-display text-3xl font-bold tabular-nums">{r ?? '-'}</p>
             </div>
           ))}
         </section>
@@ -197,7 +197,7 @@ export default async function PlayerProfilePage({
               <p className="mt-1 text-sm text-muted-foreground">
                 Match {player.name.split(',')[0] ?? player.name} to their Lichess and chess.com
                 accounts via fuzzy name + country + rating-band on our online-handle corpus. Fastest
-                path — works without sample games.
+                path; works without sample games.
               </p>
               <div className="mt-3">
                 <IdentifyButton federationPlayerId={player.id} />
@@ -242,7 +242,7 @@ export default async function PlayerProfilePage({
             <p className="mt-1 font-medium">Their repertoire vs yours</p>
             <p className="mt-1 text-sm text-muted-foreground">
               Once you&rsquo;ve found their account, we cross-reference their opening tree against
-              your imported games — surfacing the lines they play that you don&rsquo;t know, the
+              your imported games, surfacing the lines they play that you don&rsquo;t know, the
               leaks in their repertoire you can punish, and the gaps in yours you&rsquo;ll need to
               plug before the game.
             </p>
@@ -254,7 +254,7 @@ export default async function PlayerProfilePage({
                     href={`/prepare/${a.platform === 'lichess' ? 'lichess' : 'chesscom'}/${encodeURIComponent(a.handle)}`}
                     className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground hover:opacity-90"
                   >
-                    Open prep report — {a.handle} ({a.platform})
+                    Open prep report: {a.handle} ({a.platform})
                   </Link>
                 ))}
               </div>

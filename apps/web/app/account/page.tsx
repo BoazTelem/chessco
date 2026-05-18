@@ -125,12 +125,12 @@ export default async function AccountPage({
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             We import your games from these accounts to power prep reports and rating priors. Both
-            accounts read-only — we never make moves or post on your behalf.
+            accounts read-only. We never make moves or post on your behalf.
           </p>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <PlatformCard title="Lichess" subtitle="OAuth — instant verification">
+          <PlatformCard title="Lichess" subtitle="OAuth, instant verification">
             {lichessLinked ? <LinkedSummary account={lichessLinked} /> : <LichessLinkButton />}
           </PlatformCard>
 
@@ -192,7 +192,7 @@ function LinkedSummary({ account }: { account: ExternalAccount }) {
               <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">
                 {label}
               </dt>
-              <dd className="mt-0.5 text-sm font-semibold">{r ?? '—'}</dd>
+              <dd className="mt-0.5 text-sm font-semibold">{r ?? '-'}</dd>
             </div>
           ))}
         </dl>

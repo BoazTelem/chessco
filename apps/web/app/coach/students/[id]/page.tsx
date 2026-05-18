@@ -1,5 +1,5 @@
 /**
- * /coach/students/[id] — per-student detail. Spec §6 Phase 6.
+ * /coach/students/[id]: per-student detail. Spec §6 Phase 6.
  *
  * Shows the student's recent prep reports + completed matches + ratings.
  * Access gated by an active row in coach_students.
