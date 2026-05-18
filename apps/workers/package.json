@@ -63,6 +63,7 @@
     "external:broadcasts:ingest": "tsx src/external-pgn/lichess-broadcasts/ingest.ts",
     "external:resolve-fide": "tsx src/external-pgn/resolve.ts",
     "external:ingest-games": "tsx src/external-pgn/ingest-games.ts",
+    "external:fingerprint": "tsx src/external-pgn/fingerprint.ts",
     "test:lichess-rate-gate": "tsx src/eval/lichess-rate-gate.test.ts",
     "bench:b6": "tsx src/eval/b6.ts",
     "bench:b7": "tsx src/eval/b7.ts",
