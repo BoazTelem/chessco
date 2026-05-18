@@ -1,13 +1,13 @@
 {
-  "as_of": "2026-05-17T12:59:37.901Z",
+  "as_of": "2026-05-18T00:53:15.462Z",
   "methodology": "Feature 1 coverage = distinct federation_players.id with ≥1 platform_players row where claimed_federation_player_id is set. Counts the unique-FIDE-player axis, not handles. A player claimed on both lichess + chess.com counts once in the total.",
   "totals": {
     "fide_pool_1400_plus": 553023,
     "titled_pool": 24231,
     "platforms": {
       "chess.com": {
-        "matchable": 108285,
-        "claimed": 10852
+        "matchable": 122036,
+        "claimed": 24603
       },
       "lichess": {
         "matchable": 8217,
@@ -19,20 +19,20 @@
     {
       "label": "Titled (GM/IM/FM/CM/WGM/WIM/WFM/WCM)",
       "fide_pool": 24231,
-      "claimed_total": 9526,
+      "claimed_total": 12765,
       "claimed_lichess": 1396,
-      "claimed_chesscom": 8942,
-      "coverage_pct": 39.31,
+      "claimed_chesscom": 12437,
+      "coverage_pct": 52.68,
       "v1_target_pct": 80,
       "realistic_max_pct": 95
     },
     {
       "label": "FIDE ≥ 2200",
       "fide_pool": 20707,
-      "claimed_total": 6461,
+      "claimed_total": 12687,
       "claimed_lichess": 1535,
-      "claimed_chesscom": 5680,
-      "coverage_pct": 31.2,
+      "claimed_chesscom": 12351,
+      "coverage_pct": 61.27,
       "v1_target_pct": 40,
       "realistic_max_pct": 60
     },
