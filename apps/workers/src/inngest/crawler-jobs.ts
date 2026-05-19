@@ -7,12 +7,14 @@
  * that region (graceful degradation — only the regions you've
  * provisioned actually get dispatched).
  *
- * Add a new region: drop a new entry here AND set the three env vars
- * in the inngest:serve process. No code changes needed beyond this
- * registry.
+ * Lichess intentionally has no entries: per
+ * [docs/INCIDENT-2026-05-18-lichess-ip-block.md], the per-handle
+ * /api/games/user/ enumeration is forbidden by Lichess. Lichess games
+ * arrive via the monthly dumps pipeline (apps/workers/src/lichess-dumps/),
+ * not via a Cloud Run crawler.
  */
 export type CrawlerRegion = {
-  /** Stable id used as worker_id in chesscom_crawl_runs / lichess_crawl_runs. */
+  /** Stable id used as worker_id in chesscom_crawl_runs. */
   workerId: string;
   /** Prefix for cloudRunJobFromEnv lookup. */
   envPrefix: string;
@@ -23,9 +25,4 @@ export const CHESSCOM_REGIONS: CrawlerRegion[] = [
   { workerId: 'cloud-eu', envPrefix: 'CHESSCOM_CRAWL_EU' },
   { workerId: 'cloud-asia', envPrefix: 'CHESSCOM_CRAWL_ASIA' },
   { workerId: 'cloud-au', envPrefix: 'CHESSCOM_CRAWL_AU' },
-];
-
-export const LICHESS_REGIONS: CrawlerRegion[] = [
-  { workerId: 'cloud-us', envPrefix: 'LICHESS_CRAWL_US' },
-  { workerId: 'cloud-eu', envPrefix: 'LICHESS_CRAWL_EU' },
 ];

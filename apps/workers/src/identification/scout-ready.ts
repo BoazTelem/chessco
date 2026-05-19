@@ -1,27 +1,27 @@
 /**
  * Scout-ready evaluator — Phase 1 of the player-identification pipeline.
  *
- * A handle is "scout-ready" when its full crawl window is complete:
- *   - chess.com: every queue row for the handle has status='done', AND
- *     at least one archive_month row exists (so we know expansion ran).
- *   - lichess: the (single) lichess_crawl_queue row has status='done'.
- *
- * Permanent failures (status='error_permanent') disqualify a handle —
- * we have a known gap in their corpus. Pending / in_progress / retry
- * also disqualify.
+ * A handle is "scout-ready" when we believe we have a complete-enough view
+ * of their games for downstream stages:
+ *   - chess.com: every chesscom_crawl_queue row for the handle has
+ *     status='done' AND ≥1 archive_month row exists (proves expansion ran).
+ *   - lichess:   the handle has ≥1 game with source='lichess' in the
+ *     games corpus. Lichess coverage comes from monthly dumps, not a
+ *     per-handle queue (see [docs/INCIDENT-2026-05-18-lichess-ip-block.md]),
+ *     so presence-in-corpus is the strongest signal available — when a new
+ *     monthly dump arrives, more games appear automatically.
  *
  * When a handle becomes ready, we UPSERT it into the canonical `handles`
  * table (computing games_seen / first_seen_at / last_seen_at from the
- * games table) and stamp scout_ready_at. handles will grow naturally
- * to cover every fully-crawled account, including transitively-discovered
- * ones from opponent discovery.
+ * games table) and stamp scout_ready_at. handles will grow naturally to
+ * cover every accounted-for player.
  *
- * CLI usage (one-shot backfill — scan all queue handles, mark all that
+ * CLI usage (one-shot backfill — scan all known handles, mark all that
  * qualify):
  *   tsx src/identification/scout-ready.ts
  *
- * Hooked from chesscom-crawl/run.ts and lichess-crawl/run.ts after each
- * completeItem call so the flag stays current as the crawler progresses.
+ * Hooked from chesscom-crawl/run.ts after each completeItem, and from
+ * lichess-dumps/run.ts after each dump finishes ingesting.
  */
 import 'dotenv/config';
 import type postgres from 'postgres';
@@ -47,10 +47,19 @@ export async function isChesscomHandleReady(sql: postgres.Sql, handle: string): 
 
 export async function isLichessHandleReady(sql: postgres.Sql, handle: string): Promise<boolean> {
   const lower = handle.toLowerCase();
-  const rows = await sql<{ status: string }[]>`
-    SELECT status FROM lichess_crawl_queue WHERE LOWER(handle) = ${lower}
+  // Lichess coverage comes from monthly dumps, not a per-handle queue.
+  // A handle is ready iff we have at least one game for them in the
+  // corpus — that means the most-recent dump scan picked them up.
+  const rows = await sql<{ has_games: boolean }[]>`
+    SELECT EXISTS (
+      SELECT 1 FROM games
+      WHERE source = 'lichess'
+        AND (LOWER(white_handle_snapshot) = ${lower}
+          OR LOWER(black_handle_snapshot) = ${lower})
+      LIMIT 1
+    ) AS has_games
   `;
-  return rows.length === 1 && rows[0]!.status === 'done';
+  return rows[0]?.has_games === true;
 }
 
 /**
@@ -177,14 +186,10 @@ export async function backfillAll(
     RETURNING handle
   `;
 
-  // lichess — handle is ready iff its single queue row has status='done'
+  // lichess — handle is ready iff it has ≥1 game in the corpus (which
+  // comes from monthly dumps, not a per-handle queue).
   const liResult = await sql<{ handle: string }[]>`
-    WITH ready AS (
-      SELECT LOWER(handle) AS handle
-      FROM lichess_crawl_queue
-      WHERE status = 'done'
-    ),
-    sides AS (
+    WITH sides AS (
       SELECT LOWER(white_handle_snapshot) AS handle, played_at
         FROM games WHERE source = 'lichess' AND white_handle_snapshot IS NOT NULL
       UNION ALL
@@ -192,22 +197,20 @@ export async function backfillAll(
         FROM games WHERE source = 'lichess' AND black_handle_snapshot IS NOT NULL
     ),
     stats AS (
-      SELECT s.handle,
+      SELECT handle,
              COUNT(*) AS games_seen,
-             COALESCE(MIN(s.played_at), NOW()) AS first_seen,
-             COALESCE(MAX(s.played_at), NOW()) AS last_seen
-      FROM sides s
-      INNER JOIN ready r ON r.handle = s.handle
-      GROUP BY s.handle
+             COALESCE(MIN(played_at), NOW()) AS first_seen,
+             COALESCE(MAX(played_at), NOW()) AS last_seen
+      FROM sides
+      GROUP BY handle
     )
     INSERT INTO handles (platform, handle, games_seen, first_seen_at, last_seen_at, scout_ready_at)
-    SELECT 'lichess', r.handle,
-           COALESCE(s.games_seen, 0),
-           COALESCE(s.first_seen, NOW()),
-           COALESCE(s.last_seen, NOW()),
+    SELECT 'lichess', handle,
+           games_seen,
+           first_seen,
+           last_seen,
            NOW()
-    FROM ready r
-    LEFT JOIN stats s ON s.handle = r.handle
+    FROM stats
     ON CONFLICT (platform, handle) DO UPDATE SET
       games_seen = EXCLUDED.games_seen,
       last_seen_at = EXCLUDED.last_seen_at,

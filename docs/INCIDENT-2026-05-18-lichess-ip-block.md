@@ -73,6 +73,26 @@ What's still fine locally:
 - [ ] Drop the positions JOIN from `/api/prepare/games` in a follow-up — reconstruct FENs client-side via chess.js (already imported). Cuts response size ~50% and removes the per-row positions lookup. The DEFAULT_LIMIT=200 cap is a stopgap; corpus growth will catch up again
 - [ ] Add a CI check that fails if anyone reintroduces a "run locally" path in the crawl runbooks
 
+## Update from Lichess (2026-05-18, post-appeal)
+
+Thomas at Lichess replied to the appeal a few hours after it was sent:
+
+> The Lichess API isn't designed for bulk user enumeration and uses rate limiting to prevent it. Instead, please use the game database dumps at https://database.lichess.org/ like you identified. The IP block affecting your personal ability to access Lichess will automatically expire.
+
+Two operational facts to internalise:
+
+1. **The earlier unblock was timer-based auto-expiry, not a manual decision.** Lichess doesn't review appeals before unblock; they just confirm the path forward.
+2. **The whole per-handle `/api/games/user/` enumeration approach is forbidden, regardless of pacing, token, or egress IP.** Moving the same loop to Cloud Run with two regional tokens would have ended up blocked too. The structural fix is to use the dumps channel Lichess intends for bulk.
+
+### What this triggered, in addition to the actions above
+
+The Lichess per-handle crawler infrastructure was fully retired on 2026-05-18:
+
+- Deleted: `apps/workers/src/lichess-crawl/` (entire directory), `apps/workers/src/lichess-titled/`, `apps/workers/src/features/fast-lane-lichess.ts` (bulk CLI), `apps/workers/Dockerfile.lichess-crawl`, `apps/workers/src/lichess-dumps/extract-handles.ts` (seeded the dead queue).
+- Preserved: `apps/workers/src/features/lichess-fingerprint-one.ts` (single-API-call per-user fingerprint for the account-link Inngest function — explicitly endorsed by Thomas as legitimate non-bulk use).
+- Updated: `crawler-watchdog.ts` / `crawler-jobs.ts` / `crawl-refresh.ts` no longer dispatch or refresh Lichess. `prepare-reports.ts` surfaces "opponent not in corpus, Lichess updates monthly" for unknown Lichess opponents instead of enqueuing into a dead queue. `/api/prepare/enqueue` is a no-op for Lichess. `scout-ready.ts` derives Lichess readiness from games-in-corpus instead of queue-status.
+- Tables `lichess_crawl_queue` and `lichess_crawl_runs` left in place (no consumers, no writes) for a separate drop migration later.
+
 ## Lessons for the next platform
 
 When wiring up the next bulk scraper (chess.com expansion, ChessBase, FIDE deep crawl, anything new):

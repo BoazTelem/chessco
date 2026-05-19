@@ -24,7 +24,6 @@ import {
 } from '../repertoires/build.js';
 import { runScopedBackfillForHandle } from '../stockfish/backfill.js';
 import { seedHandles as seedChesscomHandles } from '../chesscom-crawl/queue.js';
-import { seedHandles as seedLichessHandles } from '../lichess-crawl/queue.js';
 import { inngest } from './client.js';
 
 const REPERTOIRE_DEPTH = 12;
@@ -256,27 +255,36 @@ async function processReport(
       logger,
     });
     if (opp.status === 'unknown_handle') {
-      // Handle isn't in the corpus yet. Auto-enqueue a crawl and keep the
-      // report in data_pending so the next poll tick can re-check once the
-      // platform crawler has filled in their games. Gate by an age cap so
-      // we surface a real failure if the crawler never catches up.
+      // Lichess opponents that aren't in the corpus can't be on-demand
+      // crawled (see [docs/INCIDENT-2026-05-18-lichess-ip-block.md]).
+      // They'll appear after the next monthly dump scan; until then,
+      // surface a clear failure rather than spin in data_pending.
+      if (report.target_platform === 'lichess') {
+        logger.warn(
+          `[prepare-reports ${report.id.slice(0, 8)}] opponent lichess/` +
+            `${report.target_handle_normalized} not in corpus; Lichess opponents arrive ` +
+            `via monthly dumps, not on-demand`,
+        );
+        return { status: 'failed', error: 'opponent_not_in_corpus_lichess_dumps_only' };
+      }
+
+      // chess.com: auto-enqueue and stay in data_pending so the next poll
+      // tick re-checks once the Cloud Run crawler fills their games.
       const ageMin = report.age_seconds / 60;
       if (ageMin > UNKNOWN_HANDLE_TIMEOUT_MIN) {
         logger.warn(
-          `[prepare-reports ${report.id.slice(0, 8)}] opponent ${report.target_platform}/` +
+          `[prepare-reports ${report.id.slice(0, 8)}] opponent chess.com/` +
             `${report.target_handle_normalized} not crawled after ${ageMin.toFixed(0)}m — giving up`,
         );
         return { status: 'failed', error: 'opponent_not_in_corpus' };
       }
-      const seed =
-        report.target_platform === 'chess.com' ? seedChesscomHandles : seedLichessHandles;
-      const inserted = await seed(
+      const inserted = await seedChesscomHandles(
         games,
         [report.target_handle_normalized],
         ON_DEMAND_CRAWL_PRIORITY,
       );
       logger.info(
-        `[prepare-reports ${report.id.slice(0, 8)}] enqueued ${report.target_platform}/` +
+        `[prepare-reports ${report.id.slice(0, 8)}] enqueued chess.com/` +
           `${report.target_handle_normalized} for crawl (${inserted === 1 ? 'new' : 'already queued'}); ` +
           `report will retry next tick (age=${ageMin.toFixed(1)}m)`,
       );
@@ -303,24 +311,30 @@ async function processReport(
       }
     }
     if (unknownLichess.length > 0 || unknownChesscom.length > 0) {
+      // Lichess handles can't be on-demand crawled — surface failure
+      // immediately so the user sees a clear error rather than infinite
+      // data_pending. The fix is for the user's Lichess account to land
+      // in the next monthly dump scan (they will, since they're rated).
+      if (unknownLichess.length > 0) {
+        logger.warn(
+          `[prepare-reports ${report.id.slice(0, 8)}] user has linked Lichess handle(s) ` +
+            `not yet in corpus: ${unknownLichess.join(', ')}; Lichess corpus updates monthly`,
+        );
+        return { status: 'failed', error: 'user_lichess_handle_not_in_corpus_yet' };
+      }
+
       const ageMin = report.age_seconds / 60;
       if (ageMin > UNKNOWN_HANDLE_TIMEOUT_MIN) {
         logger.warn(
-          `[prepare-reports ${report.id.slice(0, 8)}] user handle(s) not crawled after ` +
-            `${ageMin.toFixed(0)}m — giving up`,
+          `[prepare-reports ${report.id.slice(0, 8)}] user chess.com handle(s) not crawled ` +
+            `after ${ageMin.toFixed(0)}m — giving up`,
         );
         return { status: 'failed', error: 'user_handles_not_in_corpus' };
       }
-      if (unknownLichess.length > 0) {
-        await seedLichessHandles(games, unknownLichess, ON_DEMAND_CRAWL_PRIORITY);
-      }
-      if (unknownChesscom.length > 0) {
-        await seedChesscomHandles(games, unknownChesscom, ON_DEMAND_CRAWL_PRIORITY);
-      }
+      await seedChesscomHandles(games, unknownChesscom, ON_DEMAND_CRAWL_PRIORITY);
       logger.info(
-        `[prepare-reports ${report.id.slice(0, 8)}] enqueued ${
-          unknownLichess.length + unknownChesscom.length
-        } user handle(s) for crawl; report will retry next tick (age=${ageMin.toFixed(1)}m)`,
+        `[prepare-reports ${report.id.slice(0, 8)}] enqueued ${unknownChesscom.length} ` +
+          `user chess.com handle(s) for crawl; report will retry next tick (age=${ageMin.toFixed(1)}m)`,
       );
       return { status: 'data_pending' };
     }

@@ -1,21 +1,16 @@
 /**
  * POST /api/prepare/enqueue — promote (platform, handle) to high priority
- * in the crawl queue so the worker pipeline backfills this user's games
- * for our corpus on the next pass.
+ * in the crawl queue so the worker pipeline backfills this user's games.
  *
- * Fired from /prepare/[platform]/[handle] page mount. The page already
- * does a fast live-fetch path for the immediate user experience; this
- * endpoint is the slow-pipeline-side promotion so the corpus catches up
- * for downstream consumers (Stage 3 matcher, Phase 4 correlation engine,
- * Phase 5 LLM rerank) without waiting for the next refresh cron.
+ * chess.com: upserts into chesscom_crawl_queue at priority 100; monotone
+ * (GREATEST), so a handle already at p100 is a no-op. The Cloud Run
+ * crawler picks it up on the next watchdog tick.
  *
- * Priority 100 mirrors the T1 tier used by the seed pipelines
- * (apps/workers/src/chesscom-crawl/queue.ts:seedHandles, the lichess
- * opponent discovery tiering in apps/workers/src/lichess-crawl/
- * discover-opponents.ts).
- *
- * Behavior is monotone: existing rows only get their priority raised,
- * never lowered (GREATEST). A handle already at p100 is a no-op.
+ * lichess: NO-OP. Per [docs/INCIDENT-2026-05-18-lichess-ip-block.md], the
+ * per-handle /api/games/user/ enumeration is forbidden by Lichess.
+ * Lichess corpus updates arrive via the monthly dump pipeline only. The
+ * page-mount fetch still surfaces the user's live games client-side; this
+ * endpoint just acknowledges the request without queueing.
  */
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -48,40 +43,42 @@ export async function POST(req: Request): Promise<NextResponse> {
   }
 
   const handle = body.handle.toLowerCase();
+
+  if (body.platform === 'lichess') {
+    return NextResponse.json(
+      {
+        ok: true,
+        priority: null,
+        note: 'lichess_uses_monthly_dumps',
+      },
+      { status: 200 },
+    );
+  }
+
   const sql = getGamesDb();
 
   try {
-    if (body.platform === 'chess.com') {
-      // Upsert the seed-style 'archives_list' row. New handle → worker
-      // discovers archives + enqueues archive_month children. Known
-      // handle → priority bumps on the archives_list row itself; pending
-      // archive_month rows (if any) also get promoted to keep the user's
-      // backfill ahead of the rest.
-      await sql.begin(async (tx) => {
-        await tx`
-          INSERT INTO chesscom_crawl_queue (kind, handle, priority)
-          VALUES ('archives_list', ${handle}, ${PRIORITY})
-          ON CONFLICT (handle, kind, archive_url) DO UPDATE SET
-            priority = GREATEST(chesscom_crawl_queue.priority, EXCLUDED.priority)
-          WHERE chesscom_crawl_queue.priority < EXCLUDED.priority
-        `;
-        await tx`
-          UPDATE chesscom_crawl_queue
-          SET priority = ${PRIORITY}
-          WHERE handle = ${handle}
-            AND status IN ('queued', 'failed')
-            AND priority < ${PRIORITY}
-        `;
-      });
-    } else {
-      await sql`
-        INSERT INTO lichess_crawl_queue (handle, priority)
-        VALUES (${handle}, ${PRIORITY})
-        ON CONFLICT (handle) DO UPDATE SET
-          priority = GREATEST(lichess_crawl_queue.priority, EXCLUDED.priority)
-        WHERE lichess_crawl_queue.priority < EXCLUDED.priority
+    // chess.com: upsert the seed-style 'archives_list' row. New handle →
+    // worker discovers archives + enqueues archive_month children. Known
+    // handle → priority bumps on the archives_list row itself; pending
+    // archive_month rows (if any) also get promoted to keep the user's
+    // backfill ahead of the rest.
+    await sql.begin(async (tx) => {
+      await tx`
+        INSERT INTO chesscom_crawl_queue (kind, handle, priority)
+        VALUES ('archives_list', ${handle}, ${PRIORITY})
+        ON CONFLICT (handle, kind, archive_url) DO UPDATE SET
+          priority = GREATEST(chesscom_crawl_queue.priority, EXCLUDED.priority)
+        WHERE chesscom_crawl_queue.priority < EXCLUDED.priority
       `;
-    }
+      await tx`
+        UPDATE chesscom_crawl_queue
+        SET priority = ${PRIORITY}
+        WHERE handle = ${handle}
+          AND status IN ('queued', 'failed')
+          AND priority < ${PRIORITY}
+      `;
+    });
   } catch (err) {
     console.error('[prepare/enqueue] failed:', err);
     return NextResponse.json({ error: 'enqueue_failed' }, { status: 500 });

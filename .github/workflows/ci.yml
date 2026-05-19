@@ -15,15 +15,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Crawl runbooks keep their Cloud-Run-only banner
+      - name: chess.com runbook keeps its Cloud-Run-only banner
         run: |
           set -e
-          for f in docs/LICHESS-CRAWL-RUNBOOK.md docs/CHESSCOM-CRAWL-RUNBOOK.md; do
-            if ! grep -q "Production runs ONLY from Cloud Run" "$f"; then
-              echo "::error file=$f::Cloud-Run-only banner missing. See docs/INCIDENT-2026-05-18-lichess-ip-block.md."
-              exit 1
-            fi
-          done
+          if ! grep -q "Production runs ONLY from Cloud Run" docs/CHESSCOM-CRAWL-RUNBOOK.md; then
+            echo "::error file=docs/CHESSCOM-CRAWL-RUNBOOK.md::Cloud-Run-only banner missing. See docs/INCIDENT-2026-05-18-lichess-ip-block.md."
+            exit 1
+          fi
+
+      - name: Lichess runbook stays a retired notice
+        run: |
+          set -e
+          # Lichess crawler was retired 2026-05-18; the runbook must keep
+          # its "RETIRED" header to prevent silent reintroduction of
+          # local-first instructions. See INCIDENT-2026-05-18-lichess-ip-block.md.
+          if ! grep -q "RETIRED" docs/LICHESS-CRAWL-RUNBOOK.md; then
+            echo "::error file=docs/LICHESS-CRAWL-RUNBOOK.md::RETIRED notice missing. See docs/INCIDENT-2026-05-18-lichess-ip-block.md."
+            exit 1
+          fi
 
       - name: No local crawl-loop wrappers
         run: |
@@ -32,6 +41,28 @@ jobs:
           if [ -n "$matches" ]; then
             echo "::error::Local crawl-loop wrappers are forbidden (see docs/INCIDENT-2026-05-18-lichess-ip-block.md):"
             echo "$matches"
+            exit 1
+          fi
+
+      - name: No per-handle Lichess crawler resurrection
+        run: |
+          set -e
+          # The lichess-crawl/ directory + lichess-titled/ + fast-lane-lichess bulk CLI
+          # were retired 2026-05-18 after Lichess confirmed bulk per-handle API
+          # enumeration is forbidden. Block resurrection at PR time.
+          forbidden=""
+          for path in \
+            apps/workers/src/lichess-crawl \
+            apps/workers/src/lichess-titled \
+            apps/workers/src/features/fast-lane-lichess.ts \
+            apps/workers/Dockerfile.lichess-crawl \
+            apps/workers/src/lichess-dumps/extract-handles.ts
+          do
+            if [ -e "$path" ]; then forbidden="$forbidden\n  $path"; fi
+          done
+          if [ -n "$forbidden" ]; then
+            echo "::error::Retired Lichess per-handle crawler paths reintroduced (see docs/INCIDENT-2026-05-18-lichess-ip-block.md):"
+            printf '%b\n' "$forbidden"
             exit 1
           fi
 
