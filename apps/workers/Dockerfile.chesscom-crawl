@@ -50,7 +50,9 @@ WORKDIR /app/apps/workers
 # Default flags; WORKER_ID overridable via env (Cloud Run --set-env-vars).
 # --exit-when-empty so the task ends cleanly when the queue is drained;
 # the watchdog re-dispatches when the refresh cron re-queues work.
-ENTRYPOINT ["pnpm", "chesscom:crawl", "--", \
+# No "--" separator before flags: pnpm 9.x forwards it literally to the
+# script and chesscom-crawl/run.ts:parseArgs throws "Unrecognized arg: --".
+ENTRYPOINT ["pnpm", "chesscom:crawl", \
             "--rate-ms", "500", \
             "--idle-sleep-sec", "300", \
             "--exit-when-empty"]
