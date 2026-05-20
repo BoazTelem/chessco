@@ -1,6 +1,12 @@
 /**
  * Inclusion predicate for the Lichess monthly dump.
- * Spec §5/PLAN.md Phase 1 W1: rated standard, both Elos >= minElo.
+ *
+ * Rated standard games where EITHER player clears FILTER.minElo (1800).
+ * Previously required BOTH players ≥ 1400; raised + relaxed to EITHER on
+ * 2026-05-20 to align with the prep-audience floor and reduce dump-ingest
+ * volume by ~5-8x without losing the games we actually care about (any
+ * game involving a prep-audience player is still ingested, including
+ * mismatched-rating games).
  */
 import { FILTER } from './config';
 import type { PgnHeaders } from './types';
@@ -49,7 +55,10 @@ export function shouldIngest(headers: PgnHeaders, stats: FilterStats): boolean {
     stats.reasonNoElo++;
     return false;
   }
-  if (we < FILTER.minElo || be < FILTER.minElo) {
+  // EITHER player must clear the threshold. A game involving any
+  // prep-audience player carries fingerprint signal for that player,
+  // regardless of opponent strength.
+  if (we < FILTER.minElo && be < FILTER.minElo) {
     stats.reasonLowElo++;
     return false;
   }
